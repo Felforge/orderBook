@@ -69,12 +69,16 @@ OrderBook::~OrderBook() {
 // type should be "BUY" for buy, "SELL" for sell
 // Order Book Class member
 void OrderBook::addOrder(double price, int quantity, string type, bool print) {
+    // cout << "1: " << orderCount << endl;
     // Return if order type is invalid or quanity is invalid
     if (type != "BUY" && type != "SELL") {
         cout << "Order Book Error: Invalid Order Type" << endl;
         return;
     } else if (quantity <= 0) { 
-        cout << "Order Book Error: Quantity Must Be Integer Greater Than 0" << endl;
+        cout << "Order Book Error: Quantity Must Be An Integer Greater Than 0" << endl;
+        return;
+    } else if (price <= 0.0) {
+        cout << "Order Book Error: Price Must Be A Number Greater Than 0" << endl;
         return;
     }
 
@@ -94,7 +98,8 @@ void OrderBook::addOrder(double price, int quantity, string type, bool print) {
         }
 
         // Find proper place for next order
-        while (price > currentLayer->order->price && currentLayer->next) {
+        while (type == "BUY" && price <= currentLayer->order->price && currentLayer->next ||
+               type == "SELL" && price >= currentLayer->order->price && currentLayer->next) {
             currentLayer = currentLayer->next;
         }
 
@@ -102,10 +107,14 @@ void OrderBook::addOrder(double price, int quantity, string type, bool print) {
         Order* newOrder = new Order(orderCount, price, quantity, type);
 
         // Create next layer and insert order if needed
-        if (!currentLayer->next) {
+        if (!currentLayer->next && 
+            (type == "BUY" && price <= currentLayer->order->price ||
+             type == "SELL" && price >= currentLayer->order->price )) {
             currentLayer->next = new OrderList(newOrder);
         } else {
-            currentLayer->next = currentLayer;
+            OrderList* pushedDown = new OrderList(currentLayer->order);
+            pushedDown->next = currentLayer->next;
+            currentLayer->next = pushedDown;
             currentLayer->order = newOrder;
         }
     }

@@ -69,7 +69,6 @@ OrderBook::~OrderBook() {
 // type should be "BUY" for buy, "SELL" for sell
 // Order Book Class member
 void OrderBook::addOrder(double price, int quantity, string type, bool print) {
-    // cout << "1: " << orderCount << endl;
     // Return if order type is invalid or quanity is invalid
     if (type != "BUY" && type != "SELL") {
         cout << "Order Book Error: Invalid Order Type" << endl;
@@ -156,11 +155,11 @@ void OrderBook::removeOrder(int id, bool print) {
         OrderList* currentLayer = prevLayer->next;
 
         // Delete dynamically allocated order
-        delete currentLayer->order;
+        // delete currentLayer->order;
 
         if (!currentLayer->next) {
             // Bottom layer no longer needed
-            currentLayer = prevLayer;
+            currentLayer = nullptr;
         } else if (!prevLayer) {
             // Top layer no longer needed
             currentLayer = currentLayer->next;

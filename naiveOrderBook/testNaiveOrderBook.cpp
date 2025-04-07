@@ -122,6 +122,153 @@ TEST(OrderBookTest, HandlesInvalidOrderAdding) {
     EXPECT_EQ(output, "Order Book Error: Price Must Be A Number Greater Than 0\n");
 }
 
+// Test removing valid orders
+TEST(OrderBookTest, HandlesValidOrderRemoving) {
+    OrderBook orderBook = OrderBook();
+    Order* expected;
+    Order* actual;
+
+    // Adding first buy order
+    orderBook.addOrder(100.0, 10, "BUY", false); // ID 0
+    // Adding first sell order
+    orderBook.addOrder(100.0, 10, "SELL", false); // ID 1
+    // Adding second buy order
+    orderBook.addOrder(110.0, 5, "BUY", false); // ID 2
+    // Adding second sell order
+    orderBook.addOrder(110.0, 5, "SELL", false); // ID 3
+    // Adding third buy order
+    orderBook.addOrder(120.0, 1, "BUY", false); // ID 4
+    // Adding thrid sell order
+    orderBook.addOrder(120.0, 1, "SELL", false); // ID 5
+    // Adding fourth buy order
+    orderBook.addOrder(130.0, 15, "BUY", false); // ID 6
+    // Adding fourth buy order
+    orderBook.addOrder(130.0, 15, "SELL", false); // ID 7
+
+    // Remove two orders from each list
+    orderBook.removeOrder(0, false);
+    orderBook.removeOrder(3, false);
+    orderBook.removeOrder(4, false);
+    orderBook.removeOrder(7, false);
+
+    // Verify expected positions
+
+    expected = new Order(6, 130.0, 15, "BUY");
+    actual = orderBook.buyOrderList->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+
+   expected = new Order(2, 110.0, 5, "BUY");
+    actual = orderBook.buyOrderList->next->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+
+    expected = new Order(1, 100.0, 10, "SELL");
+    actual = orderBook.sellOrderList->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+
+    expected = new Order(5, 120.0, 1, "SELL");
+    actual = orderBook.sellOrderList->next->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+}
+
+// Test removing invalid orders
+TEST(OrderBookTest, HandlesInvalidOrderRemoving) {
+    OrderBook orderBook = OrderBook();
+
+    // Test invalid ID
+    std::string output = captureOutput([&]() { orderBook.removeOrder(999); });
+    EXPECT_EQ(output, "Order Book Error: Invalid Order ID\n");
+
+    // Add orders to bring orderCount up
+    orderBook.addOrder(100.0, 10, "BUY", false);
+    orderBook.addOrder(110.0, 5, "BUY", false);
+    orderBook.addOrder(100.0, 20, "BUY", false);
+    orderBook.addOrder(90.0, 15, "BUY", false);
+    orderBook.addOrder(100.0, 30, "BUY", false);
+
+    // Remove an order to test ID not found error
+    orderBook.removeOrder(2, false);
+
+    // Test ID not found error
+    output = captureOutput([&]() { orderBook.removeOrder(2); });
+    EXPECT_EQ(output, "Order Book Error: Order ID 2 Not Found\n");
+}
+
+// Test no order matches
+TEST(OrderBookTest, HandlesNoOrderMatch) {
+    OrderBook orderBook = OrderBook();
+    Order* expected;
+    Order* actual;
+
+    // Add Buy and Sell orders
+    orderBook.addOrder(100.0, 10, "BUY", false); // Order ID 0
+    orderBook.addOrder(90.0, 5, "BUY", false); // Order ID 1
+    orderBook.addOrder(110.0, 15, "SELL", false); // Order ID 2
+    orderBook.addOrder(120.0, 30, "SELL", false); // Order ID 3
+
+    // Run order matching
+    orderBook.matchOrders(false);
+
+    // Verify that nothing sold
+
+    expected = new Order(0, 100.0, 10, "BUY");
+    actual = orderBook.buyOrderList->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+
+    expected = new Order(1, 90.0, 5, "BUY");
+    actual = orderBook.buyOrderList->next->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+
+    expected = new Order(2, 110.0, 15, "SELL");
+    actual = orderBook.sellOrderList->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+
+    expected = new Order(3, 120.0, 30, "SELL");
+    actual = orderBook.sellOrderList->next->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+}
+
+// Test single order match
+TEST(OrderBookTest, HandlesSingleOrderMatch) {
+    OrderBook orderBook = OrderBook();
+    Order* expected;
+    Order* actual;
+
+    // Add Buy and Sell orders
+    orderBook.addOrder(100.0, 10, "BUY", false); // Order ID 0
+    orderBook.addOrder(90.0, 5, "BUY", false); // Order ID 1
+    orderBook.addOrder(100.0, 15, "SELL", false); // Order ID 2
+    orderBook.addOrder(110.0, 30, "SELL", false); // Order ID 3
+
+    // Run order matching
+    orderBook.matchOrders();
+
+    // Verify expected result
+
+    expected = new Order(1, 90.0, 5, "BUY");
+    actual = orderBook.buyOrderList->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+
+    // 5 should be left over after 10 are sold
+    expected = new Order(2, 100.0, 5, "SELL");
+    actual = orderBook.sellOrderList->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+
+    expected = new Order(3, 110.0, 30, "SELL");
+    actual = orderBook.sellOrderList->next->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

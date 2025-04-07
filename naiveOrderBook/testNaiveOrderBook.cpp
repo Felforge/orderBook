@@ -146,10 +146,10 @@ TEST(OrderBookTest, HandlesValidOrderRemoving) {
     orderBook.addOrder(130.0, 15, "SELL", false); // ID 7
 
     // Remove two orders from each list
-    orderBook.removeOrder(0, false);
-    orderBook.removeOrder(3, false);
-    orderBook.removeOrder(4, false);
-    orderBook.removeOrder(7, false);
+    orderBook.removeOrder(0, "BUY", false);
+    orderBook.removeOrder(3, "SELL", false);
+    orderBook.removeOrder(4, "BUY", false);
+    orderBook.removeOrder(7, "SELL", false);
 
     // Verify expected positions
 
@@ -179,22 +179,26 @@ TEST(OrderBookTest, HandlesInvalidOrderRemoving) {
     OrderBook orderBook = OrderBook();
 
     // Test invalid ID
-    std::string output = captureOutput([&]() { orderBook.removeOrder(999); });
+    std::string output = captureOutput([&]() { orderBook.removeOrder(999, "BUY"); });
     EXPECT_EQ(output, "Order Book Error: Invalid Order ID\n");
 
     // Add orders to bring orderCount up
-    orderBook.addOrder(100.0, 10, "BUY", false);
-    orderBook.addOrder(110.0, 5, "BUY", false);
-    orderBook.addOrder(100.0, 20, "BUY", false);
-    orderBook.addOrder(90.0, 15, "BUY", false);
-    orderBook.addOrder(100.0, 30, "BUY", false);
+    orderBook.addOrder(100.0, 10, "BUY", false); // Order ID is 0
+    orderBook.addOrder(110.0, 5, "BUY", false); // Order ID is 1
+    orderBook.addOrder(100.0, 20, "BUY", false); // Order ID is 2
+    orderBook.addOrder(90.0, 15, "BUY", false); // Order ID is 3
+    orderBook.addOrder(100.0, 30, "BUY", false); // Order ID is 4
 
     // Remove an order to test ID not found error
-    orderBook.removeOrder(2, false);
+    orderBook.removeOrder(2, "BUY", false);
 
     // Test ID not found error
-    output = captureOutput([&]() { orderBook.removeOrder(2); });
+    output = captureOutput([&]() { orderBook.removeOrder(2, "BUY"); });
     EXPECT_EQ(output, "Order Book Error: Order ID 2 Not Found\n");
+
+    // Test invalid order type
+    output = captureOutput([&]() { orderBook.removeOrder(0, "INVALID"); });
+    EXPECT_EQ(output, "Order Book Error: Invalid Order Type\n");
 }
 
 // Test no order matches
@@ -248,7 +252,7 @@ TEST(OrderBookTest, HandlesSingleOrderMatch) {
     orderBook.addOrder(110.0, 30, "SELL", false); // Order ID 3
 
     // Run order matching
-    orderBook.matchOrders();
+    orderBook.matchOrders(false);
 
     // Verify expected result
 
@@ -271,7 +275,38 @@ TEST(OrderBookTest, HandlesSingleOrderMatch) {
 
 // Test multiple order match
 TEST(OrderBookTest, HandlesMultipleOrderMatch) {
-    // PLACEHOLDER
+    OrderBook orderBook = OrderBook();
+    Order* expected;
+    Order* actual;
+
+    // Add Buy and Sell orders
+    orderBook.addOrder(100.0, 20, "BUY", false); // Order ID 0
+    orderBook.addOrder(90.0, 5, "BUY", false); // Order ID 1
+    orderBook.addOrder(80.0, 10, "SELL", false); // Order ID 2
+    orderBook.addOrder(90.0, 5, "SELL", false); // Order ID 3
+    orderBook.addOrder(100.0, 10, "SELL", false); // Order ID 4
+    orderBook.addOrder(110.0, 20, "SELL", false); // Order ID 5
+
+    // Run order matching
+    orderBook.matchOrders(false);
+
+    // Verify expected result
+
+    expected = new Order(1, 90.0, 5, "BUY");
+    actual = orderBook.buyOrderList->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+    
+    // 5 are left over after 5 are bought
+    expected = new Order(4, 100.0, 5, "SELL");
+    actual = orderBook.sellOrderList->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+
+    expected = new Order(5, 110.0, 20, "SELL");
+    actual = orderBook.sellOrderList->next->order;
+    isOrderEqual(expected, actual);
+    delete expected;
 }
 
 int main(int argc, char **argv) {

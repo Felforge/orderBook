@@ -126,55 +126,59 @@ void OrderBook::addOrder(double price, int quantity, string type, bool print) {
     // Update counter for order ID
     orderCount += 1;
 }
-        
-// Removes order from linked list
-// type should be "BUY" for buy, "SELL" for sell
-// OrderBook class member
-void OrderBook::removeOrder(int id, bool print) {
-    // Return if order type is invalid or quanity is invalid
-    if (id > orderCount) {
+
+void OrderBook::removeOrder(int id, string type, bool print) {
+    // Return if order type is invalid or quantity is invalid
+    if (id >= orderCount) {
         cout << "Order Book Error: Invalid Order ID" << endl;
         return;
     }
 
-    // Check buy
-    OrderList* prevLayer = searchOrderList(id, buyOrderList);
+    // Determine the order list to search
+    OrderList* orderList = nullptr;
+    if (type == "BUY") {
+        orderList = buyOrderList;
+    } else if (type == "SELL") {
+        orderList = sellOrderList;
+    } else {
+        cout << "Order Book Error: Invalid Order Type" << endl;
+        return;
+    }
 
+    // Search for the order in the specified list
+    OrderList* prevLayer = searchOrderList(id, orderList);
     if (!prevLayer) {
-        // Check sell
-        prevLayer = searchOrderList(id, sellOrderList);
-
-        if (!prevLayer) {
-            cout << "Order Book Error: Order ID " << id << " Not Found" << endl;
-            return;
-        }
+        cout << "Order Book Error: Order ID " << id << " Not Found" << endl;
+        return;
     }
 
-    if (prevLayer->next) {
-        // Get currentLayer out of prevLayer
-        OrderList* currentLayer = prevLayer->next;
+    // Get the current layer
+    OrderList* currentLayer = (prevLayer->order && prevLayer->order->id == id) ? prevLayer : prevLayer->next;
 
-        // Delete dynamically allocated order
-        // delete currentLayer->order;
+    // Update the linked list
+    if (currentLayer && currentLayer->order && currentLayer->order->id == id) {
+        if (currentLayer->order) {
+            delete currentLayer->order;
+        }
 
-        if (!currentLayer->next) {
-            // Bottom layer no longer needed
-            currentLayer = nullptr;
-        } else if (!prevLayer) {
-            // Top layer no longer needed
-            currentLayer = currentLayer->next;
+        if (currentLayer == orderList) {
+            if (type == "BUY") {
+                buyOrderList = buyOrderList->next;
+            } else {
+                sellOrderList = sellOrderList->next;
+            }
+            delete currentLayer;
         } else {
-            // Get rid of current layer order
             prevLayer->next = currentLayer->next;
-            currentLayer = prevLayer;
+            delete currentLayer;
         }
-    } else { // No next instance
-        prevLayer->order = nullptr;
-    }
 
-    // Print Status
-    if (print) {
-        cout << "Order ID " << id << " Successfully Removed." << endl;
+        // Print status
+        if (print) {
+            cout << "Order ID " << id << " Successfully Removed." << endl;
+        }
+    } else {
+        cout << "Order Book Error: Order ID " << id << " Not Found" << endl;
     }
 }
 
@@ -184,17 +188,18 @@ void OrderBook::matchOrders(bool print) {
     while (buyOrderList->order && sellOrderList->order && buyOrderList->order->price >= sellOrderList->order->price) {
         double orderPrice = buyOrderList->order->price;
         int orderQuantity = min(buyOrderList->order->quantity, sellOrderList->order->quantity);
-        if (buyOrderList->order->quantity == orderQuantity && sellOrderList->order->quantity == orderQuantity) {
-            // Edge case
-            removeOrder(buyOrderList->order->id, false);
-            removeOrder(sellOrderList->order->id, false);
+
+        if (buyOrderList->order->quantity == sellOrderList->order->quantity) {
+            // Edge case: both quantities are the same
+            removeOrder(buyOrderList->order->id, "BUY", false);
+            removeOrder(sellOrderList->order->id, "SELL", false);
         } else if (buyOrderList->order->quantity == orderQuantity) {
             // Delete one and remove from larger
-            removeOrder(buyOrderList->order->id, false);
+            removeOrder(buyOrderList->order->id, "BUY", false);
             sellOrderList->order->quantity -= orderQuantity;
         } else if (sellOrderList->order->quantity == orderQuantity) {
             // Delete one and remove from larger
-            removeOrder(sellOrderList->order->id, false);
+            removeOrder(sellOrderList->order->id, "SELL", false);
             buyOrderList->order->quantity -= orderQuantity;
         }
         // Print completed order

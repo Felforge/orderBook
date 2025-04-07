@@ -29,7 +29,7 @@ class OrderBook {
         OrderBook();
         ~OrderBook();
         void addOrder(double price, int quantity, std::string type, bool print=true);
-        void removeOrder(int id, bool print=true);
+        void removeOrder(int id, std::string type, bool print=true);
         void matchOrders(bool print=true);
 };
 

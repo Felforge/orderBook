@@ -269,6 +269,11 @@ TEST(OrderBookTest, HandlesSingleOrderMatch) {
     delete expected;
 }
 
+// Test multiple order match
+TEST(OrderBookTest, HandlesMultipleOrderMatch) {
+    // PLACEHOLDER
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

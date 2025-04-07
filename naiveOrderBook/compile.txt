@@ -1,1 +1,2 @@
 g++ -std=c++17 testNaiveOrderBook.cpp naiveOrderBook.cpp -lgtest -o testNaiveOrderBook.exe
+g++ -std=c++17 efficiencyNaiveOrderBook.cpp naiveOrderBook.cpp -o efficiencyNaiveOrderBook.exe

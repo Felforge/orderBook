@@ -2,6 +2,8 @@
 #include <chrono>
 #include <cstdlib>
 #include <string>
+#include <fstream>
+#include <vector>
 #include "naiveOrderBook.h"
 
 // For timing purposes
@@ -35,8 +37,10 @@ std::string getRandomOrderType() {
     }
 }
 
-void createOrderTimeTable() {
+std::string createAddOrderTimeTable() {
     OrderBook orderBook = OrderBook();
+    std::string optStr;
+
     auto t1 = high_resolution_clock::now(); // initial time
 
     // Up to 10 orders
@@ -57,14 +61,93 @@ void createOrderTimeTable() {
     }
     auto t4 = high_resolution_clock::now(); // time after 100000
 
-    std::cout << "Order Adding Efficiency Table" << std::endl;
-    std::cout << "10 Orders Added: " << (t2 - t1).count() << " nanoseconds" << std::endl;
-    std::cout << "1000 Orders Added: " << (t3 - t1).count() << " nanoseconds" << std::endl;
-    std::cout << "100000 Orders Added: " << (t4 - t1).count() << " nanoseconds" << std::endl;
-    std::cout << std::endl;
+    int totalT = (t2 - t1).count() / 1e3; // Total for 10 orders
+    int totalK = (t3 - t1).count() / 1e3; // Total for 1000 orders
+    int totalHK = (t4 - t1).count() / 1e3; // Total for 100000 orders
+
+    optStr = "| **Num of Orders** | **Total Runtime (µs)** | **Time per Second (µs)** |\n";
+    optStr += "| :-----------: |  :-----------: |  :-----------: |\n";
+    optStr += "| 10 | " + std::to_string(totalT) + " | " + std::to_string(totalT / 1e1) + " |\n";
+    optStr += "| 1000 | " + std::to_string(totalK) + " | " + std::to_string(totalK / 1e3) + " |\n";
+    optStr += "| 100000 | " + std::to_string(totalHK) + " | " + std::to_string(totalHK / 1e5) + " |\n\n";
+    
+    // Return final string
+    return optStr;
 }
 
+std::string createRemoveOrderTimeTable() {
+    OrderBook orderBook = OrderBook();
+    std::string optStr;
+    int orderCount = 0;
+    std::vector<int> buyVec;
+    std::vector<int> sellVec;
+    std::string orderType;
+
+    // Create order lists
+
+    auto t1 = high_resolution_clock::now(); // initial time
+
+    // Up to 10 orders
+    for (int i = 0; i < 10; i++) {
+        //
+    }
+    auto t2 = high_resolution_clock::now(); // time after 10
+
+    // Up to 1000 orders
+    for (int i = 0; i < 990; i++) {
+        //
+    }
+    auto t3 = high_resolution_clock::now(); // time after 1000
+
+    // Up to 100000 orders
+    for (int i = 0; i < 99000; i++) {
+        orderType = getRandomOrderType();
+        if (orderType == "BUY") {
+            buyVec.push_back(orderCount);
+        } else {
+            sellVec.push_back(orderCount);
+        }
+        orderBook.addOrder(getRandomPrice(), getRandomQuantity(), orderType, false);
+        orderCount += 1;
+    }
+    auto t4 = high_resolution_clock::now(); // time after 100000
+
+    int totalT = (t2 - t1).count() / 1e3; // Total for 10 orders
+    int totalK = (t3 - t1).count() / 1e3; // Total for 1000 orders
+    int totalHK = (t4 - t1).count() / 1e3; // Total for 100000 orders
+
+    optStr = "| **Num of Orders** | **Total Runtime (µs)** | **Time per Second (µs)** |\n";
+    optStr += "| :-----------: |  :-----------: |  :-----------: |\n";
+    optStr += "| 10 | " + std::to_string(totalT) + " | " + std::to_string(totalT / 1e1) + " |\n";
+    optStr += "| 1000 | " + std::to_string(totalK) + " | " + std::to_string(totalK / 1e3) + " |\n";
+    optStr += "| 100000 | " + std::to_string(totalHK) + " | " + std::to_string(totalHK / 1e5) + " |\n\n";
+    
+    // Return final string
+    return optStr;
+}
+
+// ^^ Remove from already made order lists for benchmark
+
 int main() {
-    createOrderTimeTable();
+    // Create an ofstream object
+    std::ofstream outputFile;
+
+    // Open the file and clear content
+    outputFile.open("efficiencyTable.md", std::ofstream::out | std::ofstream::trunc);
+
+    // Check if the file was opened successfully
+    if (outputFile.is_open()) {
+        // Write data to the file
+        outputFile << "# Naive Linked List Efficiency Data\n\n";
+        outputFile << "## Order Adding Efficiency Table\n\n";
+        outputFile << createAddOrderTimeTable();
+
+        // Close the file
+        outputFile.close();
+    } else {
+        std::cerr << "Error opening file." << std::endl;
+        return 1;
+    }
+
     return 0;
 }

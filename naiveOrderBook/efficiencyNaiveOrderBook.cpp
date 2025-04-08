@@ -80,35 +80,40 @@ std::string createRemoveOrderTimeTable() {
     std::string optStr;
     int orderCount = 0;
     std::vector<int> buyVec;
-    std::vector<int> sellVec;
     std::string orderType;
+    int randomIndex;
 
     // Create order lists
+    // Everything will be put in buy to make benchmarking more straightforward
+    for (int i = 0; i < 100000; i++) {
+        orderBook.addOrder(getRandomPrice(), getRandomQuantity(), "BUY", false);
+        buyVec.push_back(orderCount);
+        orderCount += 1;
+    }
 
     auto t1 = high_resolution_clock::now(); // initial time
 
     // Up to 10 orders
     for (int i = 0; i < 10; i++) {
-        //
+        randomIndex = std::rand() % buyVec.size();
+        orderBook.removeOrder(buyVec[randomIndex], "BUY", false);
+        buyVec.erase(buyVec.begin() + randomIndex);
     }
     auto t2 = high_resolution_clock::now(); // time after 10
 
     // Up to 1000 orders
     for (int i = 0; i < 990; i++) {
-        //
+        randomIndex = std::rand() % buyVec.size();
+        orderBook.removeOrder(buyVec[randomIndex], "BUY", false);
+        buyVec.erase(buyVec.begin() + randomIndex);
     }
     auto t3 = high_resolution_clock::now(); // time after 1000
 
     // Up to 100000 orders
     for (int i = 0; i < 99000; i++) {
-        orderType = getRandomOrderType();
-        if (orderType == "BUY") {
-            buyVec.push_back(orderCount);
-        } else {
-            sellVec.push_back(orderCount);
-        }
-        orderBook.addOrder(getRandomPrice(), getRandomQuantity(), orderType, false);
-        orderCount += 1;
+        randomIndex = std::rand() % buyVec.size();
+        orderBook.removeOrder(buyVec[randomIndex], "BUY", false);
+        buyVec.erase(buyVec.begin() + randomIndex);
     }
     auto t4 = high_resolution_clock::now(); // time after 100000
 
@@ -141,6 +146,8 @@ int main() {
         outputFile << "# Naive Linked List Efficiency Data\n\n";
         outputFile << "## Order Adding Efficiency Table\n\n";
         outputFile << createAddOrderTimeTable();
+        // outputFile << "## Order Removing Efficiency Table\n\n";
+        // outputFile << createRemoveOrderTimeTable();
 
         // Close the file
         outputFile.close();

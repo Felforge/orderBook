@@ -65,7 +65,7 @@ std::string createAddOrderTimeTable() {
     int totalK = (t3 - t1).count() / 1e3; // Total for 1000 orders
     int totalHK = (t4 - t1).count() / 1e3; // Total for 100000 orders
 
-    optStr = "| **Num of Orders** | **Total Runtime (µs)** | **Time per Second (µs)** |\n";
+    optStr = "| **Num of Orders** | **Total Runtime (µs)** | **Time per Order (µs)** |\n";
     optStr += "| :-----------: |  :-----------: |  :-----------: |\n";
     optStr += "| 10 | " + std::to_string(totalT) + " | " + std::to_string(totalT / 1e1) + " |\n";
     optStr += "| 1000 | " + std::to_string(totalK) + " | " + std::to_string(totalK / 1e3) + " |\n";

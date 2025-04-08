@@ -45,31 +45,38 @@ std::string createAddOrderTimeTable() {
 
     // Up to 10 orders
     for (int i = 0; i < 10; i++) {
-        orderBook.addOrder(getRandomPrice(), getRandomQuantity(), getRandomOrderType(), false);
+        orderBook.addOrder(100.0, 50, "BUY", false);
     }
     auto t2 = high_resolution_clock::now(); // time after 10
 
     // Up to 1000 orders
     for (int i = 0; i < 990; i++) {
-        orderBook.addOrder(getRandomPrice(), getRandomQuantity(), getRandomOrderType(), false);
+        orderBook.addOrder(100.0, 50, "BUY", false);
     }
     auto t3 = high_resolution_clock::now(); // time after 1000
 
     // Up to 100000 orders
     for (int i = 0; i < 99000; i++) {
-        orderBook.addOrder(getRandomPrice(), getRandomQuantity(), getRandomOrderType(), false);
+        orderBook.addOrder(100.0, 50, "BUY", false);
     }
     auto t4 = high_resolution_clock::now(); // time after 100000
 
     int totalT = (t2 - t1).count() / 1e3; // Total for 10 orders
     int totalK = (t3 - t1).count() / 1e3; // Total for 1000 orders
     int totalHK = (t4 - t1).count() / 1e3; // Total for 100000 orders
+    double latencyT = totalT / 1e1; // Latency for 10
+    double latencyK = totalK / 1e3; // Latency for 1000
+    double latencyHK = totalHK / 1e5; // Latency for 100000
+    int throughputT = 1 / (latencyT / 1e6); // Throughput for 10
+    int throughputK = 1 / (latencyK / 1e6); // Throughput for 1000
+    int throughputHK = 1 / (latencyHK / 1e6); // Throughput for 100000
 
-    optStr = "| **Num of Orders** | **Total Runtime (µs)** | **Time per Order (µs)** |\n";
+    optStr = "| **Num of Orders** | **Total Runtime (µs)** | **Latency Per Order (µs/Order)** | **Throughput (Orders/Second)** |\n";
     optStr += "| :-----------: |  :-----------: |  :-----------: |\n";
-    optStr += "| 10 | " + std::to_string(totalT) + " | " + std::to_string(totalT / 1e1) + " |\n";
-    optStr += "| 1000 | " + std::to_string(totalK) + " | " + std::to_string(totalK / 1e3) + " |\n";
-    optStr += "| 100000 | " + std::to_string(totalHK) + " | " + std::to_string(totalHK / 1e5) + " |\n\n";
+    optStr += "| 10 | " + std::to_string(totalT) + " | " + std::to_string(latencyT) + " | " + std::to_string(throughputT) + " |\n";
+    optStr += "| 1000 | " + std::to_string(totalK) + " | " + std::to_string(latencyK) + " | " + std::to_string(throughputK) + " |\n";
+    optStr += "| 100000 | " + std::to_string(totalHK) + " | " + std::to_string(latencyHK) + " | " + std::to_string(throughputHK) + " |\n";
+    optStr += "Clearly the naive linked-list implementation becomes extremely inefficient as the order count increases\n\n";
     
     // Return final string
     return optStr;
@@ -131,14 +138,14 @@ std::string createRemoveOrderTimeTable() {
     return optStr;
 }
 
-// ^^ Remove from already made order lists for benchmark
+// Eliminate randomness to refine data?
 
 int main() {
     // Create an ofstream object
     std::ofstream outputFile;
 
     // Open the file and clear content
-    outputFile.open("efficiencyTable.md", std::ofstream::out | std::ofstream::trunc);
+    outputFile.open("naiveEfficiencyTable.md", std::ofstream::out | std::ofstream::trunc);
 
     // Check if the file was opened successfully
     if (outputFile.is_open()) {

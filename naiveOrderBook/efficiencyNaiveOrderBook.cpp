@@ -70,13 +70,14 @@ std::string createAddOrderTimeTable() {
     int throughputT = 1 / (latencyT / 1e6); // Throughput for 10
     int throughputK = 1 / (latencyK / 1e6); // Throughput for 1000
     int throughputHK = 1 / (latencyHK / 1e6); // Throughput for 100000
-
+    
+    // Put all data onto string to be put into md file later
     optStr = "| **Num of Orders** | **Total Runtime (µs)** | **Latency Per Order (µs/Order)** | **Throughput (Orders/Second)** |\n";
-    optStr += "| :-----------: |  :-----------: |  :-----------: |\n";
+    optStr += "| :-----------: |  :-----------: |  :-----------: |  :-----------: |\n";
     optStr += "| 10 | " + std::to_string(totalT) + " | " + std::to_string(latencyT) + " | " + std::to_string(throughputT) + " |\n";
     optStr += "| 1000 | " + std::to_string(totalK) + " | " + std::to_string(latencyK) + " | " + std::to_string(throughputK) + " |\n";
-    optStr += "| 100000 | " + std::to_string(totalHK) + " | " + std::to_string(latencyHK) + " | " + std::to_string(throughputHK) + " |\n";
-    optStr += "Clearly the naive linked-list implementation becomes extremely inefficient as the order count increases\n\n";
+    optStr += "| 100000 | " + std::to_string(totalHK) + " | " + std::to_string(latencyHK) + " | " + std::to_string(throughputHK) + " |\n\n";
+    optStr += "Clearly the naive linked-list implementation becomes extremely inefficient at adding orders as the order count increases\n\n";
     
     // Return final string
     return optStr;

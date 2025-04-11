@@ -1,59 +1,32 @@
 #include <iostream>
 #include <chrono>
-#include <cstdlib>
 #include <string>
 #include <fstream>
-#include <vector>
 #include "naiveOrderBook.h"
 
-// For timing purposes
+// for timing purposes
 using std::chrono::high_resolution_clock;
-using std::chrono::duration_cast;
-using std::chrono::duration;
-using std::chrono::milliseconds;
 
-double getRandomPrice() {
-    double randNum = 0.0;
-    while (randNum == 0.0) {
-        randNum = rand() % 10001;
-    }
-    return randNum / 100;
-}
+std::string formatTable(std::chrono::high_resolution_clock::time_point t1, std::chrono::high_resolution_clock::time_point t2, std::chrono::high_resolution_clock::time_point t3, std::chrono::high_resolution_clock::time_point t4) {
 
-int getRandomQuantity() {
-    int randNum = 0;
-    while (randNum == 0) {
-        randNum = rand() % 101;
-    }
-    return randNum;
-}
+    int64_t durationT = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count(); // total time for 10 orders
+    int64_t durationK = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count(); // total time for 1000 orders
+    int64_t durationHK = std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count(); // total time for 100000 orders
 
-std::string getRandomOrderType() {
-    int randNum = rand() % 2;
-    if (randNum == 0) {
-        return "BUY";
-    } else {
-        return "SELL";
-    }
-}
+    double latencyT = static_cast<double>(durationT) / 1e1;       // Latency for 10 orders
+    double latencyK = static_cast<double>(durationK) / 1e4;     // Latency for 1000 orders
+    double latencyHK = static_cast<double>(durationHK) / 1e6;  // Latency for 100000 orders
 
-std::string formatTable(int t1, int t2, int t3) {
-    int totalT = t1 / 1e3; // Total for 10 orders
-    int totalK = t2 / 1e3; // Total for 1000 orders
-    int totalHK = t3 / 1e3; // Total for 100000 orders
-    double latencyT = totalT / 1e1; // Latency for 10
-    double latencyK = totalK / 1e3; // Latency for 1000
-    double latencyHK = totalHK / 1e5; // Latency for 100000
-    int throughputT = 1 / (latencyT / 1e6); // Throughput for 10
-    int throughputK = 1 / (latencyK / 1e6); // Throughput for 1000
-    int throughputHK = 1 / (latencyHK / 1e6); // Throughput for 100000
+    double throughputT = 1e6 / latencyT;  // Throughput for 10 orders
+    double throughputK = 1e6 / latencyK;  // Throughput for 1000 orders
+    double throughputHK = 1e6 / latencyHK;  // Throughput for 100000 orders
     
     // Put all data onto string to be put into md file later
     std::string optStr = "| **Num of Orders** | **Total Runtime (µs)** | **Latency Per Order (µs/Order)** | **Throughput (Orders/Second)** |\n";
     optStr += "| :-----------: |  :-----------: |  :-----------: |  :-----------: |\n";
-    optStr += "| 10 | " + std::to_string(totalT) + " | " + std::to_string(latencyT) + " | " + std::to_string(throughputT) + " |\n";
-    optStr += "| 1000 | " + std::to_string(totalK) + " | " + std::to_string(latencyK) + " | " + std::to_string(throughputK) + " |\n";
-    optStr += "| 100000 | " + std::to_string(totalHK) + " | " + std::to_string(latencyHK) + " | " + std::to_string(throughputHK) + " |\n\n";
+    optStr += "| 10 | " + std::to_string(durationT) + " | " + std::to_string(latencyT) + " | " + std::to_string(throughputT) + " |\n";
+    optStr += "| 1000 | " + std::to_string(durationK) + " | " + std::to_string(latencyK) + " | " + std::to_string(throughputK) + " |\n";
+    optStr += "| 100000 | " + std::to_string(durationHK) + " | " + std::to_string(latencyHK) + " | " + std::to_string(throughputHK) + " |\n\n";
     
     // Return final string
     return optStr;
@@ -67,32 +40,32 @@ std::string createAddOrderTimeTable() {
 
     // Up to 10 orders
     for (int i = 0; i < 10; i++) {
-        orderBook.addOrder(100.0, 50, "BUY", false);
+        orderBook.addOrder(100.0, 50, "BUY");
     }
     auto t2 = high_resolution_clock::now(); // time after 10
 
     // Up to 1000 orders
     for (int i = 0; i < 990; i++) {
-        orderBook.addOrder(100.0, 50, "BUY", false);
+        orderBook.addOrder(100.0, 50, "BUY");
     }
     auto t3 = high_resolution_clock::now(); // time after 1000
 
     // Up to 100000 orders
     for (int i = 0; i < 99000; i++) {
-        orderBook.addOrder(100.0, 50, "BUY", false);
+        orderBook.addOrder(100.0, 50, "BUY");
     }
     auto t4 = high_resolution_clock::now(); // time after 100000
 
     // Return formatted string
-    std::string opt = formatTable((t2 - t1).count(), (t3 - t1).count(), (t4 - t1).count());
+    std::string opt = formatTable(t1, t2, t3, t4);
     opt += "Clearly the naive linked-list implementation becomes extremely inefficient at adding orders as the order count increases\n\n";
-    return formatTable((t2 - t1).count(), (t3 - t1).count(), (t4 - t1).count());
+    std::cout << opt;
+    return opt;
 }
 
 std::string createRemoveHeadTimeTable() {
     OrderBook orderBook = OrderBook();
     std::string optStr;
-    int orderCount = 0;
 
     // Create order lists
     // Everything will be put in buy to make benchmarking more straightforward
@@ -104,27 +77,24 @@ std::string createRemoveHeadTimeTable() {
 
     // Up to 10 orders
     for (int i = 0; i < 10; i++) {
-        orderBook.removeOrder(orderCount, "BUY", false);
-        orderCount += 1;
+        orderBook.removeOrder(i, "BUY", false);
     }
     auto t2 = high_resolution_clock::now(); // time after 10
 
     // Up to 1000 orders
-    for (int i = 0; i < 990; i++) {
-        orderBook.removeOrder(orderCount, "BUY", false);
-        orderCount += 1;
+    for (int i = 10; i < 1000; i++) {
+        orderBook.removeOrder(i, "BUY", false);
     }
     auto t3 = high_resolution_clock::now(); // time after 1000
 
     // Up to 100000 orders
-    for (int i = 0; i < 99000; i++) {
-        orderBook.removeOrder(orderCount, "BUY", false);
-        orderCount += 1;
+    for (int i = 1000; i < 100000; i++) {
+        orderBook.removeOrder(i, "BUY", false);
     }
     auto t4 = high_resolution_clock::now(); // time after 100000
 
     // Return formatted string
-    std::string opt = formatTable((t2 - t1).count(), (t3 - t1).count(), (t4 - t1).count());
+    std::string opt = formatTable(t1, t2, t3, t4);
     opt += "Latency and throughput are fairly consistent when removing from the head\n\n";
     return opt;
 }
@@ -132,12 +102,12 @@ std::string createRemoveHeadTimeTable() {
 std::string createRemoveTailTimeTable() {
     OrderBook orderBook = OrderBook();
     std::string optStr;
-    int orderCount = 100000;
+    int orderCount = 99999;
 
     // Create order lists
     // Everything will be put in buy to make benchmarking more straightforward
     for (int i = 0; i < 100000; i++) {
-        orderBook.addOrder(100.0, 50, "BUY", false);
+        orderBook.addOrder(100.0, 50, "BUY");
     }
 
     auto t1 = high_resolution_clock::now(); // initial time
@@ -164,8 +134,8 @@ std::string createRemoveTailTimeTable() {
     auto t4 = high_resolution_clock::now(); // time after 100000
 
     // Return formatted string
-    std::string opt = formatTable((t2 - t1).count(), (t3 - t1).count(), (t4 - t1).count());
-    std::cout << opt;
+    std::string opt = formatTable(t1, t2, t3, t4);
+    opt += "Latency gets continuously lower as the linked-list shortens so the average for 100,000 is much lower";
     return opt;
 }
 
@@ -182,12 +152,9 @@ int main() {
     if (outputFile.is_open()) {
         // Write data to the file
         outputFile << "# Naive Linked List Efficiency Data\n\n";
-        // outputFile << "## Adding Order Efficiency Table\n\n";
-        // outputFile << createAddOrderTimeTable();
-        // outputFile << "## Reamoving Head Order Efficiency Table\n\n";
-        // outputFile << createRemoveHeadTimeTable();
-        outputFile << "## Reamoving Tail Order Efficiency Table\n\n";
-        outputFile << createRemoveTailTimeTable();
+        outputFile << "## Adding Order Efficiency Table\n\n" << createAddOrderTimeTable();
+        // outputFile << "## Reamoving Head Order Efficiency Table\n\n" << createRemoveHeadTimeTable();
+        // outputFile << "## Reamoving Tail Order Efficiency Table\n\n" << createRemoveTailTimeTable();
 
         // Close the file
         outputFile.close();

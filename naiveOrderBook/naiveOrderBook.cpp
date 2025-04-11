@@ -54,15 +54,37 @@ OrderBook::OrderBook() {
 // Order Book Class member
 OrderBook::~OrderBook() {
     // Delete order lists and orders allocated using new
-    if (buyOrderList->order) {
-        delete buyOrderList->order;
+    OrderList* currentLayer = buyOrderList;
+    while (currentLayer && currentLayer->next) {
+        currentLayer = currentLayer->next;
+        if (currentLayer->order) {
+            delete currentLayer->order;
+        }
+        delete currentLayer;
     }
-    delete buyOrderList;
-    if (sellOrderList->order) {
-        delete sellOrderList->order;
+
+    currentLayer = sellOrderList;
+    while (currentLayer && currentLayer->next) {
+        currentLayer = currentLayer->next;
+        if (currentLayer->order) {
+            delete currentLayer->order;
+        }
+        delete currentLayer;
     }
-    delete sellOrderList;
-    // Rest will delete recursively 
+
+    if (buyOrderList) {
+        if (buyOrderList->order) {
+            delete buyOrderList->order;
+        }
+        delete buyOrderList;
+    }
+
+    if (sellOrderList) {
+        if (sellOrderList->order) {
+            delete sellOrderList->order;
+        }
+        delete sellOrderList;
+    }
 }
 
 // Creates order in linked list

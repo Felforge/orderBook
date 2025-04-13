@@ -152,7 +152,8 @@ int main() {
     if (outputFile.is_open()) {
         // Write data to the file
         outputFile << "# Naive Linked List Efficiency Data\n\n";
-        outputFile << "## Adding Order Efficiency Table\n\n" << createAddOrderTimeTable();
+        createAddOrderTimeTable();
+        // outputFile << "## Adding Order Efficiency Table\n\n" << createAddOrderTimeTable();
         // outputFile << "## Reamoving Head Order Efficiency Table\n\n" << createRemoveHeadTimeTable();
         // outputFile << "## Reamoving Tail Order Efficiency Table\n\n" << createRemoveTailTimeTable();
 

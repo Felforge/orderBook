@@ -40,19 +40,19 @@ std::string createAddOrderTimeTable() {
 
     // Up to 10 orders
     for (int i = 0; i < 10; i++) {
-        orderBook.addOrder(100.0, 50, "BUY");
+        orderBook.addOrder(100.0, 50, "BUY", false);
     }
     auto t2 = high_resolution_clock::now(); // time after 10
 
     // Up to 1000 orders
     for (int i = 0; i < 990; i++) {
-        orderBook.addOrder(100.0, 50, "BUY");
+        orderBook.addOrder(100.0, 50, "BUY", false);
     }
     auto t3 = high_resolution_clock::now(); // time after 1000
 
     // Up to 100000 orders
     for (int i = 0; i < 99000; i++) {
-        orderBook.addOrder(100.0, 50, "BUY");
+        orderBook.addOrder(100.0, 50, "BUY", false);
     }
     auto t4 = high_resolution_clock::now(); // time after 100000
 
@@ -96,6 +96,7 @@ std::string createRemoveHeadTimeTable() {
     // Return formatted string
     std::string opt = formatTable(t1, t2, t3, t4);
     opt += "Latency and throughput are fairly consistent when removing from the head\n\n";
+    std::cout << opt;
     return opt;
 }
 
@@ -107,7 +108,7 @@ std::string createRemoveTailTimeTable() {
     // Create order lists
     // Everything will be put in buy to make benchmarking more straightforward
     for (int i = 0; i < 100000; i++) {
-        orderBook.addOrder(100.0, 50, "BUY");
+        orderBook.addOrder(100.0, 50, "BUY", false);
     }
 
     auto t1 = high_resolution_clock::now(); // initial time
@@ -136,6 +137,7 @@ std::string createRemoveTailTimeTable() {
     // Return formatted string
     std::string opt = formatTable(t1, t2, t3, t4);
     opt += "Latency gets continuously lower as the linked-list shortens so the average for 100,000 is much lower";
+    std::cout << opt;
     return opt;
 }
 
@@ -152,10 +154,9 @@ int main() {
     if (outputFile.is_open()) {
         // Write data to the file
         outputFile << "# Naive Linked List Efficiency Data\n\n";
-        createAddOrderTimeTable();
-        // outputFile << "## Adding Order Efficiency Table\n\n" << createAddOrderTimeTable();
-        // outputFile << "## Reamoving Head Order Efficiency Table\n\n" << createRemoveHeadTimeTable();
-        // outputFile << "## Reamoving Tail Order Efficiency Table\n\n" << createRemoveTailTimeTable();
+        outputFile << "## Adding Order Efficiency Table\n\n" << createAddOrderTimeTable();
+        outputFile << "## Reamoving Head Order Efficiency Table\n\n" << createRemoveHeadTimeTable();
+        outputFile << "## Reamoving Tail Order Efficiency Table\n\n" << createRemoveTailTimeTable() << "\n";
 
         // Close the file
         outputFile.close();

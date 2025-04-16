@@ -146,7 +146,7 @@ void OrderBook::addOrder(double price, int quantity, string type, bool print) {
     }
 
     // Update counter for order ID
-    orderCount += 1;
+    orderCount++;
 }
 
 void OrderBook::removeOrder(int id, string type, bool print) {

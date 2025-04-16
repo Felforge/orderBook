@@ -5,21 +5,28 @@
 #include <unordered_map>
 
 struct Order {
-    int id;
+    int orderID;
+    int userID;
     double price;
     int quantity;
-    std::string type;
     std::string side;
-    Order(int id, std::string side, std::string type, int quantity, double price);
+    Order(int orderID, int userID, std::string side, int quantity, double price);
+};
+
+struct OrderNode {
+    Order* order;
+    OrderNode* prev;
+    OrderNode* next;
+    OrderNode(Order* order);
 };
 
 struct PriceLevel {
-    Order* order;
-    PriceLevel* prev;
-    PriceLevel* next;
-    PriceLevel(Order* order);
+    OrderNode* head;
+    OrderNode* tail;
+    PriceLevel(OrderNode* orderNode);
 };
 
+// best orders are being left as PriceLevel to access the whole doubly linked list
 struct Ticker {
     std::string ticker;
     PriceLevel* buyOrderList[100000];
@@ -31,15 +38,17 @@ struct Ticker {
 
 class OrderBook {
     private:
-        int orderCount;
+        int orderID;
 
     public:
         // Easy access to every order
         // Just make sure to erase from here if the order gets deleted
-        std::unordered_map<int, PriceLevel*> orderMap;
+        std::unordered_map<int, Order*> orderMap;
+        std::unordered_map<std::string, Ticker*> tickerMap;
         OrderBook();
         ~OrderBook();
-        void addOrder(std::string side, std::string type, int quantity, double price = 0.0, bool print = true, bool execute = true);
+        void addTicker(std::string ticker);
+        void addOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print = true);
     };
 
 #endif

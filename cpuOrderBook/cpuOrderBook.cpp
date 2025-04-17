@@ -3,8 +3,8 @@
 using namespace std;
 
 // Constructor for Order
-Order::Order(int orderID, int userID, string side, int quantity, double price)
-    : orderID(orderID), userID(userID), side(side), quantity(quantity), price(price) {}
+Order::Order(int orderID, int userID, string side, string ticker, int quantity, double price)
+    : orderID(orderID), userID(userID), side(side), ticker(ticker), quantity(quantity), price(price) {}
 
 // Constructor for Order Node
 // This is a node of the doubly linked list
@@ -31,7 +31,7 @@ OrderBook::OrderBook() {
 OrderBook::~OrderBook() {
     // Delete every order pointer
     for (const auto& pair: orderMap) {
-        delete pair.second;
+        delete pair.second->order;
     }
 
     // Delete every price level pointer and ticker pointer
@@ -83,11 +83,11 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     int listIdx = int(price * 100.0) - 1;
 
     // Create new order and orderNode objects
-    Order* newOrder = new Order(userID, orderID, side, quantity, price);
+    Order* newOrder = new Order(userID, orderID, side, ticker, quantity, price);
     OrderNode* orderNode = new OrderNode(newOrder);
 
     // Insert order into order map
-    orderMap[orderID] = newOrder;
+    orderMap[orderID] = orderNode;
 
     if (side == "BUY") {
         if (tickerMap[ticker]->buyOrderList[listIdx] == nullptr) {
@@ -113,21 +113,69 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
         }
     }
 
-    // Print Order ID
+    // Print Order Data
     if (print) {
-        if (print) {
-        std::cout << "Order successfully added:\n"
-                  << "  Type: " << side
-                  << "\n  Quantity: " << quantity
-                  << "\n  Ticker: " << ticker
-                  << "\n  Price: " << price
-                  << "\n  Order ID: " << orderID
-                  << std::endl;
-        }
+        cout << "Order successfully added:" << endl
+             << "  Type: " << side << endl
+             << "  Quantity: " << quantity << endl
+             << "  Ticker: " << ticker << endl
+             << "  Price: " << price << endl
+             << "  Order ID: " << orderID << endl;
     }
 
     // Update counter for order ID
     orderID++;
+}
+
+void OrderBook::removeOrder(int id, bool print) {
+    // Return if order ID is invalid
+    if (id >= orderID || orderMap.find(id) == orderMap.end()) {
+        cout << "Order Book Error: Invalid Order ID" << endl;
+        return;
+    }
+
+    // Create pointer to node of order
+    OrderNode* nodePtr = orderMap[id];
+
+    // Flag for deleteing level
+    bool deleteLevel = false;
+    PriceLevel* levelPtr;
+
+    if (nodePtr->prev == nullptr || nodePtr->next == nullptr) {
+        string ticker = nodePtr->order->ticker;
+        int listIdx = int(nodePtr->order->price * 100.0) - 1;
+        if (nodePtr->order->side == "BUY") {
+            levelPtr = tickerMap[ticker]->buyOrderList[listIdx];
+        } else {
+            levelPtr = tickerMap[ticker]->sellOrderList[listIdx];
+        }
+        if (nodePtr->prev == nullptr && nodePtr->next == nullptr) {
+            deleteLevel = true;
+        } else if (nodePtr->prev == nullptr) {
+            levelPtr->head = nodePtr->next;
+        } else { // nodePtr->next == nullptr
+            levelPtr->tail = nodePtr->prev;
+        }
+    } else {
+        nodePtr->prev->next = nodePtr->next;
+    }
+
+    // Always has to get deleted so it is outside the if statement
+    // Scary memory leak if done wrong
+    delete nodePtr->order;
+    delete nodePtr;
+    if (deleteLevel) {
+        delete levelPtr;
+    }
+
+    // Erase ID from orderMap
+    orderMap.erase(id);
+
+    // Print Success Message
+    if (print) {
+        cout << "Order successfully removed:" << endl
+             << "  Order ID: " << id << endl;
+    }
 }
 
 // int main() {

@@ -150,7 +150,7 @@ void OrderBook::addOrder(double price, int quantity, string type, bool print) {
 }
 
 void OrderBook::removeOrder(int id, string type, bool print) {
-    // Return if order type is invalid or quantity is invalid
+    // Return if order ID is invalid
     if (id >= orderCount) {
         cout << "Order Book Error: Invalid Order ID" << endl;
         return;

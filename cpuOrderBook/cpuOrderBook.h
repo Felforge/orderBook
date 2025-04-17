@@ -10,7 +10,8 @@ struct Order {
     double price;
     int quantity;
     std::string side;
-    Order(int orderID, int userID, std::string side, int quantity, double price);
+    std::string ticker;
+    Order(int orderID, int userID, std::string side, std::string ticker, int quantity, double price);
 };
 
 struct OrderNode {
@@ -43,12 +44,13 @@ class OrderBook {
     public:
         // Easy access to every order
         // Just make sure to erase from here if the order gets deleted
-        std::unordered_map<int, Order*> orderMap;
+        std::unordered_map<int, OrderNode*> orderMap;
         std::unordered_map<std::string, Ticker*> tickerMap;
         OrderBook();
         ~OrderBook();
         void addTicker(std::string ticker);
         void addOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print = true);
+        void removeOrder(int id, bool print = true);
     };
 
 #endif

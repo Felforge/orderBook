@@ -2,6 +2,8 @@
 #include "cpuOrderBook.h"
 using namespace std;
 
+const int MAX_PRICE_IDX = 100000;
+
 // Constructor for Order
 Order::Order(int orderID, int userID, string side, string ticker, int quantity, double price)
     : orderID(orderID), userID(userID), side(side), ticker(ticker), quantity(quantity), price(price) {}
@@ -36,7 +38,7 @@ OrderBook::~OrderBook() {
 
     // Delete every price level pointer and ticker pointer
     for (const auto& pair: tickerMap) {
-        for (int i = 0; i < 100000; i++) {
+        for (int i = 0; i < MAX_PRICE_IDX; i++) {
             while (pair.second->buyOrderList[i]->tail != pair.second->buyOrderList[i]->head) {
                 OrderNode* temp = pair.second->buyOrderList[i]->tail;
                 pair.second->buyOrderList[i]->tail = temp->prev;
@@ -56,6 +58,10 @@ OrderBook::~OrderBook() {
     }
 }
 
+int OrderBook::getListIndex(double price) {
+    return int(price * 100.0) - 1;
+}
+
 void OrderBook::addTicker(string ticker) {
     tickerMap[ticker] = new Ticker(ticker);
 }
@@ -71,8 +77,8 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     } else if (price <= 0.0) {
         cout << "Order Book Error: Price Must Be A Number Greater Than 0" << endl;
         return;
-    } else if (price > 1000.00) {
-        cout << "Order Book Error: Maximum Available Price is 1000" << endl;
+    } else if (price > double(MAX_PRICE_IDX / 100)) {
+        cout << "Order Book Error: Maximum Available Price is " << MAX_PRICE_IDX / 100 << endl;
         return;
     } else if (tickerMap.find(ticker) == tickerMap.end()) {
         cout << "Order Book Error: Ticker is Invalid" << endl;
@@ -80,7 +86,7 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     }
 
     // Get index for price level
-    int listIdx = int(price * 100.0) - 1;
+    int listIdx = getListIndex(price);
 
     // Create new order and orderNode objects
     Order* newOrder = new Order(userID, orderID, side, ticker, quantity, price);
@@ -137,13 +143,17 @@ void OrderBook::removeOrder(int id, bool print) {
     // Create pointer to node of order
     OrderNode* nodePtr = orderMap[id];
 
+    // Get ticker
+    string ticker = nodePtr->order->ticker;
+
     // Flag for deleteing level
     bool deleteLevel = false;
     PriceLevel* levelPtr;
 
+    // Get list index
+    int listIdx = getListIndex(nodePtr->order->price);
+
     if (nodePtr->prev == nullptr || nodePtr->next == nullptr) {
-        string ticker = nodePtr->order->ticker;
-        int listIdx = int(nodePtr->order->price * 100.0) - 1;
         if (nodePtr->order->side == "BUY") {
             levelPtr = tickerMap[ticker]->buyOrderList[listIdx];
         } else {
@@ -165,6 +175,16 @@ void OrderBook::removeOrder(int id, bool print) {
     delete nodePtr->order;
     delete nodePtr;
     if (deleteLevel) {
+        // Reassign bestBuy or bestSell
+        if (levelPtr == tickerMap[ticker]->bestBuyOrder && orderMap.size() > 0) {
+            for (int i = listIdx - 1; i > 0; i--) {
+                tickerMap[ticker]->bestBuyOrder = tickerMap[ticker]->buyOrderList[i];
+            }
+        } else if (levelPtr == tickerMap[ticker]->bestSellOrder && orderMap.size() > 0) {
+            for (int i = listIdx + 1; i < MAX_PRICE_IDX; i++) {
+                tickerMap[ticker]->bestSellOrder = tickerMap[ticker]->sellOrderList[i];
+            }
+        }
         delete levelPtr;
     }
 
@@ -175,6 +195,37 @@ void OrderBook::removeOrder(int id, bool print) {
     if (print) {
         cout << "Order successfully removed:" << endl
              << "  Order ID: " << id << endl;
+    }
+}
+
+void OrderBook::matchOrders(string ticker, bool print) {
+    if (!tickerMap[ticker]->bestBuyOrder || !tickerMap[ticker]->bestSellOrder) {
+        cout << "Order Book Error: No Orders To Be Matched" << endl;
+    }
+    Order* bestBuy = tickerMap[ticker]->bestBuyOrder->head->order;
+    Order* bestSell = tickerMap[ticker]->bestSellOrder->head->order;
+    while (bestBuy->price >= bestSell->price) {
+        // Get matched order price and quantity
+        double orderPrice = tickerMap[ticker]->bestSellOrder->head->order->price;
+        int orderQuantity = min(bestBuy->quantity, bestSell->quantity);
+        if (bestBuy->quantity == bestSell->quantity) {
+            removeOrder(bestBuy->orderID);
+            removeOrder(bestSell->orderID);
+        } else if (bestBuy->quantity > bestSell->quantity) {
+            removeOrder(bestSell->orderID);
+            bestBuy->quantity -= orderQuantity;
+        } else { // bestSell->quantity > bestBuy->quantity
+            removeOrder(bestBuy->orderID);
+            bestSell->quantity -= orderQuantity;
+        }
+
+        // Print completed order
+        if (print) {
+            cout << "Order successfully completed:" << endl
+                 << "  Ticker: " << ticker << endl
+                 << "  Price: " << orderPrice << endl
+                 << "  Quantity: " << orderQuantity << endl;
+        }
     }
 }
 

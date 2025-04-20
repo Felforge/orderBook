@@ -40,6 +40,7 @@ struct Ticker {
 class OrderBook {
     private:
         int orderID;
+        int getListIndex(double price); // Gets index in order array for given price
 
     public:
         // Easy access to every order
@@ -51,6 +52,7 @@ class OrderBook {
         void addTicker(std::string ticker);
         void addOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print = true);
         void removeOrder(int id, bool print = true);
+        void matchOrders(std::string ticker, bool print=true);
     };
 
 #endif

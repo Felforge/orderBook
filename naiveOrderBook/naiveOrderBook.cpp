@@ -206,11 +206,16 @@ void OrderBook::removeOrder(int id, string type, bool print) {
 
 // Match buy and sell orders
 // Order Book Class member
-void OrderBook::matchOrders(bool print) {
+void OrderBook::matchOrders(bool print, int count) {
+    int numCount = 0;
     while (buyOrderList->order && sellOrderList->order && buyOrderList->order->price >= sellOrderList->order->price) {
+        // For testing purposes
+        numCount++; 
+        if (count != 0 && numCount >= count) {
+            break;
+        }
         double orderPrice = buyOrderList->order->price;
         int orderQuantity = min(buyOrderList->order->quantity, sellOrderList->order->quantity);
-
         if (buyOrderList->order->quantity == sellOrderList->order->quantity) {
             // Edge case: both quantities are the same
             removeOrder(buyOrderList->order->id, "BUY", false);
@@ -223,7 +228,7 @@ void OrderBook::matchOrders(bool print) {
             // Delete one and remove from larger
             removeOrder(sellOrderList->order->id, "SELL", false);
             buyOrderList->order->quantity -= orderQuantity;
-        }
+        }    
         // Print completed order
         if (print) {
             cout << orderQuantity << " units sold for $" << orderPrice << "." << endl;

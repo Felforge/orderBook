@@ -16,6 +16,7 @@ private:
     std::vector<char> pool; // Preallocated memory
 public:
     MemoryPool(size_t inpBlockSize, size_t inpBlockCount);
+    ~MemoryPool();
     void* allocate();
     void deallocate(void* ptr);
 };

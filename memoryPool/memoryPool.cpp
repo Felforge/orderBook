@@ -10,16 +10,29 @@ MemoryPool::MemoryPool(size_t inpBlockSize, size_t inpBlockCount) {
     pool.resize(blockSize * blockCount);
 
     // Initialize free list
-    for (size_t i = 0; i < blockCount; ++i) {
+    for (size_t i = 0; i < blockCount; i++) {
         Block* block = reinterpret_cast<Block*>(&pool[i * blockSize]);
         block->next = freeList;
         freeList = block;
     }
 }
 
-void* MemoryPool::allocate() {
-    if (!freeList) throw std::bad_alloc();
+// Avoid scary memory leak
+MemoryPool::~MemoryPool() {
+    // Explicitly clear the vector to release memory
+    pool.clear();
 
+    // Reduce capacity to 0
+    pool.shrink_to_fit();
+
+    // Reset the free list pointer for safety
+    freeList = nullptr;
+}
+
+void* MemoryPool::allocate() {
+    if (!freeList) {
+        throw std::bad_alloc();
+    }
     Block* block = freeList;
     freeList = freeList->next;
     return block;

@@ -3,6 +3,8 @@
 
 #include <string>
 #include <unordered_map>
+#include <queue>
+#include "../memoryPool/memoryPool.h"
 
 const int MAX_PRICE_IDX = 100000;
 
@@ -29,13 +31,18 @@ struct alignas(64) PriceLevel {
     PriceLevel(OrderNode* orderNode);
 };
 
-// best orders are being left as PriceLevel to access the whole doubly linked list
+// Best orders are being left as PriceLevel to access the whole doubly linked list
 struct alignas(64) Ticker {
     std::string ticker;
     PriceLevel* buyOrderList[MAX_PRICE_IDX];
     PriceLevel* sellOrderList[MAX_PRICE_IDX];
     PriceLevel* bestBuyOrder; // pointer to current best buy order
     PriceLevel* bestSellOrder; // pointer to current best sell order
+    
+    // Priority queues for active price levels
+    std::priority_queue<int> activeBuyPrices; // Max-heap for buy prices
+    std::priority_queue<int, std::vector<int>, std::greater<int>> activeSellPrices; // Min-heap for sell prices
+    
     Ticker(std::string ticker);
 };
 
@@ -43,6 +50,10 @@ class OrderBook {
     private:
         int orderID;
         int getListIndex(double price); // Gets index in order array for given price
+        MemoryPool orderPool; // Memory pool for allocating Orders
+        MemoryPool nodePool; // Memory pool for allocating OrderNodes
+        MemoryPool priceLevelPool; // Memory pool for allocation PriceLevels
+        MemoryPool tickerPool; // Memory pool for allocating Tickers
 
     public:
         // Easy access to every order

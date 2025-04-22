@@ -1,8 +1,7 @@
 #include <iostream>
 #include "cpuOrderBook.h"
+#include "../memoryPool/memoryPool.h"
 using namespace std;
-
-const int MAX_PRICE_IDX = 100000;
 
 // Constructor for Order
 Order::Order(int orderID, int userID, string side, string ticker, int quantity, double price)
@@ -198,13 +197,19 @@ void OrderBook::removeOrder(int id, bool print) {
     }
 }
 
-void OrderBook::matchOrders(string ticker, bool print) {
+void OrderBook::matchOrders(string ticker, bool print, int count) {
     if (!tickerMap[ticker]->bestBuyOrder || !tickerMap[ticker]->bestSellOrder) {
         cout << "Order Book Error: No Orders To Be Matched" << endl;
     }
+    int numCount = 0;
     Order* bestBuy = tickerMap[ticker]->bestBuyOrder->head->order;
     Order* bestSell = tickerMap[ticker]->bestSellOrder->head->order;
     while (bestBuy->price >= bestSell->price) {
+        // For testing purposes
+        numCount++; 
+        if (count != 0 && numCount >= count) {
+            break;
+        }
         // Get matched order price and quantity
         double orderPrice = tickerMap[ticker]->bestSellOrder->head->order->price;
         int orderQuantity = min(bestBuy->quantity, bestSell->quantity);

@@ -4,7 +4,9 @@
 #include <string>
 #include <unordered_map>
 
-struct Order {
+const int MAX_PRICE_IDX = 100000;
+
+struct alignas(64) Order {
     int orderID;
     int userID;
     double price;
@@ -14,24 +16,24 @@ struct Order {
     Order(int orderID, int userID, std::string side, std::string ticker, int quantity, double price);
 };
 
-struct OrderNode {
+struct alignas(64) OrderNode {
     Order* order;
     OrderNode* prev;
     OrderNode* next;
     OrderNode(Order* order);
 };
 
-struct PriceLevel {
+struct alignas(64) PriceLevel {
     OrderNode* head;
     OrderNode* tail;
     PriceLevel(OrderNode* orderNode);
 };
 
 // best orders are being left as PriceLevel to access the whole doubly linked list
-struct Ticker {
+struct alignas(64) Ticker {
     std::string ticker;
-    PriceLevel* buyOrderList[100000];
-    PriceLevel* sellOrderList[100000];
+    PriceLevel* buyOrderList[MAX_PRICE_IDX];
+    PriceLevel* sellOrderList[MAX_PRICE_IDX];
     PriceLevel* bestBuyOrder; // pointer to current best buy order
     PriceLevel* bestSellOrder; // pointer to current best sell order
     Ticker(std::string ticker);
@@ -52,7 +54,7 @@ class OrderBook {
         void addTicker(std::string ticker);
         void addOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print = true);
         void removeOrder(int id, bool print = true);
-        void matchOrders(std::string ticker, bool print=true);
+        void matchOrders(std::string ticker, bool print=true, int count=0);
     };
 
 #endif

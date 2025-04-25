@@ -1,10 +1,8 @@
+#include <iostream>
 #include "memoryPool.h"
 
-MemoryPool::MemoryPool(size_t inpBlockSize, size_t inpBlockCount) {
-    // Assign variables
-    blockSize = inpBlockSize;
-    blockCount = inpBlockCount;
-    freeList = nullptr;
+MemoryPool::MemoryPool(size_t inpBlockSize, size_t inpBlockCount) 
+    : blockSize(inpBlockSize), blockCount(inpBlockCount), freeList(nullptr) {
 
     // Preallocate memory for the pool
     pool.resize(blockSize * blockCount);
@@ -43,3 +41,27 @@ void MemoryPool::deallocate(void* ptr) {
     block->next = freeList;
     freeList = block;
 }
+
+// int main() {
+//     try {
+//         std::cout << "DEBUG: Creating MemoryPool object" << std::endl;
+//         MemoryPool pool(64, 1000); // Test with 1000 blocks of 64 bytes
+//         std::cout << "DEBUG: MemoryPool created successfully" << std::endl;
+
+//         // Allocate and deallocate memory
+//         void* ptr1 = pool.allocate();
+//         std::cout << "DEBUG: Allocated block at " << ptr1 << std::endl;
+
+//         void* ptr2 = pool.allocate();
+//         std::cout << "DEBUG: Allocated block at " << ptr2 << std::endl;
+
+//         pool.deallocate(ptr1);
+//         std::cout << "DEBUG: Deallocated block at " << ptr1 << std::endl;
+
+//         pool.deallocate(ptr2);
+//         std::cout << "DEBUG: Deallocated block at " << ptr2 << std::endl;
+//     } catch (const std::exception& e) {
+//         std::cerr << "ERROR: Exception: " << e.what() << std::endl;
+//     }
+//     return 0;
+// }

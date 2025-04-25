@@ -15,6 +15,7 @@ private:
     size_t blockCount;
     std::vector<char> pool; // Preallocated memory
 public:
+    MemoryPool() = default; // If constructor is not called
     MemoryPool(size_t inpBlockSize, size_t inpBlockCount);
     ~MemoryPool();
     void* allocate();

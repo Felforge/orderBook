@@ -2,7 +2,6 @@
 #include "cpuOrderBook.h"
 using namespace std;
 
-const int MAX_ORDERS = 10000000;
 const int NUM_TICKERS = 5;
 
 // Constructor for Order
@@ -21,11 +20,15 @@ PriceLevel::PriceLevel(OrderNode* orderNode) : head(orderNode), tail(orderNode) 
 Ticker::Ticker(string ticker) : ticker(ticker), bestBuyOrder(nullptr), bestSellOrder(nullptr) {}
 
 // Constructor
-OrderBook::OrderBook() 
+OrderBook::OrderBook() {
     // Declare memore pool
-    : orderPool(sizeof(Order), MAX_ORDERS), nodePool(sizeof(OrderNode), MAX_ORDERS), 
-      priceLevelPool(sizeof(PriceLevel), NUM_TICKERS * MAX_PRICE_IDX), tickerPool(sizeof(Ticker), NUM_TICKERS) 
-{
+    // : orderPool(sizeof(Order), MAX_ORDERS), nodePool(sizeof(OrderNode), MAX_ORDERS), 
+    //   priceLevelPool(sizeof(PriceLevel), NUM_TICKERS * MAX_PRICE_IDX), tickerPool(sizeof(Ticker), NUM_TICKERS) 
+    orderPool = MemoryPool(sizeof(Order), MAX_PRICE_IDX);
+    nodePool = MemoryPool(sizeof(OrderNode), MAX_PRICE_IDX);
+    priceLevelPool = MemoryPool(sizeof(PriceLevel), NUM_TICKERS * MAX_PRICE_IDX);
+    tickerPool = MemoryPool(sizeof(Ticker), NUM_TICKERS);
+
     // Declare ID counter
     orderID = 0;
 
@@ -97,13 +100,14 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     // Get index for price level
     int listIdx = getListIndex(price);
 
-    // Allocate memory for new order and node 
-    Order* newOrder = static_cast<Order*>(orderPool.allocate());
-    OrderNode* orderNode = static_cast<OrderNode*>(nodePool.allocate());
+    cout << "test" << endl;
 
-    // Create new order and orderNode objects
-    new (newOrder) Order(userID, orderID, side, ticker, quantity, price);
-    new (orderNode) OrderNode(newOrder);
+    // Allocate memory and create new order and node 
+    Order* newOrder = new (orderPool.allocate()) Order(userID, orderID, side, ticker, quantity, price);
+    cout << "test2" << endl;
+    OrderNode* orderNode = new (nodePool.allocate()) OrderNode(newOrder);
+
+    cout << "test3" << endl;
 
     // Insert order into order map
     orderMap[orderID] = orderNode;

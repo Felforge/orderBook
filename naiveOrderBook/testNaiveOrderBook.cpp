@@ -4,12 +4,12 @@
 #include "naiveOrderBook.h"
 
 std::string captureOutput(std::function<void()> func) {
-        std::stringstream buffer;
-        std::streambuf* old = std::cout.rdbuf(buffer.rdbuf());
-        func();  // Run function that prints output
-        std::cout.rdbuf(old);
-        return buffer.str();
-    }
+    std::stringstream buffer;
+    std::streambuf* old = std::cout.rdbuf(buffer.rdbuf());
+    func();  // Run function that prints output
+    std::cout.rdbuf(old);
+    return buffer.str();
+}
 
 // Check if two order pointers are equal in values
 void isOrderEqual(Order* expected, Order* actual) {

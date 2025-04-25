@@ -25,8 +25,7 @@ void isOrderEqual(Order* expected, Order* actual) {
 TEST(OrderBookTest, HandlesValidBuyOrderAdding) {
     OrderBook orderBook = OrderBook();
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    Order* expected = new Order(0, 1, "BUY", "AAPL", 10, 100.0);
-    std::cout << "Order added" << std::endl;
+    Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.0);
     Order* actual = orderBook.orderMap[0]->order;
     isOrderEqual(expected, actual);
     delete expected;

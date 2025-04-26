@@ -1,2 +1,5 @@
 g++ -std=c++17 cpuOrderBook.cpp -o cpuOrderBook.exe
 g++ -std=c++17 testCpuOrderBook.cpp cpuOrderBook.cpp ../memoryPool/memoryPool.cpp -lgtest -o testCpuOrderBook.exe
+
+For Debugging:
+g++ -std=c++17 -fsanitize=address testCpuOrderBook.cpp cpuOrderBook.cpp ../memoryPool/memoryPool.cpp -lgtest -o testCpuOrderBook.exe

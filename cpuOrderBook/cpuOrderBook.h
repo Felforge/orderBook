@@ -44,8 +44,10 @@ struct alignas(64) Ticker {
     PriceLevel* bestSellOrder; // pointer to current best sell order
     
     // Priority queues for active price levels
-    std::priority_queue<int> activeBuyPrices; // Max-heap for buy prices
-    std::priority_queue<int, std::vector<int>, std::greater<int>> activeSellPrices; // Min-heap for sell prices
+    std::priority_queue<int> priorityBuyPrices; // Max-heap for buy prices
+    std::priority_queue<int, std::vector<int>, std::greater<int>> prioritySellPrices; // Min-heap for sell prices
+    bool activeBuyPrices[MAX_PRICE_IDX] = {false};
+    bool activeSellPrices[MAX_PRICE_IDX] = {false};
     
     Ticker(void* memoryBlock, std::string ticker);
 };
@@ -66,6 +68,9 @@ class OrderBook {
         std::unordered_map<std::string, Ticker*> tickerMap;
         OrderBook(int numTickers);
         ~OrderBook();
+        void updateBestBuyOrder(std::string ticker);
+        void updateBestSellOrder(std::string ticker);
+        void removePriceLevel(std::string side, std::string ticker, int listIdx, PriceLevel* levelPtr);
         void addTicker(std::string ticker);
         void addOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print = true);
         void removeOrder(int id, bool print = true);

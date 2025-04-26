@@ -21,6 +21,7 @@ Ticker::Ticker(void* memoryBlock, string ticker)
     : memoryBlock(memoryBlock), ticker(ticker), bestBuyOrder(nullptr), bestSellOrder(nullptr) {}
 
 // Constructor
+// numTickers is the maximum number of tickers that could be added
 OrderBook::OrderBook(int numTickers) 
     // Declare memory pool
     : orderPool(sizeof(Order), 2 * MAX_PRICE_IDX), nodePool(sizeof(OrderNode), 2 * MAX_PRICE_IDX),
@@ -72,6 +73,60 @@ void OrderBook::addTicker(string ticker) {
     tickerMap[ticker] = new (memoryBlock) Ticker(memoryBlock, ticker);
 }
 
+// Update best buy order
+void OrderBook::updateBestBuyOrder(string ticker) {
+    auto& priorities = tickerMap[ticker]->priorityBuyPrices;
+    auto& active = tickerMap[ticker]->activeBuyPrices;
+
+    while (!priorities.empty()) {
+        int bestBuyIdx = priorities.top();
+        if (active[bestBuyIdx]) {
+            tickerMap[ticker]->bestBuyOrder = tickerMap[ticker]->buyOrderList[bestBuyIdx];
+            return;
+        }
+        // Remove inactive price lvel
+        priorities.pop();
+    }
+    // No active buy orders
+    tickerMap[ticker]->bestBuyOrder = nullptr;
+}
+
+// Updated best sell order
+void OrderBook::updateBestSellOrder(string ticker) {
+    auto& priorities = tickerMap[ticker]->prioritySellPrices;
+    auto& active = tickerMap[ticker]->activeSellPrices;
+
+    while (!priorities.empty()) {
+        int bestSellIdx = priorities.top();
+        if (active[bestSellIdx]) {
+            tickerMap[ticker]->bestSellOrder = tickerMap[ticker]->sellOrderList[bestSellIdx];
+            return;
+        }
+        // Remove inactive price lvel
+        priorities.pop();
+    }
+    // No active buy orders
+    tickerMap[ticker]->bestBuyOrder = nullptr;
+}
+
+// Handle removing price level
+void OrderBook::removePriceLevel(std::string side, std::string ticker, int listIdx, PriceLevel* levelPtr) {
+    if (side == "BUY") {
+            tickerMap[ticker]->activeBuyPrices[listIdx] = false;
+            tickerMap[ticker]->buyOrderList[listIdx] = nullptr;
+            if (levelPtr == tickerMap[ticker]->bestBuyOrder) {
+                updateBestBuyOrder(ticker);
+            }
+        } else { // side == "SELL"
+            tickerMap[ticker]->activeSellPrices[listIdx] = false;
+            tickerMap[ticker]->sellOrderList[listIdx] = nullptr;
+            if (levelPtr == tickerMap[ticker]->bestSellOrder) {
+                updateBestSellOrder(ticker);
+            }
+        }
+        priceLevelPool.deallocate(levelPtr->memoryBlock);
+}
+
 void OrderBook::addOrder(int userID, string ticker, string side, int quantity, double price, bool print) {
     // Check for all errors
     if (side != "BUY" && side != "SELL") {
@@ -99,8 +154,6 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     void* nodeMemoryBlock = nodePool.allocate();
     void* priceLevelMemoryBlock = priceLevelPool.allocate();
 
-    cout << "test" << endl;
-
     // Create new order and node
     Order* newOrder = new (orderMemoryBlock) Order(orderMemoryBlock, orderID, userID, side, ticker, quantity, price);
     OrderNode* orderNode = new (nodeMemoryBlock) OrderNode(nodeMemoryBlock, newOrder);
@@ -120,7 +173,8 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
             tickerMap[ticker]->buyOrderList[listIdx]->tail = orderNode;
         }
         // Mark price level as active
-        tickerMap[ticker]->activeBuyPrices.push(listIdx);
+        tickerMap[ticker]->priorityBuyPrices.push(listIdx);
+        tickerMap[ticker]->activeBuyPrices[listIdx] = true;
     } else { // side == "SELL"
         if (tickerMap[ticker]->sellOrderList[listIdx] == nullptr) {
             tickerMap[ticker]->sellOrderList[listIdx] = new (priceLevelMemoryBlock) PriceLevel(priceLevelMemoryBlock, orderNode);
@@ -133,7 +187,8 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
             tickerMap[ticker]->sellOrderList[listIdx]->tail = orderNode;
         }
         // Mark price level as active
-        tickerMap[ticker]->activeSellPrices.push(listIdx);
+        tickerMap[ticker]->prioritySellPrices.push(listIdx);
+        tickerMap[ticker]->activeSellPrices[listIdx] = true;
     }
 
     // Print Order Data
@@ -163,62 +218,39 @@ void OrderBook::removeOrder(int id, bool print) {
     // Get ticker
     string ticker = nodePtr->order->ticker;
 
-    // Flag for deleteing level
-    bool deleteLevel = false;
-    PriceLevel* levelPtr;
+    // Get side of order
+    string side = nodePtr->order->side;
 
     // Get list index
     int listIdx = getListIndex(nodePtr->order->price);
 
-    if (nodePtr->prev == nullptr || nodePtr->next == nullptr) {
-        if (nodePtr->order->side == "BUY") {
-            levelPtr = tickerMap[ticker]->buyOrderList[listIdx];
-        } else {
-            levelPtr = tickerMap[ticker]->sellOrderList[listIdx];
-        }
-        if (nodePtr->prev == nullptr && nodePtr->next == nullptr) {
-            deleteLevel = true;
-        } else if (nodePtr->prev == nullptr) {
-            levelPtr->head = nodePtr->next;
-        } else { // nodePtr->next == nullptr
-            levelPtr->tail = nodePtr->prev;
-        }
+    // Flag for deleteing level
+    bool deleteLevel = false;
+    PriceLevel* levelPtr = (side == "BUY") ? tickerMap[ticker]->buyOrderList[listIdx] : tickerMap[ticker]->sellOrderList[listIdx];
+
+    if (nodePtr->prev == nullptr && nodePtr->next == nullptr) {
+        deleteLevel = true; // Last order in price level is being removed
+    } else if (nodePtr->prev == nullptr) {
+        levelPtr->head = nodePtr->next; // Head order is being removed
+        nodePtr->next->prev = nullptr;
+    } else if (nodePtr->next == nullptr) {
+        levelPtr->tail = nodePtr->prev; // Tail order is being removed
+        nodePtr->prev->next = nullptr;
     } else {
         nodePtr->prev->next = nodePtr->next;
+        nodePtr->next->prev = nodePtr->prev;
     }
 
     // Always has to get deleted so it is outside the if statement
     // Scary memory leak if done wrong
-    orderPool.deallocate(nodePtr->order);
-    nodePool.deallocate(nodePtr);
-    if (deleteLevel) {
-        // Reassign bestBuy or bestSell
-        if (levelPtr == tickerMap[ticker]->bestBuyOrder) {
-            // Mark price level as no longer active
-            tickerMap[ticker]->activeBuyPrices.pop();
 
-            // Update bestBuyOrder
-            if (!tickerMap[ticker]->activeBuyPrices.empty()) {
-                int bestBuyIdx = tickerMap[ticker]->activeBuyPrices.top();
-                tickerMap[ticker]->bestBuyOrder = tickerMap[ticker]->buyOrderList[bestBuyIdx];
-            } else {
-                // No active buy orders
-                tickerMap[ticker]->bestBuyOrder = nullptr;
-            }
-        } else if (levelPtr == tickerMap[ticker]->bestSellOrder) {
-            // Mark price level as no longer active
-            tickerMap[ticker]->activeSellPrices.pop();
-            
-            // Update bestSellOrder
-            if (!tickerMap[ticker]->activeSellPrices.empty()) {
-                int bestSellIdx = tickerMap[ticker]->activeSellPrices.top();
-                tickerMap[ticker]->bestSellOrder = tickerMap[ticker]->sellOrderList[bestSellIdx];
-            } else {
-                // No active sell orders
-                tickerMap[ticker]->bestSellOrder = nullptr;
-            }
-        }
-        priceLevelPool.deallocate(levelPtr);
+    // Delete node and order
+    orderPool.deallocate(nodePtr->order->memoryBlock);
+    nodePool.deallocate(nodePtr->memoryBlock);
+
+    // Delete price level object and reassign best order if applicable
+    if (deleteLevel) {
+        removePriceLevel(side, ticker, listIdx, levelPtr);
     }
 
     // Erase ID from orderMap

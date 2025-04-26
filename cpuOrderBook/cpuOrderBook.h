@@ -46,8 +46,6 @@ struct alignas(64) Ticker {
     // Priority queues for active price levels
     std::priority_queue<int> priorityBuyPrices; // Max-heap for buy prices
     std::priority_queue<int, std::vector<int>, std::greater<int>> prioritySellPrices; // Min-heap for sell prices
-    bool activeBuyPrices[MAX_PRICE_IDX] = {false};
-    bool activeSellPrices[MAX_PRICE_IDX] = {false};
     
     Ticker(void* memoryBlock, std::string ticker);
 };

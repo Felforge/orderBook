@@ -76,11 +76,11 @@ void OrderBook::addTicker(string ticker) {
 // Update best buy order
 void OrderBook::updateBestBuyOrder(string ticker) {
     auto& priorities = tickerMap[ticker]->priorityBuyPrices;
-    auto& active = tickerMap[ticker]->activeBuyPrices;
+    auto& buyList = tickerMap[ticker]->buyOrderList;
 
     while (!priorities.empty()) {
         int bestBuyIdx = priorities.top();
-        if (active[bestBuyIdx]) {
+        if (buyList[bestBuyIdx]) {
             tickerMap[ticker]->bestBuyOrder = tickerMap[ticker]->buyOrderList[bestBuyIdx];
             return;
         }
@@ -94,11 +94,11 @@ void OrderBook::updateBestBuyOrder(string ticker) {
 // Updated best sell order
 void OrderBook::updateBestSellOrder(string ticker) {
     auto& priorities = tickerMap[ticker]->prioritySellPrices;
-    auto& active = tickerMap[ticker]->activeSellPrices;
+    auto& sellList = tickerMap[ticker]->sellOrderList;
 
     while (!priorities.empty()) {
         int bestSellIdx = priorities.top();
-        if (active[bestSellIdx]) {
+        if (sellList[bestSellIdx]) {
             tickerMap[ticker]->bestSellOrder = tickerMap[ticker]->sellOrderList[bestSellIdx];
             return;
         }
@@ -106,19 +106,17 @@ void OrderBook::updateBestSellOrder(string ticker) {
         priorities.pop();
     }
     // No active buy orders
-    tickerMap[ticker]->bestBuyOrder = nullptr;
+    tickerMap[ticker]->bestSellOrder = nullptr;
 }
 
 // Handle removing price level
 void OrderBook::removePriceLevel(std::string side, std::string ticker, int listIdx, PriceLevel* levelPtr) {
     if (side == "BUY") {
-            tickerMap[ticker]->activeBuyPrices[listIdx] = false;
             tickerMap[ticker]->buyOrderList[listIdx] = nullptr;
             if (levelPtr == tickerMap[ticker]->bestBuyOrder) {
                 updateBestBuyOrder(ticker);
             }
         } else { // side == "SELL"
-            tickerMap[ticker]->activeSellPrices[listIdx] = false;
             tickerMap[ticker]->sellOrderList[listIdx] = nullptr;
             if (levelPtr == tickerMap[ticker]->bestSellOrder) {
                 updateBestSellOrder(ticker);
@@ -174,7 +172,6 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
         }
         // Mark price level as active
         tickerMap[ticker]->priorityBuyPrices.push(listIdx);
-        tickerMap[ticker]->activeBuyPrices[listIdx] = true;
     } else { // side == "SELL"
         if (tickerMap[ticker]->sellOrderList[listIdx] == nullptr) {
             tickerMap[ticker]->sellOrderList[listIdx] = new (priceLevelMemoryBlock) PriceLevel(priceLevelMemoryBlock, orderNode);
@@ -188,7 +185,6 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
         }
         // Mark price level as active
         tickerMap[ticker]->prioritySellPrices.push(listIdx);
-        tickerMap[ticker]->activeSellPrices[listIdx] = true;
     }
 
     // Print Order Data

@@ -29,6 +29,7 @@ MemoryPool::~MemoryPool() {
 
 void* MemoryPool::allocate() {
     if (!freeList) {
+        std::cerr << "ERROR: Memory pool exhausted!" << std::endl;
         throw std::bad_alloc();
     }
     Block* block = freeList;

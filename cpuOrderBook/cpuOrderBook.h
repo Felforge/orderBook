@@ -64,7 +64,7 @@ class OrderBook {
         // Just make sure to erase from here if the order gets deleted
         std::unordered_map<int, OrderNode*> orderMap;
         std::unordered_map<std::string, Ticker*> tickerMap;
-        OrderBook();
+        OrderBook(int numTickers);
         ~OrderBook();
         void addTicker(std::string ticker);
         void addOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print = true);

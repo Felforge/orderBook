@@ -2,8 +2,6 @@
 #include "cpuOrderBook.h"
 using namespace std;
 
-const int NUM_TICKERS = 5;
-
 // Constructor for Order
 Order::Order(void* memoryBlock, int orderID, int userID, string side, string ticker, int quantity, double price)
     : memoryBlock(memoryBlock), orderID(orderID), userID(userID), side(side), ticker(ticker), quantity(quantity), price(price) {}
@@ -23,22 +21,13 @@ Ticker::Ticker(void* memoryBlock, string ticker)
     : memoryBlock(memoryBlock), ticker(ticker), bestBuyOrder(nullptr), bestSellOrder(nullptr) {}
 
 // Constructor
-OrderBook::OrderBook() {
-    // Declare memore pool
-    orderPool = MemoryPool(sizeof(Order), MAX_PRICE_IDX);
-    nodePool = MemoryPool(sizeof(OrderNode), MAX_PRICE_IDX);
-    priceLevelPool = MemoryPool(sizeof(PriceLevel), NUM_TICKERS * MAX_PRICE_IDX);
-    tickerPool = MemoryPool(sizeof(Ticker), NUM_TICKERS);
+OrderBook::OrderBook(int numTickers) 
+    // Declare memory pool
+    : orderPool(sizeof(Order), 2 * MAX_PRICE_IDX), nodePool(sizeof(OrderNode), 2 * MAX_PRICE_IDX),
+      priceLevelPool(sizeof(PriceLevel), 2 * numTickers * MAX_PRICE_IDX), tickerPool(sizeof(Ticker), numTickers) {
 
     // Declare ID counter
     orderID = 0;
-
-    // Add Tickers
-    addTicker("AAPL");
-    addTicker("MSFT");
-    addTicker("NVDA");
-    addTicker("AMZN");
-    addTicker("GOOG");
 }
 
 // Destructor
@@ -109,6 +98,8 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     void* orderMemoryBlock = orderPool.allocate();
     void* nodeMemoryBlock = nodePool.allocate();
     void* priceLevelMemoryBlock = priceLevelPool.allocate();
+
+    cout << "test" << endl;
 
     // Create new order and node
     Order* newOrder = new (orderMemoryBlock) Order(orderMemoryBlock, orderID, userID, side, ticker, quantity, price);

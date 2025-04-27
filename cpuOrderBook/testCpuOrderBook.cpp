@@ -399,6 +399,275 @@ TEST(OrderBookTest, HandlesBestSellOrderRemoving) {
     delete expected;
 }
 
+// Test Matching Equal Orders
+TEST(OrderBookTest, HandlesMatchingEqualOrders) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+    orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
+    orderBook.matchOrders("AAPL", false);
+
+    // Verify lists are empty
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+}
+
+// Test Matching Greater Buy
+TEST(OrderBookTest, HandlesMatchingGreaterBuy) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+    orderBook.addOrder(1, "AAPL", "SELL", 5, 100.0, false);
+    orderBook.matchOrders("AAPL", false);
+
+    // Verify Expected Results
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+    Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 5, 100.00);
+    Order* actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->head->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+}
+
+// Test Matching Greater Sell
+TEST(OrderBookTest, HandlesMatchingGreaterSell) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "BUY", 5, 100.0, false);
+    orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
+    orderBook.matchOrders("AAPL", false);
+
+    // Verify Expected Results
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
+    Order* expected = new Order(nullptr, 1, 1, "SELL", "AAPL", 5, 100.00);
+    Order* actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)]->head->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+}
+
+// Test Matching Multiple Orders
+TEST(OrderBookTest, HandlesMatchingDouble) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+    orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
+    orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
+    orderBook.matchOrders("AAPL", false);
+
+    // Verify Lists Are Empty
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+}
+
+// Test Matching Two To One
+TEST(OrderBookTest, HandlesMatchingTwoToOne) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+    orderBook.addOrder(1, "AAPL", "SELL", 5, 100.0, false); 
+    orderBook.addOrder(1, "AAPL", "SELL", 5, 100.0, false); 
+    orderBook.matchOrders("AAPL", false);
+
+    // Verify Lists Are Empty
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+}
+
+// Test Matching Unequal Orders
+TEST(OrderBookTest, HandlesMatchingUnequalOrders) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+    orderBook.addOrder(1, "AAPL", "SELL", 10, 90.0, false); 
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.matchOrders("AAPL"); });
+    EXPECT_EQ(output, "Order successfully completed:\n  Ticker: AAPL\n  Price: 90\n  Quantity: 10\n");
+}
+
+
+// Test Matching Multiple Unequal Orders
+TEST(OrderBookTest, HandlesMatchingUnequalDouble) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 110.0, false);
+    orderBook.addOrder(1, "AAPL", "SELL", 10, 95.0, false);
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+    orderBook.addOrder(1, "AAPL", "SELL", 10, 90.0, false);
+    orderBook.matchOrders("AAPL", false);
+
+    // Verify Lists Are Empty
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+}
+
+// Test Matching Across Different Tickers
+TEST(OrderBookTest, HandlesMatchingDifferentTickers) {
+    OrderBook orderBook = OrderBook(2);
+    orderBook.addTicker("AAPL");
+    orderBook.addTicker("AMZN");
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+    orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
+    orderBook.addOrder(1, "AMZN", "BUY", 10, 100.0, false);
+    orderBook.addOrder(1, "AMZN", "SELL", 10, 100.0, false);
+    orderBook.matchOrders("AAPL", false);
+    orderBook.matchOrders("AMZN", false);
+
+    // Verify Lists Are Empty
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_EQ(orderBook.tickerMap["AMZN"]->buyOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_EQ(orderBook.tickerMap["AMZN"]->sellOrderList[getListIndex(100.0)], nullptr);
+}
+
+// Test No Match
+TEST(OrderBookTest, HandlesNoMatch) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+    orderBook.addOrder(1, "AAPL", "SELL", 10, 110.0, false);
+    orderBook.matchOrders("AAPL", false);
+
+    // Verify No Change
+
+    // Buy Order
+    Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.0);
+
+    // Check Order Map
+    Order* actual = orderBook.orderMap[0]->order;
+    isOrderEqual(expected, actual);
+
+    // Check Order List
+    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->head->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+
+    // Sell Order
+    expected = new Order(nullptr, 1, 1, "SELL", "AAPL", 10, 110.0);
+
+    // Check Order Map
+    actual = orderBook.orderMap[1]->order;
+    isOrderEqual(expected, actual);
+
+    // Check Order List
+    actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(110.0)]->head->order;
+    isOrderEqual(expected, actual);
+    delete expected;
+}
+
+// Test Adding Too Many Tickers
+TEST(OrderBookTest, HandlesTooManyTickers) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.addTicker("AMZN"); });
+    EXPECT_EQ(output, "Order Book Error: Too Many Tickers\n");
+}
+
+// Test Adding Invalid Order Type
+TEST(OrderBookTest, HandlesInvalidOrderType) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "HOLD", 10, 100.0, false); });
+    EXPECT_EQ(output, "Order Book Error: Invalid Order Side\n");
+}
+
+// Test Adding Invalid Order Price
+TEST(OrderBookTest, HandlesInvalidOrderPrice) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", 10, 0.0, false); });
+    EXPECT_EQ(output, "Order Book Error: Price Must Be A Number Greater Than 0\n");
+}
+
+// Test Adding Invalid Order Quantity
+TEST(OrderBookTest, HandlesInvalidOrderQuantity) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", -5, 100.0, false); });
+    EXPECT_EQ(output, "Order Book Error: Quantity Must Be An Integer Greater Than 0\n");
+}
+
+// Test Adding Above Price Limit
+TEST(OrderBookTest, HandlesAbovePriceLimit) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", 10, 1000.01, false); });
+    EXPECT_EQ(output, "Order Book Error: Maximum Available Price is 1000\n");
+}
+
+// Test Invalid Ticker
+TEST(OrderBookTest, HandlesInvaildTicker) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AMZN", "BUY", 10, 100.0, false); });
+    EXPECT_EQ(output, "Order Book Error: Ticker is Invalid\n");
+}
+
+// Test Removing Invalid Order ID
+TEST(OrderBookTest, HandlesInvalidOrderID) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.removeOrder(1); });
+    EXPECT_EQ(output, "Order Book Error: Invalid Order ID\n");
+}
+
+// Test Matching Empty Order Book
+TEST(OrderBookTest, HandlesEmptyMatch) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.matchOrders("AAPL"); });
+    EXPECT_EQ(output, "Order Book Error: No Orders To Be Matched\n");
+}
+
+// Test Matching Only Buy
+TEST(OrderBookTest, HandlesMatchingOnlyBuy) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.matchOrders("AAPL"); });
+    EXPECT_EQ(output, "Order Book Error: No Orders To Be Matched\n");
+}
+
+// Test Matching Only Sell
+TEST(OrderBookTest, HandlesMatchingOnlySell) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.matchOrders("AAPL"); });
+    EXPECT_EQ(output, "Order Book Error: No Orders To Be Matched\n");
+}
+
+// Test Matching Invalid Ticker
+TEST(OrderBookTest, HandlesMatchingInvalidTicker) {
+    OrderBook orderBook = OrderBook(1);
+    orderBook.addTicker("AAPL");
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.matchOrders("AMZN"); });
+    EXPECT_EQ(output, "Order Book Error: Ticker is Invalid\n");
+}
+
 // Run all tests
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

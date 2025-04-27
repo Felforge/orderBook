@@ -53,6 +53,7 @@ struct alignas(64) Ticker {
 class OrderBook {
     private:
         int orderID;
+        int maxTickers; // Max number of tickers that can be added
         int getListIndex(double price); // Gets index in order array for given price
         MemoryPool orderPool; // Memory pool for allocating Orders
         MemoryPool nodePool; // Memory pool for allocating OrderNodes

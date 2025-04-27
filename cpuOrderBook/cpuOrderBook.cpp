@@ -27,6 +27,9 @@ OrderBook::OrderBook(int numTickers)
     : orderPool(sizeof(Order), 2 * MAX_PRICE_IDX), nodePool(sizeof(OrderNode), 2 * MAX_PRICE_IDX),
       priceLevelPool(sizeof(PriceLevel), 2 * numTickers * MAX_PRICE_IDX), tickerPool(sizeof(Ticker), numTickers) {
 
+    // Declare max number of tickers
+    maxTickers = numTickers;
+
     // Declare ID counter
     orderID = 0;
 }
@@ -69,6 +72,10 @@ int OrderBook::getListIndex(double price) {
 }
 
 void OrderBook::addTicker(string ticker) {
+    if (tickerMap.size() == maxTickers) {
+        cout << "Order Book Error: Too Many Tickers" << endl;
+        return;
+    }
     void* memoryBlock = tickerPool.allocate();
     tickerMap[ticker] = new (memoryBlock) Ticker(memoryBlock, ticker);
 }
@@ -260,13 +267,18 @@ void OrderBook::removeOrder(int id, bool print) {
 }
 
 void OrderBook::matchOrders(string ticker, bool print, int count) {
-    if (!tickerMap[ticker]->bestBuyOrder || !tickerMap[ticker]->bestSellOrder) {
+    if (tickerMap.find(ticker) == tickerMap.end()) {
+        cout << "Order Book Error: Ticker is Invalid" << endl;
+        return;
+    } else if (!tickerMap[ticker]->bestBuyOrder || !tickerMap[ticker]->bestSellOrder) {
         cout << "Order Book Error: No Orders To Be Matched" << endl;
+        return;
     }
     int numCount = 0;
     Order* bestBuy = tickerMap[ticker]->bestBuyOrder->head->order;
     Order* bestSell = tickerMap[ticker]->bestSellOrder->head->order;
     while (bestBuy->price >= bestSell->price) {
+
         // For testing purposes
         numCount++; 
         if (count != 0 && numCount >= count) {
@@ -276,13 +288,13 @@ void OrderBook::matchOrders(string ticker, bool print, int count) {
         double orderPrice = tickerMap[ticker]->bestSellOrder->head->order->price;
         int orderQuantity = min(bestBuy->quantity, bestSell->quantity);
         if (bestBuy->quantity == bestSell->quantity) {
-            removeOrder(bestBuy->orderID);
-            removeOrder(bestSell->orderID);
+            removeOrder(bestBuy->orderID, false);
+            removeOrder(bestSell->orderID, false);
         } else if (bestBuy->quantity > bestSell->quantity) {
-            removeOrder(bestSell->orderID);
+            removeOrder(bestSell->orderID, false);
             bestBuy->quantity -= orderQuantity;
         } else { // bestSell->quantity > bestBuy->quantity
-            removeOrder(bestBuy->orderID);
+            removeOrder(bestBuy->orderID, false);
             bestSell->quantity -= orderQuantity;
         }
 
@@ -292,6 +304,13 @@ void OrderBook::matchOrders(string ticker, bool print, int count) {
                  << "  Ticker: " << ticker << endl
                  << "  Price: " << orderPrice << endl
                  << "  Quantity: " << orderQuantity << endl;
+        }
+
+        if (!tickerMap[ticker]->bestBuyOrder || !tickerMap[ticker]->bestSellOrder) {
+            return;
+        } else {
+            bestBuy = tickerMap[ticker]->bestBuyOrder->head->order;
+            bestSell = tickerMap[ticker]->bestSellOrder->head->order;
         }
     }
 }

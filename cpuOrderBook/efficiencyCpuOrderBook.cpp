@@ -188,7 +188,7 @@ int main() {
         // Write data to the file
         outputFile << "# Naive Linked List Efficiency Data\n\n";
         outputFile << "## Adding Order Efficiency Table\n\n" << createAddOrderTimeTable();
-        outputFile << "## Reamoving Head Order Efficiency Table\n\n" << createRemoveHeadTimeTable();
+        outputFile << "## Reamoving Order Efficiency Table\n\n" << createRemoveHeadTimeTable();
         outputFile << "## Order Match Efficiency Table\n\n" << createOrderMatchEfficiencyTable() << std::endl;
 
         // Close the file

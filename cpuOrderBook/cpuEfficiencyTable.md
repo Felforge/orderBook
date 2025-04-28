@@ -12,7 +12,7 @@
 
 Latency and throughout expectedly stay consistent as orders are added
 
-## Reamoving Head Order Efficiency Table
+## Reamoving Order Efficiency Table
 
 | **Num of Orders** | **Total Runtime (µs)** | **Latency Per Order (µs/Order)** | **Throughput (Orders/Second)** |
 | :-----------: |  :-----------: |  :-----------: |  :-----------: |

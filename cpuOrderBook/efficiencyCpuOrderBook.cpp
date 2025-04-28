@@ -170,7 +170,7 @@ std::string createOrderMatchEfficiencyTable() {
 
     // Return formatted string
     std::string opt = formatTable(t1, t2, t3, t4, t5, t6);
-    opt += "Latency and throughput are once again fairly consistent here\n";
+    opt += "Latency and throughput are once again fairly consistent here.\n";
     opt += "Although, it is worth noting that the best orders are reassigned every time here";
     std::cout << opt;
     return opt;

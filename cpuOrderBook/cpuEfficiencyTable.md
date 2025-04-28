@@ -34,5 +34,5 @@ Latency and throughout also stays consistent here
 | 10000 | 16398 | 1.639800 | 609830.467130 |
 | 100000 | 164235 | 1.642350 | 608883.611898 |
 
-Latency and throughput are once again fairly consistent here
+Latency and throughput are once again fairly consistent here.
 Although, it is worth noting that the best orders are reassigned every time here

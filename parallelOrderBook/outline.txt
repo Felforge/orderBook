@@ -1,0 +1,7 @@
+Some threads handle adding and removing 
+Each of these threads has their own array of data but also add to some universal data structure for matching
+Each worker thread will also have its own memory pool
+Other thread handle matching as a matching engine
+Matching engine will have a priority queue by price and order ID along with the thread number
+If an order is filled the matching engine will send a remove request to the respective worker thread
+Matching engine will likely have 1 thread and the rest will be working threads

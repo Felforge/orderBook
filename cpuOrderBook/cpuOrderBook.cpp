@@ -22,13 +22,16 @@ Ticker::Ticker(void* memoryBlock, string ticker)
 
 // Constructor
 // numTickers is the maximum number of tickers that could be added
-OrderBook::OrderBook(int numTickers) 
+OrderBook::OrderBook(int numTickers, int numOrders) 
     // Declare memory pool
-    : orderPool(sizeof(Order), 2 * MAX_PRICE_IDX), nodePool(sizeof(OrderNode), 2 * MAX_PRICE_IDX),
+    : orderPool(sizeof(Order), numOrders), nodePool(sizeof(OrderNode), numOrders),
       priceLevelPool(sizeof(PriceLevel), 2 * numTickers * MAX_PRICE_IDX), tickerPool(sizeof(Ticker), numTickers) {
 
     // Declare max number of tickers
     maxTickers = numTickers;
+
+    // Declare max number of orders
+    maxOrders = numOrders;
 
     // Declare ID counter
     orderID = 0;
@@ -149,6 +152,9 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     } else if (tickerMap.find(ticker) == tickerMap.end()) {
         cout << "Order Book Error: Ticker is Invalid" << endl;
         return;
+    } else if (orderID + 1 >= maxOrders) {
+        cout << "Order Book Error: Max Order Limit Reached" << endl;
+        return;
     }
 
     // Get index for price level
@@ -157,7 +163,6 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     // Allocate memory for order, node and priceLevel
     void* orderMemoryBlock = orderPool.allocate();
     void* nodeMemoryBlock = nodePool.allocate();
-    void* priceLevelMemoryBlock = priceLevelPool.allocate();
 
     // Create new order and node
     Order* newOrder = new (orderMemoryBlock) Order(orderMemoryBlock, orderID, userID, side, ticker, quantity, price);
@@ -168,6 +173,7 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
 
     if (side == "BUY") {
         if (tickerMap[ticker]->buyOrderList[listIdx] == nullptr) {
+            void* priceLevelMemoryBlock = priceLevelPool.allocate();
             tickerMap[ticker]->buyOrderList[listIdx] = new (priceLevelMemoryBlock) PriceLevel(priceLevelMemoryBlock, orderNode);
             if (tickerMap[ticker]->bestBuyOrder == nullptr || price > tickerMap[ticker]->bestBuyOrder->head->order->price) {
                 tickerMap[ticker]->bestBuyOrder = tickerMap[ticker]->buyOrderList[listIdx];
@@ -181,6 +187,7 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
         tickerMap[ticker]->priorityBuyPrices.push(listIdx);
     } else { // side == "SELL"
         if (tickerMap[ticker]->sellOrderList[listIdx] == nullptr) {
+            void* priceLevelMemoryBlock = priceLevelPool.allocate();
             tickerMap[ticker]->sellOrderList[listIdx] = new (priceLevelMemoryBlock) PriceLevel(priceLevelMemoryBlock, orderNode);
             if (tickerMap[ticker]->bestSellOrder == nullptr || price < tickerMap[ticker]->bestSellOrder->head->order->price) {
                 tickerMap[ticker]->bestSellOrder = tickerMap[ticker]->sellOrderList[listIdx];

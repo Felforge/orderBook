@@ -28,7 +28,7 @@ void isOrderEqual(Order* expected, Order* actual) {
 
 // Test Adding Valid Buy Order
 TEST(OrderBookTest, HandlesValidBuyOrderAdding) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.0);
@@ -46,7 +46,7 @@ TEST(OrderBookTest, HandlesValidBuyOrderAdding) {
 
 // Test Adding Valid Sell Order
 TEST(OrderBookTest, HandlesValidSellOrderAdding) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
     Order* expected = new Order(nullptr, 0, 1, "SELL", "AAPL", 10, 100.0);
@@ -64,7 +64,7 @@ TEST(OrderBookTest, HandlesValidSellOrderAdding) {
 
 // Test Adding Valid Buy and Sell Order
 TEST(OrderBookTest, HandlesValidBuyAndSellOrderAdding) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
@@ -96,7 +96,7 @@ TEST(OrderBookTest, HandlesValidBuyAndSellOrderAdding) {
 
 // Test Adding Multiple Same Price Price Orders
 TEST(OrderBookTest, HandlesMultipleSamePriceOrderAdding) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
@@ -143,7 +143,7 @@ TEST(OrderBookTest, HandlesMultipleSamePriceOrderAdding) {
 
 // Test Adding Multiple Different Price Price Orders
 TEST(OrderBookTest, HandlesMultipleDifferentPriceOrderAdding) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 90.0, false);
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
@@ -188,7 +188,7 @@ TEST(OrderBookTest, HandlesMultipleDifferentPriceOrderAdding) {
 
 // Test Adding Minimum Valid Price Order
 TEST(OrderBookTest, HandlesMinimumPriceOrderAdding) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 0.01, false);
     Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 0.01);
@@ -206,7 +206,7 @@ TEST(OrderBookTest, HandlesMinimumPriceOrderAdding) {
 
 // Test Adding Maximum Valid Price Order
 TEST(OrderBookTest, HandlesMaximumPriceOrderAdding) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 1000.0, false);
     Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 1000.00);
@@ -224,7 +224,7 @@ TEST(OrderBookTest, HandlesMaximumPriceOrderAdding) {
 
 // Test Adding Best Buy Order
 TEST(OrderBookTest, HandlesBestBuyOrderAdding) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     
@@ -246,7 +246,7 @@ TEST(OrderBookTest, HandlesBestBuyOrderAdding) {
 
 // Test Adding Best Sell Order
 TEST(OrderBookTest, HandlesBestSellOrderAdding) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
     
@@ -268,7 +268,7 @@ TEST(OrderBookTest, HandlesBestSellOrderAdding) {
 
 // Test Adding Orders For Different Tickers
 TEST(OrderBookTest, HandlesDifferentTickerOrderAdding) {
-    OrderBook orderBook = OrderBook(2);
+    OrderBook orderBook = OrderBook(2, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addTicker("AMZN");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
@@ -301,7 +301,7 @@ TEST(OrderBookTest, HandlesDifferentTickerOrderAdding) {
 
 // Test Removing Valid Buy Order
 TEST(OrderBookTest, HandlesValidBuyOrderRemoving) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     orderBook.removeOrder(0, false);
@@ -315,7 +315,7 @@ TEST(OrderBookTest, HandlesValidBuyOrderRemoving) {
 
 // Test Removing Valid Sell Order
 TEST(OrderBookTest, HandlesValidSellOrderRemoving) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
     orderBook.removeOrder(0, false);
@@ -329,7 +329,7 @@ TEST(OrderBookTest, HandlesValidSellOrderRemoving) {
 
 // Test Removing Duplicate Orders
 TEST(OrderBookTest, HandlesDuplicateOrderRemoving) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
@@ -355,7 +355,7 @@ TEST(OrderBookTest, HandlesDuplicateOrderRemoving) {
 
 // Test Updating Best Buy Order Upon Remove
 TEST(OrderBookTest, HandlesBestBuyOrderRemoving) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     orderBook.addOrder(1, "AAPL", "BUY", 10, 110.0, false);
@@ -378,7 +378,7 @@ TEST(OrderBookTest, HandlesBestBuyOrderRemoving) {
 
 // Test Updating Best Sell Order Upon Remove
 TEST(OrderBookTest, HandlesBestSellOrderRemoving) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
     orderBook.addOrder(1, "AAPL", "SELL", 10, 90.0, false);
@@ -401,7 +401,7 @@ TEST(OrderBookTest, HandlesBestSellOrderRemoving) {
 
 // Test Matching Equal Orders
 TEST(OrderBookTest, HandlesMatchingEqualOrders) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
@@ -414,7 +414,7 @@ TEST(OrderBookTest, HandlesMatchingEqualOrders) {
 
 // Test Matching Greater Buy
 TEST(OrderBookTest, HandlesMatchingGreaterBuy) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     orderBook.addOrder(1, "AAPL", "SELL", 5, 100.0, false);
@@ -430,7 +430,7 @@ TEST(OrderBookTest, HandlesMatchingGreaterBuy) {
 
 // Test Matching Greater Sell
 TEST(OrderBookTest, HandlesMatchingGreaterSell) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 5, 100.0, false);
     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
@@ -446,7 +446,7 @@ TEST(OrderBookTest, HandlesMatchingGreaterSell) {
 
 // Test Matching Multiple Orders
 TEST(OrderBookTest, HandlesMatchingDouble) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
@@ -461,7 +461,7 @@ TEST(OrderBookTest, HandlesMatchingDouble) {
 
 // Test Matching Two To One
 TEST(OrderBookTest, HandlesMatchingTwoToOne) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     orderBook.addOrder(1, "AAPL", "SELL", 5, 100.0, false); 
@@ -475,7 +475,7 @@ TEST(OrderBookTest, HandlesMatchingTwoToOne) {
 
 // Test Matching Unequal Orders
 TEST(OrderBookTest, HandlesMatchingUnequalOrders) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     orderBook.addOrder(1, "AAPL", "SELL", 10, 90.0, false); 
@@ -488,7 +488,7 @@ TEST(OrderBookTest, HandlesMatchingUnequalOrders) {
 
 // Test Matching Multiple Unequal Orders
 TEST(OrderBookTest, HandlesMatchingUnequalDouble) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 110.0, false);
     orderBook.addOrder(1, "AAPL", "SELL", 10, 95.0, false);
@@ -503,7 +503,7 @@ TEST(OrderBookTest, HandlesMatchingUnequalDouble) {
 
 // Test Matching Across Different Tickers
 TEST(OrderBookTest, HandlesMatchingDifferentTickers) {
-    OrderBook orderBook = OrderBook(2);
+    OrderBook orderBook = OrderBook(2, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addTicker("AMZN");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
@@ -522,7 +522,7 @@ TEST(OrderBookTest, HandlesMatchingDifferentTickers) {
 
 // Test No Match
 TEST(OrderBookTest, HandlesNoMatch) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
     orderBook.addOrder(1, "AAPL", "SELL", 10, 110.0, false);
@@ -557,7 +557,7 @@ TEST(OrderBookTest, HandlesNoMatch) {
 
 // Test Adding Too Many Tickers
 TEST(OrderBookTest, HandlesTooManyTickers) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
 
     // Verify output
@@ -567,7 +567,7 @@ TEST(OrderBookTest, HandlesTooManyTickers) {
 
 // Test Adding Invalid Order Type
 TEST(OrderBookTest, HandlesInvalidOrderType) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
 
     // Verify output
@@ -577,7 +577,7 @@ TEST(OrderBookTest, HandlesInvalidOrderType) {
 
 // Test Adding Invalid Order Price
 TEST(OrderBookTest, HandlesInvalidOrderPrice) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
 
     // Verify output
@@ -587,7 +587,7 @@ TEST(OrderBookTest, HandlesInvalidOrderPrice) {
 
 // Test Adding Invalid Order Quantity
 TEST(OrderBookTest, HandlesInvalidOrderQuantity) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
 
     // Verify output
@@ -597,7 +597,7 @@ TEST(OrderBookTest, HandlesInvalidOrderQuantity) {
 
 // Test Adding Above Price Limit
 TEST(OrderBookTest, HandlesAbovePriceLimit) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
 
     // Verify output
@@ -607,7 +607,7 @@ TEST(OrderBookTest, HandlesAbovePriceLimit) {
 
 // Test Invalid Ticker
 TEST(OrderBookTest, HandlesInvaildTicker) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
 
     // Verify output
@@ -617,7 +617,7 @@ TEST(OrderBookTest, HandlesInvaildTicker) {
 
 // Test Removing Invalid Order ID
 TEST(OrderBookTest, HandlesInvalidOrderID) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
 
@@ -628,7 +628,7 @@ TEST(OrderBookTest, HandlesInvalidOrderID) {
 
 // Test Matching Empty Order Book
 TEST(OrderBookTest, HandlesEmptyMatch) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
 
     // Verify output
@@ -638,7 +638,7 @@ TEST(OrderBookTest, HandlesEmptyMatch) {
 
 // Test Matching Only Buy
 TEST(OrderBookTest, HandlesMatchingOnlyBuy) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
 
@@ -649,7 +649,7 @@ TEST(OrderBookTest, HandlesMatchingOnlyBuy) {
 
 // Test Matching Only Sell
 TEST(OrderBookTest, HandlesMatchingOnlySell) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
 
@@ -660,12 +660,22 @@ TEST(OrderBookTest, HandlesMatchingOnlySell) {
 
 // Test Matching Invalid Ticker
 TEST(OrderBookTest, HandlesMatchingInvalidTicker) {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
 
     // Verify output
     std::string output = captureOutput([&]() { orderBook.matchOrders("AMZN"); });
     EXPECT_EQ(output, "Order Book Error: Ticker is Invalid\n");
+}
+
+// Test Exceeding Order Limit
+TEST(OrderBookTest, HandlesExceedingOrderLimit) {
+    OrderBook orderBook = OrderBook(1, 0);
+    orderBook.addTicker("AAPL");
+
+    // Verify output
+    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false); });
+    EXPECT_EQ(output, "Order Book Error: Max Order Limit Reached\n");
 }
 
 // Run all tests

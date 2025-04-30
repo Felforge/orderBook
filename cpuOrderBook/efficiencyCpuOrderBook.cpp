@@ -41,7 +41,7 @@ std::string formatTable(std::chrono::high_resolution_clock::time_point t1, std::
 }
 
 std::string createAddOrderTimeTable() {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     std::string optStr;
 
@@ -85,7 +85,7 @@ std::string createAddOrderTimeTable() {
 }
 
 std::string createRemoveHeadTimeTable() {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 100000);
     orderBook.addTicker("AAPL");
     std::string optStr;
 
@@ -135,7 +135,7 @@ std::string createRemoveHeadTimeTable() {
 }
 
 std::string createOrderMatchEfficiencyTable() {
-    OrderBook orderBook = OrderBook(1);
+    OrderBook orderBook = OrderBook(1, 200000);
     orderBook.addTicker("AAPL");
     std::string optStr;
 
@@ -170,7 +170,7 @@ std::string createOrderMatchEfficiencyTable() {
 
     // Return formatted string
     std::string opt = formatTable(t1, t2, t3, t4, t5, t6);
-    opt += "Latency and throughput are once again fairly consistent here.\n";
+    opt += "Latency and throughput are once again fairly consistent here\n";
     opt += "Although, it is worth noting that the best orders are reassigned every time here";
     std::cout << opt;
     return opt;

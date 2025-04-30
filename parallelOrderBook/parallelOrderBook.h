@@ -1,10 +1,16 @@
-#ifndef CPUORDERBOOK_H
-#define CPUORDERBOOK_H
+#ifndef PARALLELORDERBOOK_H
+#define PARALLELORDERBOOK_H
 
-#include <string>
-#include <unordered_map>
+#include <iostream>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 #include <queue>
+#include <string>
 #include "../memoryPool/memoryPool.h"
+
+const int MAX_THREADS = 8; // Laptop
+// const int MAX_THREADS = 24; // PC
 
 const int MAX_PRICE_IDX = 100000;
 
@@ -40,41 +46,64 @@ struct alignas(64) Ticker {
     std::string ticker;
     PriceLevel* buyOrderList[MAX_PRICE_IDX];
     PriceLevel* sellOrderList[MAX_PRICE_IDX];
-    PriceLevel* bestBuyOrder; // pointer to current best buy order
-    PriceLevel* bestSellOrder; // pointer to current best sell order
-    
-    // Priority queues for active price levels
-    std::priority_queue<int> priorityBuyPrices; // Max-heap for buy prices
-    std::priority_queue<int, std::vector<int>, std::greater<int>> prioritySellPrices; // Min-heap for sell prices
     
     Ticker(void* memoryBlock, std::string ticker);
 };
 
-class OrderBook {
+struct alignas(64) AddOrderRequest {
+    Order* order;
+    bool print;
+
+    AddOrderRequest(Order* order, bool print);
+};
+
+struct alignas(64) RemoveOrderRequest {
+    int orderID;
+    bool print;
+
+    RemoveOrderRequest(int orderiD, bool print);
+};
+
+class WorkerThread {
     private:
-        int orderID;
+        std::queue<std::string> tickerQueue;
+        std::queue<AddOrderRequest> addQueue;
+        std::queue<RemoveOrderRequest> removeQueue;
+        std::thread worker;
+        bool stop;
+
         int maxTickers; // Max number of tickers that can be added
         int maxOrders; // Max number of orders that can be added
+
         int getListIndex(double price); // Gets index in order array for given price
-        MemoryPool orderPool; // Memory pool for allocating Orders
-        MemoryPool nodePool; // Memory pool for allocating OrderNodes
-        MemoryPool priceLevelPool; // Memory pool for allocation PriceLevels
-        MemoryPool tickerPool; // Memory pool for allocating Tickers
+
+        MemoryPool orderPool; // Pointer to Memory pool for allocating Orders
+        MemoryPool nodePool; // Pointer to Memory pool for allocating OrderNodes
+        MemoryPool priceLevelPool; // Pointer to Memory pool for allocation PriceLevels
+        MemoryPool tickerPool; // Pointer to Memory pool for allocating Tickers
+
+        void processRequests();
+        void addTicker(std::string ticker);
+        void addOrder(Order* order, bool print);
+        void removeOrder(int orderID, bool print);
 
     public:
-        // Easy access to every order
-        // Just make sure to erase from here if the order gets deleted
         std::unordered_map<int, OrderNode*> orderMap;
         std::unordered_map<std::string, Ticker*> tickerMap;
-        OrderBook(int numTickers, int maxOrders);
+        WorkerThread(int numTickers, int numOrders);
+        ~WorkerThread();
+        void requestAddTicker(std::string ticker);
+        void requestAddOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print);
+        void requestRemoveOrder(int id, bool print);
+};
+
+class OrderBook {
+    public:
+        OrderBook(int numTickers, int numOrders);
         ~OrderBook();
-        void updateBestBuyOrder(std::string ticker);
-        void updateBestSellOrder(std::string ticker);
-        void removePriceLevel(std::string side, std::string ticker, int listIdx, PriceLevel* levelPtr);
         void addTicker(std::string ticker);
         void addOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print = true);
         void removeOrder(int id, bool print = true);
-        void matchOrders(std::string ticker, bool print=true, int count=0);
-    };
+};
 
 #endif

@@ -37,7 +37,7 @@ OrderBook::OrderBook(int numTickers, int numOrders)
     // Create worker threads
     for (int i = 0; i < MAX_THREADS - 1; i++) {
         void* newMemoryBlock = threadPool.allocate();
-        instances[i] = new (newMemoryBlock) WorkerThread(newMemoryBlock, numTickers, numOrders);
+        instances[i] = nullptr; // new (newMemoryBlock) WorkerThread(newMemoryBlock, numTickers, numOrders);
     }
 }
 
@@ -98,7 +98,7 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
 int main() {
     OrderBook orderBook = OrderBook(1, 10);
     cout << "Order Book successfully created" << endl;
-    orderBook.addTicker("AAPL");
-    cout << "Ticker successfully added" << endl;
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0);
+    // orderBook.addTicker("AAPL");
+    // cout << "Ticker successfully added" << endl;
+    // orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0);
 }

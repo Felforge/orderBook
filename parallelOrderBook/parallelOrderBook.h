@@ -112,7 +112,7 @@ class OrderBook {
 
         // Counter for order ID
         int orderID;
-
+        
         MemoryPool threadPool; // Pointer to Memory pool for allocating Worker Threads
 
         // Priority queues for active price levels

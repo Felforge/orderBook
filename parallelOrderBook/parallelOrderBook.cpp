@@ -1,10 +1,11 @@
 #include <thread>
-#include <atomic>
 #include "parallelOrderBook.h"
 using namespace std;
 
-// Order ID Counter
-atomic<int> orderID = 0;
+// Get place in list based on price
+int getListIndex(double price) {
+    return int(price * 100.0) - 1;
+}
 
 // Constructor for Order
 Order::Order(void* memoryBlock, int orderID, int userID, string side, string ticker, int quantity, double price)
@@ -33,10 +34,13 @@ RemoveOrderRequest::RemoveOrderRequest(int orderID, bool print)
     : orderID(orderID), print(print) {}
 
 // Worker Thread Constructor
-WorkerThread::WorkerThread(int numTickers, int numOrders)
+WorkerThread::WorkerThread(void* inpMemoryBlock, int numTickers, int numOrders)
     // Declare memory pool
     : orderPool(sizeof(Order), numOrders), nodePool(sizeof(OrderNode), numOrders),
       priceLevelPool(sizeof(PriceLevel), 2 * numTickers * MAX_PRICE_IDX), tickerPool(sizeof(Ticker), numTickers) {
+
+    // Save memory location
+    memoryBlock = inpMemoryBlock;
 
     // Initiate maxTickers
     maxTickers = numTickers;
@@ -51,6 +55,36 @@ WorkerThread::WorkerThread(int numTickers, int numOrders)
 
 // Worker Thread Destructor
 WorkerThread::~WorkerThread() {
+    // Delete every order pointer
+    for (const auto& pair: orderMap) {
+        orderPool.deallocate(pair.second->order->memoryBlock);
+    }
+
+    // Delete every price level pointer and ticker pointer
+    for (const auto& pair: tickerMap) {
+        for (int i = 0; i < MAX_PRICE_IDX; i++) {
+            if (pair.second->buyOrderList[i] != nullptr) {
+                while (pair.second->buyOrderList[i]->tail != pair.second->buyOrderList[i]->head) {
+                    OrderNode* temp = pair.second->buyOrderList[i]->tail;
+                    pair.second->buyOrderList[i]->tail = temp->prev;
+                    nodePool.deallocate(temp->memoryBlock);
+                }
+                nodePool.deallocate(pair.second->buyOrderList[i]->head->memoryBlock);
+                priceLevelPool.deallocate(pair.second->buyOrderList[i]->memoryBlock);
+            }
+            if (pair.second->sellOrderList[i] != nullptr) {
+                while (pair.second->sellOrderList[i]->tail != pair.second->sellOrderList[i]->head) {
+                    OrderNode* temp = pair.second->sellOrderList[i]->tail;
+                    pair.second->sellOrderList[i]->tail = temp->prev;
+                    nodePool.deallocate(temp->memoryBlock);
+                }
+                nodePool.deallocate(pair.second->sellOrderList[i]->head->memoryBlock);
+                priceLevelPool.deallocate(pair.second->sellOrderList[i]->memoryBlock);
+            }
+        }
+        tickerPool.deallocate(pair.second->memoryBlock);
+    }
+
     // Stop the worker thread and join it
     stop = true;
     if (worker.joinable()) {
@@ -58,29 +92,14 @@ WorkerThread::~WorkerThread() {
     }
 }
 
-int WorkerThread::getListIndex(double price) {
-    return int(price * 100.0) - 1;
-}
-
 // Create Add Order Request to be Processed
-void WorkerThread::requestAddOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print) {
-    // Check for all errors
-    if (side != "BUY" && side != "SELL") {
-        cout << "Order Book Error: Invalid Order Side" << endl;
-        return;
-    } else if (quantity <= 0) { 
-        cout << "Order Book Error: Quantity Must Be An Integer Greater Than 0" << endl;
-        return;
-    } else if (price <= 0.0) {
-        cout << "Order Book Error: Price Must Be A Number Greater Than 0" << endl;
-        return;
-    } else if (price > double(MAX_PRICE_IDX / 100)) {
-        cout << "Order Book Error: Maximum Available Price is " << MAX_PRICE_IDX / 100 << endl;
-        return;
-    } else if (tickerMap.find(ticker) == tickerMap.end()) {
+void WorkerThread::requestAddOrder(int userID, int orderID, std::string ticker, std::string side, int quantity, double price, bool print) {
+    // Check for valid ticker
+    if (tickerMap.find(ticker) == tickerMap.end()) {
         cout << "Order Book Error: Ticker is Invalid" << endl;
         return;
     }
+
     void* memoryBlock = orderPool.allocate();
     Order* newOrder = new (orderPool.allocate()) Order(memoryBlock, orderID, userID, side, ticker, quantity, price);
     addQueue.push(AddOrderRequest(newOrder, print));
@@ -94,6 +113,7 @@ void WorkerThread::addOrder(Order* order, bool print) {
     string side = order->side;
     int price = order->price;
     int quantity = order->quantity;
+    int orderID = order->orderID;
 
     // Get index for price level
     int listIdx = getListIndex(price);
@@ -160,4 +180,66 @@ void WorkerThread::processRequests() {
             addTicker(ticker);
         }
     }
+}
+
+// OrderBook constructor
+OrderBook::OrderBook(int numTickers, int numOrders)
+    // Allocate memory to pool for worker threads
+    : threadPool(sizeof(WorkerThread), MAX_THREADS - 1) {
+
+    // Initialize Order ID
+    orderID = 0;
+
+    // Create worker threads
+    for (int i = 0; i < MAX_THREADS - 1; i++) {
+        void* newMemoryBlock = threadPool.allocate();
+        instances[i] = new (newMemoryBlock) WorkerThread(newMemoryBlock, numTickers, numOrders);
+    }
+}
+
+// OrderBook destructor
+OrderBook::~OrderBook() {
+    // Deallocate worker threads
+    for (WorkerThread* inst: instances) {
+        threadPool.deallocate(inst->memoryBlock);
+    }
+}
+
+void OrderBook::addOrder(int userID, string ticker, string side, int quantity, double price, bool print) {
+    // Check for all local errors
+    if (side != "BUY" && side != "SELL") {
+        cout << "Order Book Error: Invalid Order Side" << endl;
+        return;
+    } else if (quantity <= 0) { 
+        cout << "Order Book Error: Quantity Must Be An Integer Greater Than 0" << endl;
+        return;
+    } else if (price <= 0.0) {
+        cout << "Order Book Error: Price Must Be A Number Greater Than 0" << endl;
+        return;
+    } else if (price > double(MAX_PRICE_IDX / 100)) {
+        cout << "Order Book Error: Maximum Available Price is " << MAX_PRICE_IDX / 100 << endl;
+        return;
+    }
+
+    // Call worker thread
+    int threadNum = orderID % (MAX_THREADS - 1);
+    instances[threadNum]->requestAddOrder(userID, orderID, ticker, side, quantity, price, print);
+
+    // Update queues
+    int listIdx = getListIndex(price);
+    pair<int, int> data(orderID, threadNum);
+    if (side == "BUY") {
+        if (buyQueue[listIdx].size() == 0) {
+            activeBuyPrices.push(listIdx);
+        }
+        buyQueue[listIdx].push(data);
+    } else { // side == "SELL"
+        if (sellQueue[listIdx].size() == 0) {
+            activeSellPrices.push(listIdx);
+        }
+        sellQueue[listIdx].push(data);
+    }
+
+    // Update order ID
+    orderID++;
 }

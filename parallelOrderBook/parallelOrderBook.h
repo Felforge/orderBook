@@ -3,10 +3,10 @@
 
 #include <iostream>
 #include <thread>
-#include <mutex>
-#include <condition_variable>
 #include <queue>
 #include <string>
+#include <vector>
+#include <unordered_map>
 #include "../memoryPool/memoryPool.h"
 
 const int MAX_THREADS = 8; // Laptop
@@ -75,8 +75,6 @@ class WorkerThread {
         int maxTickers; // Max number of tickers that can be added
         int maxOrders; // Max number of orders that can be added
 
-        int getListIndex(double price); // Gets index in order array for given price
-
         MemoryPool orderPool; // Pointer to Memory pool for allocating Orders
         MemoryPool nodePool; // Pointer to Memory pool for allocating OrderNodes
         MemoryPool priceLevelPool; // Pointer to Memory pool for allocation PriceLevels
@@ -88,12 +86,13 @@ class WorkerThread {
         void removeOrder(int orderID, bool print);
 
     public:
+        void* memoryBlock; // Store memory address for deallocation
         std::unordered_map<int, OrderNode*> orderMap;
         std::unordered_map<std::string, Ticker*> tickerMap;
-        WorkerThread(int numTickers, int numOrders);
+        WorkerThread(void* inpMemoryBlock, int numTickers, int numOrders);
         ~WorkerThread();
         void requestAddTicker(std::string ticker);
-        void requestAddOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print);
+        void requestAddOrder(int userID, int orderID, std::string ticker, std::string side, int quantity, double price, bool print);
         void requestRemoveOrder(int id, bool print);
 };
 
@@ -104,6 +103,23 @@ class OrderBook {
         void addTicker(std::string ticker);
         void addOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print = true);
         void removeOrder(int id, bool print = true);
+
+    private:
+        // Stores all the worker thread instances
+        WorkerThread* instances[MAX_THREADS - 1];
+
+        // Counter for order ID
+        int orderID;
+
+        MemoryPool threadPool; // Pointer to Memory pool for allocating Worker Threads
+
+        // Priority queues for active price levels
+        std::priority_queue<int> activeBuyPrices; // Max-heap for buy prices
+        std::priority_queue<int, std::vector<int>, std::greater<int>> activeSellPrices; // Min-heap for sell prices
+
+        // Queue for tracking recent orders for matching
+        std::queue<std::pair<int, int>> buyQueue[MAX_PRICE_IDX];
+        std::queue<std::pair<int, int>> sellQueue[MAX_PRICE_IDX];
 };
 
 #endif

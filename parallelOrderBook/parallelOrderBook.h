@@ -14,6 +14,8 @@ const int MAX_THREADS = 8; // Laptop
 
 const int MAX_PRICE_IDX = 100000;
 
+int getListIndex(double price);
+
 struct alignas(64) Order {
     void* memoryBlock;
     int orderID;

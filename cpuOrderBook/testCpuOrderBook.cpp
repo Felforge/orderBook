@@ -11,11 +11,6 @@ std::string captureOutput(std::function<void()> func) {
     return buffer.str();
 }
 
-// Get location in order list
-int getListIndex(double price) {
-    return int(price * 100.0) - 1;
-}
-
 // Check if two order pointers are equal in values
 void isOrderEqual(Order* expected, Order* actual) {
     EXPECT_EQ(expected->orderID, actual->orderID);
@@ -38,7 +33,7 @@ TEST(OrderBookTest, HandlesValidBuyOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
 
     delete expected;
@@ -56,7 +51,7 @@ TEST(OrderBookTest, HandlesValidSellOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->sellOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
 
     delete expected;
@@ -77,7 +72,7 @@ TEST(OrderBookTest, HandlesValidBuyAndSellOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
     delete expected;
 
@@ -89,7 +84,7 @@ TEST(OrderBookTest, HandlesValidBuyAndSellOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->sellOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
     delete expected;
 }
@@ -110,7 +105,7 @@ TEST(OrderBookTest, HandlesMultipleSamePriceOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
     delete expected;
 
@@ -122,7 +117,7 @@ TEST(OrderBookTest, HandlesMultipleSamePriceOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->tail->order;
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[100.0]->tail->order;
     isOrderEqual(expected, actual);
     delete expected;
 
@@ -134,9 +129,9 @@ TEST(OrderBookTest, HandlesMultipleSamePriceOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->head->next->order; // From head
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[100.0]->head->next->order; // From head
     isOrderEqual(expected, actual);
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->tail->prev->order; // From tail
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[100.0]->tail->prev->order; // From tail
     isOrderEqual(expected, actual);
     delete expected;
 }
@@ -157,7 +152,7 @@ TEST(OrderBookTest, HandlesMultipleDifferentPriceOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(90.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[90.0]->head->order;
     isOrderEqual(expected, actual);
     delete expected;
 
@@ -169,7 +164,7 @@ TEST(OrderBookTest, HandlesMultipleDifferentPriceOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
     delete expected;
 
@@ -181,44 +176,8 @@ TEST(OrderBookTest, HandlesMultipleDifferentPriceOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(110.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[110.0]->head->order;
     isOrderEqual(expected, actual);
-    delete expected;
-}
-
-// Test Adding Minimum Valid Price Order
-TEST(OrderBookTest, HandlesMinimumPriceOrderAdding) {
-    OrderBook orderBook = OrderBook(1, 100000);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 0.01, false);
-    Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 0.01);
-    
-    // Check Order Map
-    Order* actual = orderBook.orderMap[0]->order;
-    isOrderEqual(expected, actual);
-
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(0.01)]->head->order;
-    isOrderEqual(expected, actual);
-
-    delete expected;
-}
-
-// Test Adding Maximum Valid Price Order
-TEST(OrderBookTest, HandlesMaximumPriceOrderAdding) {
-    OrderBook orderBook = OrderBook(1, 100000);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 1000.0, false);
-    Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 1000.00);
-    
-    // Check Order Map
-    Order* actual = orderBook.orderMap[0]->order;
-    isOrderEqual(expected, actual);
-
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(1000.0)]->head->order;
-    isOrderEqual(expected, actual);
-
     delete expected;
 }
 
@@ -282,7 +241,7 @@ TEST(OrderBookTest, HandlesDifferentTickerOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
     delete expected;
 
@@ -294,7 +253,7 @@ TEST(OrderBookTest, HandlesDifferentTickerOrderAdding) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AMZN"]->buyOrderList[getListIndex(100.0)]->head->order;
+    actual = orderBook.tickerMap["AMZN"]->buyOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
     delete expected;
 }
@@ -309,8 +268,8 @@ TEST(OrderBookTest, HandlesValidBuyOrderRemoving) {
     // Make sure order map is empty
     EXPECT_TRUE(orderBook.orderMap.empty());
 
-    // Make sure price level is empty
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
+    // Make sure price level is empty`
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->buyOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->buyOrderMap.end());
 }
 
 // Test Removing Valid Sell Order
@@ -324,7 +283,7 @@ TEST(OrderBookTest, HandlesValidSellOrderRemoving) {
     EXPECT_TRUE(orderBook.orderMap.empty());
 
     // Make sure price level is empty
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->sellOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->sellOrderMap.end());
 }
 
 // Test Removing Duplicate Orders
@@ -347,7 +306,7 @@ TEST(OrderBookTest, HandlesDuplicateOrderRemoving) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
 
     delete expected;
@@ -408,8 +367,8 @@ TEST(OrderBookTest, HandlesMatchingEqualOrders) {
     orderBook.matchOrders("AAPL", false);
 
     // Verify lists are empty
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->buyOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->buyOrderMap.end());
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->sellOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->sellOrderMap.end());
 }
 
 // Test Matching Greater Buy
@@ -421,9 +380,9 @@ TEST(OrderBookTest, HandlesMatchingGreaterBuy) {
     orderBook.matchOrders("AAPL", false);
 
     // Verify Expected Results
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->sellOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->sellOrderMap.end());
     Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 5, 100.00);
-    Order* actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->head->order;
+    Order* actual = orderBook.tickerMap["AAPL"]->buyOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
     delete expected;
 }
@@ -437,9 +396,9 @@ TEST(OrderBookTest, HandlesMatchingGreaterSell) {
     orderBook.matchOrders("AAPL", false);
 
     // Verify Expected Results
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->buyOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->buyOrderMap.end());
     Order* expected = new Order(nullptr, 1, 1, "SELL", "AAPL", 5, 100.00);
-    Order* actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)]->head->order;
+    Order* actual = orderBook.tickerMap["AAPL"]->sellOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
     delete expected;
 }
@@ -455,8 +414,8 @@ TEST(OrderBookTest, HandlesMatchingDouble) {
     orderBook.matchOrders("AAPL", false);
 
     // Verify Lists Are Empty
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->buyOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->buyOrderMap.end());
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->sellOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->sellOrderMap.end());
 }
 
 // Test Matching Two To One
@@ -469,8 +428,8 @@ TEST(OrderBookTest, HandlesMatchingTwoToOne) {
     orderBook.matchOrders("AAPL", false);
 
     // Verify Lists Are Empty
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->buyOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->buyOrderMap.end());
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->sellOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->sellOrderMap.end());
 }
 
 // Test Matching Unequal Orders
@@ -497,8 +456,8 @@ TEST(OrderBookTest, HandlesMatchingUnequalDouble) {
     orderBook.matchOrders("AAPL", false);
 
     // Verify Lists Are Empty
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->buyOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->buyOrderMap.end());
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->sellOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->sellOrderMap.end());
 }
 
 // Test Matching Across Different Tickers
@@ -514,10 +473,10 @@ TEST(OrderBookTest, HandlesMatchingDifferentTickers) {
     orderBook.matchOrders("AMZN", false);
 
     // Verify Lists Are Empty
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)], nullptr);
-    EXPECT_EQ(orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(100.0)], nullptr);
-    EXPECT_EQ(orderBook.tickerMap["AMZN"]->buyOrderList[getListIndex(100.0)], nullptr);
-    EXPECT_EQ(orderBook.tickerMap["AMZN"]->sellOrderList[getListIndex(100.0)], nullptr);
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->buyOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->buyOrderMap.end());
+    EXPECT_TRUE(orderBook.tickerMap["AAPL"]->sellOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->sellOrderMap.end());
+    EXPECT_TRUE(orderBook.tickerMap["AMZN"]->buyOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->buyOrderMap.end());
+    EXPECT_TRUE(orderBook.tickerMap["AMZN"]->sellOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->sellOrderMap.end());
 }
 
 // Test No Match
@@ -538,7 +497,7 @@ TEST(OrderBookTest, HandlesNoMatch) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIndex(100.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->buyOrderMap[100.0]->head->order;
     isOrderEqual(expected, actual);
     delete expected;
 
@@ -550,7 +509,7 @@ TEST(OrderBookTest, HandlesNoMatch) {
     isOrderEqual(expected, actual);
 
     // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIndex(110.0)]->head->order;
+    actual = orderBook.tickerMap["AAPL"]->sellOrderMap[110.0]->head->order;
     isOrderEqual(expected, actual);
     delete expected;
 }
@@ -593,16 +552,6 @@ TEST(OrderBookTest, HandlesInvalidOrderQuantity) {
     // Verify output
     std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", -5, 100.0, false); });
     EXPECT_EQ(output, "Order Book Error: Quantity Must Be An Integer Greater Than 0\n");
-}
-
-// Test Adding Above Price Limit
-TEST(OrderBookTest, HandlesAbovePriceLimit) {
-    OrderBook orderBook = OrderBook(1, 100000);
-    orderBook.addTicker("AAPL");
-
-    // Verify output
-    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", 10, 1000.01, false); });
-    EXPECT_EQ(output, "Order Book Error: Maximum Available Price is 1000\n");
 }
 
 // Test Invalid Ticker

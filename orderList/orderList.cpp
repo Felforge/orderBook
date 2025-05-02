@@ -72,7 +72,10 @@ void OrderList::remove(OrderNode* nodePtr) {
         headPtr = head.load();
         tailPtr = tail.load();
 
-        if (!prev && !next) {
+        if (!headPtr) {
+            // List is now empty
+            return;
+        } else if (!prev && !next) {
             // Node is the only element in the list
             if (head.compare_exchange_weak(headPtr, nullptr)) {
                 tail.store(nullptr); // List is now empty

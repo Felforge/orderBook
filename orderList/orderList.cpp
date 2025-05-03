@@ -12,46 +12,51 @@ OrderNode::OrderNode(void* memoryBlock, Order* order)
     : memoryBlock(memoryBlock), order(order), prev(nullptr), next(nullptr) {}
 
 OrderList::OrderList(void* memoryBlock, MemoryPool& orderPool, MemoryPool& nodePool)
-    : memoryBlock(memoryBlock), orderPool(orderPool), nodePool(nodePool) {}
+    : memoryBlock(memoryBlock), orderPool(orderPool), nodePool(nodePool) {
+        // Initialize head and tail
+        head.store(nullptr);
+        tail.store(nullptr);
+    }
 
 OrderList::~OrderList() {
     OrderNode* current = tail.load();
-    OrderNode* next;
+    OrderNode* prev;
     while (head.load() != current) {
-        next = current->next.load();
+        prev = current->prev.load();
         orderPool.deallocate(current->order->memoryBlock);
         nodePool.deallocate(current->memoryBlock);
-        current = next;
+        current = prev;
     }
-    orderPool.deallocate(current->order->memoryBlock);
-    nodePool.deallocate(current->memoryBlock);
+    if (current) {
+        orderPool.deallocate(current->order->memoryBlock);
+        nodePool.deallocate(current->memoryBlock);
+    }
 }
 
 // Lock-free insertion
-void OrderList::insert(Order* orderPtr) {
-    // Allocate memory and declare OrderNode
-    void* memoryBlock = nodePool.allocate();
-    OrderNode* newNode = new (memoryBlock) OrderNode(memoryBlock, orderPtr);
-
+// Returns pointer to list node
+void OrderList::insert(OrderNode* nodePtr) {
     OrderNode* tailPtr = tail.load();
     
     while (true) {
         if (!tailPtr) {
             // List is empty, set both head and tail to newNode
-            if (head.compare_exchange_weak(tailPtr, newNode)) {
-                tail.store(newNode);
+            if (head.compare_exchange_weak(tailPtr, nodePtr)) {
+                tail.store(nodePtr);
                 return;
             }
         } else {
             // Update the next pointer of the current tail
             OrderNode* nullNode = nullptr;
-            if (tailPtr->next.compare_exchange_weak(nullNode, newNode)) {
+            if (tailPtr->next.compare_exchange_weak(nullNode, nodePtr)) {
                 // Successfully updated tail's next, now update tail
-                tail.compare_exchange_weak(tailPtr, newNode);
+                nodePtr->prev.store(tailPtr);
+                tail.store(nodePtr);
                 return;
             } else {
                 // Failed to update, reload tailPtr and retry
                 tailPtr = tail.load();
+                return;
             }
         }
     }
@@ -79,29 +84,33 @@ void OrderList::remove(OrderNode* nodePtr) {
             // Node is the only element in the list
             if (head.compare_exchange_weak(headPtr, nullptr)) {
                 tail.store(nullptr); // List is now empty
+                orderPool.deallocate(nodePtr->order->memoryBlock);
                 nodePool.deallocate(nodePtr->memoryBlock);
-                return; // Successfully removed
+                return;
             }
         } else if (!prev) {
             // Node is the head
             if (head.compare_exchange_weak(headPtr, next)) {
                 next->prev.store(nullptr); // Detach from head
+                orderPool.deallocate(nodePtr->order->memoryBlock);
                 nodePool.deallocate(nodePtr->memoryBlock);
-                return; // Successfully removed
+                return;
             }
         } else if (!next) {
             // Node is the tail
             if (tail.compare_exchange_weak(tailPtr, prev)) {
                 prev->next.store(nullptr); // Detach from tail
+                orderPool.deallocate(nodePtr->order->memoryBlock);
                 nodePool.deallocate(nodePtr->memoryBlock);
-                return; // Successfully removed
+                return;
             }
         } else {
             // Node is in the middle
             if (prev->next.compare_exchange_weak(nodePtr, next)) {
-                next->prev.store(prev); // Link prev to next
+                next->prev.store(prev);
+                orderPool.deallocate(nodePtr->order->memoryBlock);
                 nodePool.deallocate(nodePtr->memoryBlock);
-                return; // Successfully removed
+                return;
             }
         }
         // Retry if CAS failed

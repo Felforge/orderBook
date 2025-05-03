@@ -33,7 +33,7 @@ class OrderList {
 
         OrderList(void* memoryBlock, MemoryPool& orderPool, MemoryPool& nodePool);
         ~OrderList();
-        void insert(Order* orderPtr);
+        void insert(OrderNode* nodePtr);
         void remove(OrderNode* nodePtr);
 };
 

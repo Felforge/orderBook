@@ -6,6 +6,7 @@
 #include <queue>
 #include <atomic>
 #include <vector>
+#include <queue>
 #include "../memoryPool/memoryPool.h"
 #include "../orderList/orderList.h"
 
@@ -37,8 +38,14 @@ class OrderBook {
         MemoryPool nodePool; // Memory pool for allocating OrderNodes
         MemoryPool priceLevelPool; // Memory pool for allocation PriceLevels
         MemoryPool tickerPool; // Memory pool for allocating Tickers
+        OrderList orderList; // Lock free order list object
 
         // Track available threads
+        int activeThreads;
+
+        // Requests
+        std::queue<OrderNode*> buyQueue;
+        std::queue<int> sellQueue;
 
         // For multithreading
         void threadWorkerInsert(OrderList& orderList, OrderNode* node);

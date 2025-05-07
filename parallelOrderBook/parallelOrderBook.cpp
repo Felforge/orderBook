@@ -13,8 +13,8 @@ Ticker::Ticker(void* memoryBlock, string ticker)
 // numTickers is the maximum number of tickers that could be added
 OrderBook::OrderBook(int numTickers, int numOrders) 
     // Declare memory pool
-    : orderPool(sizeof(Order), numOrders), nodePool(sizeof(OrderNode), numOrders),
-      priceLevelPool(sizeof(OrderList), 2 * numTickers * NUM_LEVELS), tickerPool(sizeof(Ticker), numTickers) {
+    : orderPool(sizeof(Order), numOrders), nodePool(sizeof(OrderNode), numOrders), priceLevelPool(sizeof(OrderList), 2 * numTickers * NUM_LEVELS), 
+    tickerPool(sizeof(Ticker), numTickers), orderList(priceLevelPool.allocate(), orderPool, nodePool) {
 
     // Declare max number of tickers
     maxTickers = numTickers;
@@ -24,6 +24,9 @@ OrderBook::OrderBook(int numTickers, int numOrders)
 
     // Declare ID counter
     orderID.store(0);
+
+    // Declare active threads
+    activeThreads = 0;
 }
 
 // Destructor
@@ -73,57 +76,14 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
         return;
     }
 
-    // // Allocate memory for order, node and priceLevel
-    // void* orderMemoryBlock = orderPool.allocate();
-    // void* nodeMemoryBlock = nodePool.allocate();
+    // Allocate order and order node
+    void* orderMemoryBlock = orderPool.allocate();
+    void* nodeMemoryBlock = nodePool.allocate();
 
-    // // Create new order and node
-    // Order* newOrder = new (orderMemoryBlock) Order(orderMemoryBlock, orderID, userID, side, ticker, quantity, price);
-    // OrderNode* orderNode = new (nodeMemoryBlock) OrderNode(nodeMemoryBlock, newOrder);
+    // Creater new order and order node
+    Order* newOrder = new (orderMemoryBlock) Order(orderMemoryBlock, orderID, userID, side, ticker, quantity, price);
+    OrderNode* orderNode = new (nodeMemoryBlock) OrderNode(nodeMemoryBlock, newOrder);
 
-    // // Insert order into order map
-    // orderMap[orderID] = orderNode;
-
-    // if (side == "BUY") {
-    //     if (tickerMap[ticker]->buyOrderMap.find(price) == tickerMap[ticker]->buyOrderMap.end()) {
-    //         void* priceLevelMemoryBlock = priceLevelPool.allocate();
-    //         tickerMap[ticker]->buyOrderMap[price] = new (priceLevelMemoryBlock) PriceLevel(priceLevelMemoryBlock, orderNode);
-    //         if (tickerMap[ticker]->bestBuyOrder == nullptr || price > tickerMap[ticker]->bestBuyOrder->head->order->price) {
-    //             tickerMap[ticker]->bestBuyOrder = tickerMap[ticker]->buyOrderMap[price];
-    //         }
-    //     } else {
-    //         orderNode->prev = tickerMap[ticker]->buyOrderMap[price]->tail;
-    //         tickerMap[ticker]->buyOrderMap[price]->tail->next = orderNode;
-    //         tickerMap[ticker]->buyOrderMap[price]->tail = orderNode;
-    //     }
-    //     // Mark price level as active
-    //     tickerMap[ticker]->priorityBuyPrices.push(price);
-    // } else { // side == "SELL"
-    //     if (tickerMap[ticker]->sellOrderMap.find(price) == tickerMap[ticker]->sellOrderMap.end()) {
-    //         void* priceLevelMemoryBlock = priceLevelPool.allocate();
-    //         tickerMap[ticker]->sellOrderMap[price] = new (priceLevelMemoryBlock) PriceLevel(priceLevelMemoryBlock, orderNode);
-    //         if (tickerMap[ticker]->bestSellOrder == nullptr || price < tickerMap[ticker]->bestSellOrder->head->order->price) {
-    //             tickerMap[ticker]->bestSellOrder = tickerMap[ticker]->sellOrderMap[price];
-    //         }
-    //     } else {
-    //         orderNode->prev = tickerMap[ticker]->sellOrderMap[price]->tail;
-    //         tickerMap[ticker]->sellOrderMap[price]->tail->next = orderNode;
-    //         tickerMap[ticker]->sellOrderMap[price]->tail = orderNode;
-    //     }
-    //     // Mark price level as active
-    //     tickerMap[ticker]->prioritySellPrices.push(price);
-    // }
-
-    // // Print Order Data
-    // if (print) {
-    //     cout << "Order successfully added:" << endl
-    //          << "  Type: " << side << endl
-    //          << "  Quantity: " << quantity << endl
-    //          << "  Ticker: " << ticker << endl
-    //          << "  Price: " << price << endl
-    //          << "  Order ID: " << orderID << endl;
-    // }
-
-    // // Update counter for order ID
-    // orderID++;
+    // Insert into queue
+    buyQueue.push(orderNode);
 }

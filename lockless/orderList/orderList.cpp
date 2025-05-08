@@ -33,35 +33,6 @@ OrderList::~OrderList() {
     }
 }
 
-// Lock-free insertion
-// Returns pointer to list node
-void OrderList::insert(OrderNode* nodePtr) {
-    OrderNode* tailPtr = tail.load();
-    
-    while (true) {
-        if (!tailPtr) {
-            // List is empty, set both head and tail to newNode
-            if (head.compare_exchange_weak(tailPtr, nodePtr)) {
-                tail.store(nodePtr);
-                return;
-            }
-        } else {
-            // Update the next pointer of the current tail
-            OrderNode* nullNode = nullptr;
-            if (tailPtr->next.compare_exchange_weak(nullNode, nodePtr)) {
-                // Successfully updated tail's next, now update tail
-                nodePtr->prev.store(tailPtr);
-                tail.store(nodePtr);
-                return;
-            } else {
-                // Failed to update, reload tailPtr and retry
-                tailPtr = tail.load();
-                return;
-            }
-        }
-    }
-}
-
 // Lock-free deletion
 void OrderList::remove(OrderNode* nodePtr) {
     if (!nodePtr) {

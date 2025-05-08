@@ -41,7 +41,7 @@ class Queue {
                 } else {
                     // Update the next pointer of the current tail
                     NodeType* nullNode = nullptr;
-                    if (tailPtr->next.compare_exchange_weak(nullptr, nodePtr)) {
+                    if (tailPtr->next.compare_exchange_weak(nullNode, nodePtr)) {
                         // Successfully updated tail's next, now update tail
                         nodePtr->prev.store(tailPtr);
                         tail.store(nodePtr);
@@ -49,29 +49,35 @@ class Queue {
                     } else {
                         // Failed to update, reload tailPtr and retry
                         tailPtr = tail.load();
-                        return;
                     }
                 }
             }
         }
 
         // Removes head
-        virtual void remove(NodeType* nodePtr = nullptr) {
+        virtual NodeType* remove(NodeType* nodePtr = nullptr) {
             NodeType* headPtr = head.load();
-            NodeType* headNext = headPtr->next.load();
             NodeType* nullNode = nullptr;
+            NodeType* headNext;
+
             while (true) {
+                if (!headPtr) {
+                    return nullptr;
+                } 
+                headNext = headPtr->next.load();
                 if (headNext) {
                     if (headNext->prev.compare_exchange_weak(headPtr, nullNode)) {
                         head.store(headNext);
-                        return;
+                        return headPtr;
                     }
                 } else {
-                    if (head.compare_exchange_strong(headPtr, nullNode)) {
+                    if (head.compare_exchange_weak(headPtr, nullNode)) {
                         tail.store(nullptr);
-                        return;
+                        return headPtr;
                     }
                 }
+                // Failed, retry
+                headPtr = head.load();
             }
         }
 };

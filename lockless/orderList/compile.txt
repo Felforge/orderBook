@@ -1,1 +1,1 @@
-g++ -std=c++17 testOrderList.cpp orderList.cpp ../memoryPool/memoryPool.cpp -lgtest -o testOrderList.exe
+g++ -std=c++17 testOrderList.cpp orderList.cpp ../../memoryPool/memoryPool.cpp -lgtest -o testOrderList.exe

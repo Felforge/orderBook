@@ -9,7 +9,10 @@ Order::Order(void* memoryBlock, int orderID, int userID, string side, string tic
 // Constructor for Order Node
 // This is a node of the doubly linked list
 OrderNode::OrderNode(void* memoryBlock, Order* order) 
-    : memoryBlock(memoryBlock), order(order), prev(nullptr), next(nullptr) {}
+    : memoryBlock(memoryBlock), order(order) {
+        prev.store(nullptr);
+        next.store(nullptr);
+    }
 
 OrderList::OrderList(void* memoryBlock, MemoryPool& orderPool, MemoryPool& nodePool)
     : memoryBlock(memoryBlock), orderPool(orderPool), nodePool(nodePool) {
@@ -34,10 +37,10 @@ OrderList::~OrderList() {
 }
 
 // Lock-free deletion
-void OrderList::remove(OrderNode* nodePtr) {
+OrderNode* OrderList::remove(OrderNode* nodePtr) {
     if (!nodePtr) {
         cout << "Order Book Error: Invalid Pointer Removal" << endl;
-        return;
+        return nullptr;
     }
 
     OrderNode* prev, *next, *headPtr, *tailPtr;
@@ -50,14 +53,14 @@ void OrderList::remove(OrderNode* nodePtr) {
 
         if (!headPtr) {
             // List is now empty
-            return;
+            return nullptr;
         } else if (!prev && !next) {
             // Node is the only element in the list
             if (head.compare_exchange_weak(headPtr, nullptr)) {
                 tail.store(nullptr); // List is now empty
                 orderPool.deallocate(nodePtr->order->memoryBlock);
                 nodePool.deallocate(nodePtr->memoryBlock);
-                return;
+                return nodePtr;
             }
         } else if (!prev) {
             // Node is the head
@@ -65,7 +68,7 @@ void OrderList::remove(OrderNode* nodePtr) {
                 next->prev.store(nullptr); // Detach from head
                 orderPool.deallocate(nodePtr->order->memoryBlock);
                 nodePool.deallocate(nodePtr->memoryBlock);
-                return;
+                return nodePtr;
             }
         } else if (!next) {
             // Node is the tail
@@ -73,7 +76,7 @@ void OrderList::remove(OrderNode* nodePtr) {
                 prev->next.store(nullptr); // Detach from tail
                 orderPool.deallocate(nodePtr->order->memoryBlock);
                 nodePool.deallocate(nodePtr->memoryBlock);
-                return;
+                return nodePtr;
             }
         } else {
             // Node is in the middle
@@ -81,7 +84,7 @@ void OrderList::remove(OrderNode* nodePtr) {
                 next->prev.store(prev);
                 orderPool.deallocate(nodePtr->order->memoryBlock);
                 nodePool.deallocate(nodePtr->memoryBlock);
-                return;
+                return nodePtr;
             }
         }
         // Retry if CAS failed

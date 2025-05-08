@@ -53,16 +53,16 @@ TEST(OrderListTest, HandlesConcurrency) {
     // Create queue
     Queue queue = Queue<Node<int>>();
 
-    // To delete later
-    vector<Node<int>*> nodes;
+    // Create nodes
+    Node<int>* node1 = new Node(1);
+    Node<int>* node2 = new Node(2);
+    Node<int>* node3 = new Node(3);
 
     // Create and start threads
     vector<thread> addThreads;
-    for (int i = 1; i <= 3; i++) {
-        Node<int> node = Node(i);
-        nodes.push_back(&node);
-        addThreads.emplace_back(threadWorkerInsert, ref(queue), node);
-    }
+    addThreads.emplace_back(threadWorkerInsert, ref(queue), node1);
+    addThreads.emplace_back(threadWorkerInsert, ref(queue), node2);
+    addThreads.emplace_back(threadWorkerInsert, ref(queue), node3);
 
     // Wait for threads to finish
     for (auto& thread : addThreads) {
@@ -76,7 +76,7 @@ TEST(OrderListTest, HandlesConcurrency) {
 
     // Delete everything
     vector<thread> removeThreads;
-    for (Node<int>* node: nodes) {
+    for (int i = 0; i < 3; i++) {
         removeThreads.emplace_back(threadWorkerDelete, ref(queue));
     }
 
@@ -88,6 +88,11 @@ TEST(OrderListTest, HandlesConcurrency) {
     // Verify expected result
     EXPECT_EQ(queue.head.load(), nullptr);
     EXPECT_EQ(queue.tail.load(), nullptr);
+
+    // Clear memory
+    delete node1;
+    delete node2;
+    delete node3;
 }
 
 

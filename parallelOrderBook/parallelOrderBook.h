@@ -6,12 +6,23 @@
 #include <queue>
 #include <atomic>
 #include <vector>
-#include <queue>
+#include <thread>
+#include <vector>
 #include "../memoryPool/memoryPool.h"
-#include "../orderList/orderList.h"
+#include "../lockless/orderList/orderList.h"
+#include "../lockless/queue/queue.h"
 
 const int MAX_THREADS = 8; // Laptop
 // const int MAX_THREADS = 24; // PC
+
+// For remove requests
+struct alignas(64) RemoveRequest {
+    void* memoryBlock;
+    int ID;
+    std::atomic<RemoveRequest*> prev;
+    std::atomic<RemoveRequest*> next;
+    RemoveRequest(void* memoryBlock, int ID);
+};
 
 // Best orders are being left as PriceLevel to access the whole doubly linked list
 struct alignas(64) Ticker {
@@ -31,24 +42,29 @@ struct alignas(64) Ticker {
 
 class OrderBook {
     private:
-        std::atomic<int> orderID;
+        int orderID;
         int maxTickers; // Max number of tickers that can be added
         int maxOrders; // Max number of orders that can be added
         MemoryPool orderPool; // Memory pool for allocating Orders
         MemoryPool nodePool; // Memory pool for allocating OrderNodes
         MemoryPool priceLevelPool; // Memory pool for allocation PriceLevels
         MemoryPool tickerPool; // Memory pool for allocating Tickers
-        OrderList orderList; // Lock free order list object
+        MemoryPool removeRequestPool; // Memory pool for allocating remove requests
 
-        // Track available threads
-        int activeThreads;
+        // Hold threads
+        vector<thread> threads;
 
         // Requests
-        std::queue<OrderNode*> buyQueue;
-        std::queue<int> sellQueue;
+        Queue<OrderNode> buyQueue;
+        Queue<RemoveRequest> sellQueue;
 
         // For multithreading
-        void threadWorkerInsert(OrderList& orderList, OrderNode* node);
+        bool running;
+        void startup();
+        void shutdown();
+        void receiveRequests();
+        void processBuy(OrderNode* nodePtr);
+        void processSell(RemoveRequest* nodePtr);
 
     public:
         // Easy access to every order

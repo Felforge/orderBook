@@ -36,7 +36,7 @@ class OrderList : public Queue<OrderNode> {
 
         OrderList(void* memoryBlock, MemoryPool& orderPool, MemoryPool& nodePool);
         ~OrderList();
-        void remove(OrderNode* nodePtr) override;
+        OrderNode* remove(OrderNode* nodePtr) override;
 };
 
 // Lock-free deletion of OrderList object

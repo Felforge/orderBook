@@ -15,6 +15,16 @@
 const int MAX_THREADS = 8; // Laptop
 // const int MAX_THREADS = 24; // PC
 
+// For buy requests
+struct alignas(64) BuyRequest {
+    void* memoryBlock;
+    OrderNode* orderNode;
+    void* levelBlock;
+    std::atomic<RemoveRequest*> prev;
+    std::atomic<RemoveRequest*> next;
+    BuyRequest(void* memoryBlock, OrderNode* orderNode, void* levelBlock);
+};
+
 // For remove requests
 struct alignas(64) RemoveRequest {
     void* memoryBlock;
@@ -28,16 +38,17 @@ struct alignas(64) RemoveRequest {
 struct alignas(64) Ticker {
     void* memoryBlock;
     std::string ticker;
-    std::unordered_map<double, OrderList*> buyOrderMap;
-    std::unordered_map<double, OrderList*> sellOrderMap;
-    OrderList* bestBuyOrder; // pointer to current best buy order
-    OrderList* bestSellOrder; // pointer to current best sell order
+    std::vector<OrderList*> buyOrderList;
+    std::vector<OrderList*> sellOrderList;
+    std::vector<bool> activeLevels;
+    std::atomic<OrderList*> bestBuyOrder; // pointer to current best buy order
+    std::atomic<OrderList*> bestSellOrder; // pointer to current best sell order
     
     // Priority queues for active price levels
     std::priority_queue<double> priorityBuyPrices; // Max-heap for buy prices
     std::priority_queue<double, std::vector<double>, std::greater<double>> prioritySellPrices; // Min-heap for sell prices
     
-    Ticker(void* memoryBlock, std::string ticker);
+    Ticker(void* memoryBlock, std::string ticker, int numLevels);
 };
 
 class OrderBook {
@@ -45,33 +56,40 @@ class OrderBook {
         int orderID;
         int maxTickers; // Max number of tickers that can be added
         int maxOrders; // Max number of orders that can be added
+        double minPrice; // Minimum price available for orders
+        double maxPrice; // Maximum price available for orders
+        int numLevels; // Number of available price levels
         MemoryPool orderPool; // Memory pool for allocating Orders
         MemoryPool nodePool; // Memory pool for allocating OrderNodes
         MemoryPool priceLevelPool; // Memory pool for allocation PriceLevels
         MemoryPool tickerPool; // Memory pool for allocating Tickers
+        MemoryPool buyRequestPool; // Memory pool for allocating buy requests
         MemoryPool removeRequestPool; // Memory pool for allocating remove requests
 
         // Hold threads
         vector<thread> threads;
 
         // Requests
-        Queue<OrderNode> buyQueue;
+        Queue<BuyRequest> buyQueue;
         Queue<RemoveRequest> sellQueue;
+
+        // For order lists
+        int getListIdx(double price);
 
         // For multithreading
         bool running;
         void startup();
         void shutdown();
         void receiveRequests();
-        void processBuy(OrderNode* nodePtr);
+        void processBuy(BuyRequest* nodePtr);
         void processSell(RemoveRequest* nodePtr);
 
     public:
         // Easy access to every order
         // Just make sure to erase from here if the order gets deleted
-        std::unordered_map<int, OrderNode*> orderMap;
+        std::vector<OrderNode*> orders;
         std::unordered_map<std::string, Ticker*> tickerMap;
-        OrderBook(int numTickers, int maxOrders);
+        OrderBook(int numTickers, int maxOrders, double inpMinPrice, double inpMaxPrice);
         ~OrderBook();
         void updateBestBuyOrder(std::string ticker);
         void updateBestSellOrder(std::string ticker);

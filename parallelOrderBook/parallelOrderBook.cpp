@@ -20,7 +20,9 @@ RemoveRequest::RemoveRequest(void* memoryBlock, int ID)
 
 // Constructor for Ticker
 Ticker::Ticker(void* memoryBlock, string ticker, int numLevels) 
-    : memoryBlock(memoryBlock), ticker(ticker), bestBuyOrder(nullptr), bestSellOrder(nullptr) {
+    : memoryBlock(memoryBlock), ticker(ticker) {
+        bestBuyIdx.store(-1);
+        bestSellIdx.store(-1);
         for (int i = 0; i < numLevels; i++) {
             buyOrderList.push_back(nullptr);
         }
@@ -37,7 +39,7 @@ Ticker::Ticker(void* memoryBlock, string ticker, int numLevels)
 OrderBook::OrderBook(int numTickers, int numOrders, double inpMinPrice, double inpMaxPrice) 
     // Declare memory pool
     : orderPool(sizeof(Order), numOrders), nodePool(sizeof(OrderNode), numOrders), priceLevelPool(sizeof(OrderList), 2 * numTickers * int((inpMaxPrice - minPrice) * 100.0)), 
-    tickerPool(sizeof(Ticker), numTickers), buyRequestPool(sizeof(BuyRequest), numOrders), removeRequestPool(sizeof(RemoveRequest), numOrders) {
+    tickerPool(sizeof(Ticker), numTickers), buyRequestPool(sizeof(BuyRequest), 10 * numOrders), removeRequestPool(sizeof(RemoveRequest), numOrders) {
 
     // Declare max number of tickers
     maxTickers = numTickers;
@@ -88,7 +90,7 @@ OrderBook::~OrderBook() {
 // Start threads
 void OrderBook::startup() {
     for (int i = 0; i < MAX_THREADS; i++) {
-        threads.emplace_back(receiveRequests);
+        threads.emplace_back([this]() { receiveRequests(); });
     }
 }
 
@@ -160,8 +162,10 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     Order* newOrder = new (orderMemoryBlock) Order(orderMemoryBlock, orderID, userID, side, ticker, quantity, price);
     OrderNode* orderNode = new (nodeMemoryBlock) OrderNode(nodeMemoryBlock, newOrder);
 
-    void* levelBlock = nullptr;
-    if (!tickerMap[ticker]->activeLevels[getListIdx(price)]) {
+    void* levelBlock;
+    if (tickerMap[ticker]->activeLevels[getListIdx(price)]) {
+        levelBlock = nullptr;
+    } else { // !tickerMap[ticker]->activeLevels[getListIdx(price)]
         void* levelBlock = priceLevelPool.allocate();
         tickerMap[ticker]->activeLevels[getListIdx(price)] = true;
     }
@@ -198,13 +202,35 @@ void OrderBook::processBuy(BuyRequest* nodePtr) {
         if (levelBlock) {
             tickerPtr->buyOrderList[listIdx] = new (levelBlock) OrderList(levelBlock, orderPool, nodePool);
         }
+
+        // Insert order
         tickerPtr->buyOrderList[listIdx]->insert(nodePtr->orderNode);
+
+        // Change best buy if needed
+        int expectedIdx = tickerPtr->bestBuyIdx.load();
+        while (expectedIdx == -1 || orderPtr->price > expectedIdx) {
+            if (tickerPtr->bestBuyIdx.compare_exchange_weak(expectedIdx, listIdx)) {
+                break;
+            }
+            expectedIdx = tickerPtr->bestBuyIdx.load();
+        }
     } else { // orderPtr->side == "SELL"
         // Create price level if needed
         if (levelBlock) {
             tickerPtr->sellOrderList[listIdx] = new (levelBlock) OrderList(levelBlock, orderPool, nodePool);
         }
+
+        // Insert order
         tickerPtr->sellOrderList[listIdx]->insert(nodePtr->orderNode);
+
+        // Change best sell if needed
+        int expectedIdx = tickerPtr->bestSellIdx.load();
+        while (expectedIdx == -1 || orderPtr->price > expectedIdx) {
+            if (tickerPtr->bestSellIdx.compare_exchange_weak(expectedIdx, listIdx)) {
+                break;
+            }
+            expectedIdx = tickerPtr->bestSellIdx.load();
+        }
     }
     buyRequestPool.deallocate(nodePtr->memoryBlock);
 }
@@ -213,6 +239,9 @@ void OrderBook::removeOrder(int id, bool print) {
     // Return if order ID is invalid
     if (id >= orderID) {
         cout << "Order Book Error: Invalid Order ID" << endl;
+        return;
+    } else if (!orders[id]) {
+        cout << "Order Book Error: Order Does Not Exist" << endl;
         return;
     }
 
@@ -229,23 +258,53 @@ void OrderBook::removeOrder(int id, bool print) {
 }
 
 // Worker thread function to process sell requests
-// void OrderBook::processSell(RemoveRequest* nodePtr) {
-//     // Remove node
-//     OrderNode* orderNode = orderMap[nodePtr->ID];
-//     Order* orderPtr = orderNode->order;
-//     if (orderPtr->side == "BUY") {
-//         tickerMap[orderPtr->ticker]->buyOrderMap[orderPtr->price]->remove(orderNode);
-//     } else { // orderPtr->side == "SELL"
-//         tickerMap[orderPtr->ticker]->sellOrderMap[orderPtr->price]->remove(orderNode);
-//     }
+void OrderBook::processSell(RemoveRequest* nodePtr) {
+    OrderNode* orderNodePtr = orders[nodePtr->ID];
+    int listIdx = getListIdx(orderNodePtr->order->price);
+    string side = orderNodePtr->order->side;
+    string ticker = orderNodePtr->order->ticker;
 
-//     // Delete request
-//     removeRequestPool.deallocate(nodePtr->memoryBlock);
-// }
+    bool deleteLevel = !orderNodePtr->prev.load() && !orderNodePtr->next.load();
+
+    // Update best buy or best sell if necessary
+    if (deleteLevel) {
+        if (side == "BUY" && listIdx == tickerMap[ticker]->bestBuyIdx) {
+            // BUILD LOCKLESS PRIORITY QUEUE AND REVERSE PRIORITY QUEUE
+        } else if (side == "SELL" && listIdx == tickerMap[ticker]->bestSellIdx) {
+
+        }
+    }
+
+    // Remove node
+    // OrderNode* orderNode = orderMap[nodePtr->ID];
+    // Order* orderPtr = orderNode->order;
+    if (side == "BUY") {
+        tickerMap[ticker]->buyOrderList[listIdx]->remove(orderNodePtr);
+    } else { // side == "SELL"
+        tickerMap[ticker]->sellOrderList[listIdx]->remove(orderNodePtr);
+    }
+    orders[nodePtr->ID] = nullptr;
+
+    // Clear memory
+    if (deleteLevel) {
+        priceLevelPool.deallocate(tickerMap[ticker]->buyOrderList[listIdx]);
+        tickerMap[ticker]->buyOrderList[listIdx] = nullptr;
+    }
+
+    // Delete request
+    removeRequestPool.deallocate(nodePtr->memoryBlock);
+}
 
 int OrderBook::getListIdx(double price) {
     return int((price - minPrice) * 100);
 }
 
-// Find a way to eliminate the order map
-// It can cause a bottleneck as it is not lock free
+// Add a way to reuse order IDs or at least spaces in orders
+
+int main() {
+    OrderBook orderBook(1, 10, 50.0, 150.0);
+    orderBook.addTicker("AAPL");
+    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0);
+    orderBook.removeOrder(0);
+    return 0;
+}

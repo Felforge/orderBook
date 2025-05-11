@@ -20,8 +20,8 @@ struct alignas(64) BuyRequest {
     void* memoryBlock;
     OrderNode* orderNode;
     void* levelBlock;
-    std::atomic<RemoveRequest*> prev;
-    std::atomic<RemoveRequest*> next;
+    std::atomic<BuyRequest*> prev;
+    std::atomic<BuyRequest*> next;
     BuyRequest(void* memoryBlock, OrderNode* orderNode, void* levelBlock);
 };
 
@@ -40,9 +40,9 @@ struct alignas(64) Ticker {
     std::string ticker;
     std::vector<OrderList*> buyOrderList;
     std::vector<OrderList*> sellOrderList;
-    std::vector<bool> activeLevels;
-    std::atomic<OrderList*> bestBuyOrder; // pointer to current best buy order
-    std::atomic<OrderList*> bestSellOrder; // pointer to current best sell order
+    std::vector<bool> activeLevels; // To avoid contention for memory blocks
+    std::atomic<int> bestBuyIdx; // List index of best buy order
+    std::atomic<int> bestSellIdx; // List index of best sell order
     
     // Priority queues for active price levels
     std::priority_queue<double> priorityBuyPrices; // Max-heap for buy prices
@@ -67,7 +67,7 @@ class OrderBook {
         MemoryPool removeRequestPool; // Memory pool for allocating remove requests
 
         // Hold threads
-        vector<thread> threads;
+        std::vector<std::thread> threads;
 
         // Requests
         Queue<BuyRequest> buyQueue;

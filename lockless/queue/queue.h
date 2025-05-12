@@ -4,12 +4,14 @@
 #include <atomic>
 
 // List Node
+// memoryBlock is for memory pool allocation
 template<typename T>
 struct alignas(64) Node {
     T data;
+    void* memoryBlock;
     std::atomic<Node*> prev;
     std::atomic<Node*> next;
-    Node(T data) : data(data) {
+    Node(T data, void* memoryBlock=nullptr) : data(data), memoryBlock(memoryBlock) {
         prev.store(nullptr);
         next.store(nullptr);
     }

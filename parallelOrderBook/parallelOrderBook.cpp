@@ -299,6 +299,10 @@ int OrderBook::getListIdx(double price) {
     return int((price - minPrice) * 100);
 }
 
+// To-do:
+// Seperate level creation logic between buy and sell
+// Add price queues
+// Get rid of OrderNode and just use template node?
 // Add a way to reuse order IDs or at least spaces in orders
 
 int main() {

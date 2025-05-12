@@ -306,7 +306,7 @@ int OrderBook::getListIdx(double price) {
 // To-do:
 // Seperate level creation logic between buy and sell
 // Replace level block with level info
-// Switch LevelInfo for pointer?
+// Switch LevelInfo for pointer? Maybe struct isn't even needed, just pass the two void* objects
 // Add price queues
 // Get rid of OrderNode and just use template node?
 // Add a way to reuse order IDs or at least spaces in orders

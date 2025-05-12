@@ -4,8 +4,8 @@ using namespace std;
 
 // Constructor for Buy Node
 // This is a node of the doubly linked list
-BuyRequest::BuyRequest(void* memoryBlock, OrderNode* orderNode, LevelInfo levelInfo) 
-    : memoryBlock(memoryBlock), orderNode(orderNode), levelInfo(levelInfo) {
+BuyRequest::BuyRequest(void* memoryBlock, OrderNode* orderNode, void* levelBlock, void* queueBlock) 
+    : memoryBlock(memoryBlock), orderNode(orderNode), levelBlock(levelBlock), queueBlock(queueBlock) {
         prev.store(nullptr);
         next.store(nullptr);
     }
@@ -17,10 +17,6 @@ RemoveRequest::RemoveRequest(void* memoryBlock, int ID)
         prev.store(nullptr);
         next.store(nullptr);
     }
-
-// Constructor for level info struct
-LevelInfo::LevelInfo(void* levelBlock, void* queueBlock)
-    : levelBlock(levelBlock), queueBlock(queueBlock) {}
 
 // Constructor for Ticker
 Ticker::Ticker(void* memoryBlock, string ticker, int numLevels) 
@@ -305,8 +301,6 @@ int OrderBook::getListIdx(double price) {
 
 // To-do:
 // Seperate level creation logic between buy and sell
-// Replace level block with level info
-// Switch LevelInfo for pointer? Maybe struct isn't even needed, just pass the two void* objects
 // Add price queues
 // Get rid of OrderNode and just use template node?
 // Add a way to reuse order IDs or at least spaces in orders

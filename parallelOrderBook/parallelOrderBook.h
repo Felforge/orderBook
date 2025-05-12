@@ -19,10 +19,11 @@ const int MAX_THREADS = 8; // Laptop
 struct alignas(64) BuyRequest {
     void* memoryBlock;
     OrderNode* orderNode;
-    LevelInfo levelInfo;
+    void* levelBlock;
+    void* queueBlock;
     std::atomic<BuyRequest*> prev;
     std::atomic<BuyRequest*> next;
-    BuyRequest(void* memoryBlock, OrderNode* orderNode, LevelInfo levelInfo);
+    BuyRequest(void* memoryBlock, OrderNode* orderNode, void* levelBlock, void* queueBlock);
 };
 
 // For remove requests
@@ -32,13 +33,6 @@ struct alignas(64) RemoveRequest {
     std::atomic<RemoveRequest*> prev;
     std::atomic<RemoveRequest*> next;
     RemoveRequest(void* memoryBlock, int ID);
-};
-
-// For price level creation
-struct alignas(64) LevelInfo {
-    void* levelBlock;
-    void* queueBlock;
-    LevelInfo(void* levelBlock, void* queueBlock);
 };
 
 // Best orders are being left as PriceLevel to access the whole doubly linked list

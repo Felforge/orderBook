@@ -30,11 +30,12 @@ class Queue {
         }
 
         virtual void insert(NodeType* nodePtr) {
+            NodeType* headPtr = head.load();
             NodeType* tailPtr = tail.load();
             while(true) {
-                if (!head) {
+                if (!headPtr) {
                     // List is empty, set both head and tail to newNode
-                    if (head.compare_exchange_weak(tailPtr, nodePtr)) {
+                    if (head.compare_exchange_weak(headPtr, nodePtr)) {
                         tail.store(nodePtr);
                         return;
                     }

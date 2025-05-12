@@ -39,7 +39,4 @@ class OrderList : public Queue<OrderNode> {
         OrderNode* remove(OrderNode* nodePtr) override;
 };
 
-// Lock-free deletion of OrderList object
-void deleteOrderList(double price, std::unordered_map<double, std::atomic<OrderList*>> orderMap, MemoryPool& orderListPool);
-
 #endif

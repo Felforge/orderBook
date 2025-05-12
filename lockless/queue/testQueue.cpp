@@ -95,7 +95,6 @@ TEST(OrderListTest, HandlesConcurrency) {
     delete node3;
 }
 
-
 // Run all tests
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

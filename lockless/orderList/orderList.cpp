@@ -90,18 +90,3 @@ OrderNode* OrderList::remove(OrderNode* nodePtr) {
         // Retry if CAS failed
     }
 }
-
-void deleteOrderList(double price, unordered_map<double, atomic<OrderList*>>& orderMap, MemoryPool& orderListPool) {
-    // Retrieve list
-    OrderList* listPtr = orderMap[price].load();
-
-    // Delete list from map
-    if (orderMap[price].compare_exchange_weak(listPtr, nullptr)) {
-        // Clear list from memory
-        // Destructor is triggered here deleting anything within that could remain
-        orderListPool.deallocate(listPtr->memoryBlock);
-
-        // Erase price from map
-        orderMap.erase(price);
-    }
-}

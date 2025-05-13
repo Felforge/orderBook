@@ -1,4 +1,5 @@
 #include <iostream>
+#include <unistd.h>
 #include "parallelOrderBook.h"
 using namespace std;
 
@@ -20,7 +21,7 @@ RemoveRequest::RemoveRequest(void* memoryBlock, int ID)
 
 // Constructor for Ticker
 Ticker::Ticker(void* memoryBlock, string ticker, int numLevels) 
-    : memoryBlock(memoryBlock), ticker(ticker) {
+    : memoryBlock(memoryBlock), ticker(ticker), priorityBuyPrices(), prioritySellPrices(true) {
         bestBuyIdx.store(-1);
         bestSellIdx.store(-1);
         for (int i = 0; i < numLevels; i++) {
@@ -30,7 +31,10 @@ Ticker::Ticker(void* memoryBlock, string ticker, int numLevels)
             sellOrderList.push_back(nullptr);
         }
         for (int i = 0; i < numLevels; i++) {
-            activeLevels.push_back(false);
+            activeBuyLevels.push_back(false);
+        }
+        for (int i = 0; i < numLevels; i++) {
+            activeSellLevels.push_back(false);
         }
     }
 
@@ -38,8 +42,9 @@ Ticker::Ticker(void* memoryBlock, string ticker, int numLevels)
 // numTickers is the maximum number of tickers that could be added
 OrderBook::OrderBook(int numTickers, int numOrders, double inpMinPrice, double inpMaxPrice) 
     // Declare memory pool
-    : orderPool(sizeof(Order), numOrders), nodePool(sizeof(OrderNode), numOrders), priceLevelPool(sizeof(OrderList), 2 * numTickers * int((inpMaxPrice - minPrice) * 100.0)), 
-    tickerPool(sizeof(Ticker), numTickers), buyRequestPool(sizeof(BuyRequest), 10 * numOrders), removeRequestPool(sizeof(RemoveRequest), numOrders) {
+    : orderPool(sizeof(Order), numOrders), nodePool(sizeof(OrderNode), numOrders), priceLevelPool(sizeof(OrderList), 2 * numTickers * int((inpMaxPrice - inpMinPrice) * 100.0)), 
+      tickerPool(sizeof(Ticker), numTickers), buyRequestPool(sizeof(BuyRequest), 10 * numOrders), removeRequestPool(sizeof(RemoveRequest), numOrders), 
+      priceQueuePool(sizeof(Node<int>), 2 * numTickers * int((inpMaxPrice - inpMinPrice) * 100.0)) {
 
     // Declare max number of tickers
     maxTickers = numTickers;
@@ -71,6 +76,8 @@ OrderBook::~OrderBook() {
     // Stop threads
     shutdown();
 
+    // DEALLOCATE QUEUES
+
     // Delete every price level pointer and ticker pointer
     for (const auto& pair: tickerMap) {
         for (OrderList* buyPtr: pair.second->buyOrderList) {
@@ -78,11 +85,33 @@ OrderBook::~OrderBook() {
                 priceLevelPool.deallocate(buyPtr->memoryBlock);
             }
         }
+
         for (OrderList* sellPtr: pair.second->sellOrderList) {
             if (sellPtr) {
                 priceLevelPool.deallocate(sellPtr->memoryBlock);
             }
         }
+
+        Node<int>* current = pair.second->priorityBuyPrices.tail.load();
+        if (current) {
+            while (current != pair.second->priorityBuyPrices.head.load()) {
+                Node<int>* prev = current->prev.load();
+                priceQueuePool.deallocate(current->memoryBlock);
+                current = prev;
+            }
+            priceQueuePool.deallocate(current->memoryBlock);
+        }
+
+        current = pair.second->prioritySellPrices.tail.load();
+        if (current) {
+            while (current != pair.second->prioritySellPrices.head.load()) {
+                Node<int>* prev = current->prev.load();
+                priceQueuePool.deallocate(current->memoryBlock);
+                current = prev;
+            }
+            priceQueuePool.deallocate(current->memoryBlock);
+        }
+
         tickerPool.deallocate(pair.second->memoryBlock);
     }
 }
@@ -112,7 +141,7 @@ void OrderBook::receiveRequests() {
         }
         RemoveRequest* sellRequest = sellQueue.remove();
         if (sellRequest) {
-            // Process sell
+            processSell(sellRequest);
             continue;
         }
         // No task available, yield to other threads
@@ -163,20 +192,27 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     OrderNode* orderNode = new (nodeMemoryBlock) OrderNode(nodeMemoryBlock, newOrder);
 
     void* levelBlock;
-    if (tickerMap[ticker]->activeLevels[getListIdx(price)]) {
+    void* queueBlock;
+    if (side == "BUY" && tickerMap[ticker]->activeBuyLevels[getListIdx(price)] || side == "SELL" && tickerMap[ticker]->activeSellLevels[getListIdx(price)]) {
         levelBlock = nullptr;
-    } else { // !tickerMap[ticker]->activeLevels[getListIdx(price)]
+        queueBlock = nullptr;
+    } else { // side == "BUY" && !tickerMap[ticker]->activeBuyLevels[getListIdx(price)] || side == "SELL" && !tickerMap[ticker]->activeSellLevels[getListIdx(price)]
         void* levelBlock = priceLevelPool.allocate();
-        tickerMap[ticker]->activeLevels[getListIdx(price)] = true;
+        void* queueBlock = priceQueuePool.allocate();
+        if (side == "BUY") {
+            tickerMap[ticker]->activeBuyLevels[getListIdx(price)] = true;
+        } else { // side == "SELL"
+            tickerMap[ticker]->activeSellLevels[getListIdx(price)] = true;
+        }
     }
 
     // Insert into queue
     void* memoryBlock = buyRequestPool.allocate();
-    BuyRequest* buyRequest = new (memoryBlock) BuyRequest(memoryBlock, orderNode, levelBlock);
+    BuyRequest* buyRequest = new (memoryBlock) BuyRequest(memoryBlock, orderNode, levelBlock, queueBlock);
     buyQueue.insert(buyRequest);
 
-    // Increment orderID
-    orderID++;
+    // Store order
+    orders[orderID] = orderNode;
 
     // Print Order Data
     if (print) {
@@ -187,6 +223,9 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
              << "  Price: " << price << endl
              << "  Order ID: " << orderID << endl;
     }
+
+    // Increment orderID
+    orderID++;
 }
 
 // Worker thread function to process buy requests
@@ -196,41 +235,57 @@ void OrderBook::processBuy(BuyRequest* nodePtr) {
     int listIdx = getListIdx(orderPtr->price);
     Ticker* tickerPtr = tickerMap[orderPtr->ticker];
     void* levelBlock = nodePtr->levelBlock;
+    void* queueBlock = nodePtr->queueBlock;
+    bool addToQueue = true;
     
     if (orderPtr->side == "BUY") {
+
         // Create price level if needed
         if (levelBlock) {
             tickerPtr->buyOrderList[listIdx] = new (levelBlock) OrderList(levelBlock, orderPool, nodePool);
+
+            // Change best buy if needed
+            int expectedIdx = tickerPtr->bestBuyIdx.load();
+            if (listIdx > expectedIdx) {
+                while (listIdx > expectedIdx) {
+                    if (tickerPtr->bestBuyIdx.compare_exchange_weak(expectedIdx, listIdx)) {
+                        addToQueue = false;
+                        break;
+                    }
+                    expectedIdx = tickerPtr->bestBuyIdx.load();
+                }
+            }
+            Node<int>* priceNode = new (queueBlock) Node(listIdx, queueBlock);
+            tickerPtr->priorityBuyPrices.insert(priceNode);
         }
 
         // Insert order
         tickerPtr->buyOrderList[listIdx]->insert(nodePtr->orderNode);
 
-        // Change best buy if needed
-        int expectedIdx = tickerPtr->bestBuyIdx.load();
-        while (expectedIdx == -1 || orderPtr->price > expectedIdx) {
-            if (tickerPtr->bestBuyIdx.compare_exchange_weak(expectedIdx, listIdx)) {
-                break;
-            }
-            expectedIdx = tickerPtr->bestBuyIdx.load();
-        }
     } else { // orderPtr->side == "SELL"
         // Create price level if needed
         if (levelBlock) {
             tickerPtr->sellOrderList[listIdx] = new (levelBlock) OrderList(levelBlock, orderPool, nodePool);
+
+            // Change best buy if needed
+            int expectedIdx = tickerPtr->bestSellIdx.load();
+            if (expectedIdx == 1 || listIdx < expectedIdx) {
+                while (expectedIdx == 1 || listIdx < expectedIdx) {
+                    if (tickerPtr->bestSellIdx.compare_exchange_weak(expectedIdx, listIdx)) {
+                        addToQueue = false;
+                        break;
+                    }
+                    expectedIdx = tickerPtr->bestSellIdx.load();
+                }
+            } else { // listIdx >= expectedIdx
+                Node<int>* priceNode = new (queueBlock) Node(listIdx, queueBlock);
+                tickerPtr->prioritySellPrices.insert(priceNode);
+            }
         }
 
         // Insert order
         tickerPtr->sellOrderList[listIdx]->insert(nodePtr->orderNode);
 
-        // Change best sell if needed
-        int expectedIdx = tickerPtr->bestSellIdx.load();
-        while (expectedIdx == -1 || orderPtr->price > expectedIdx) {
-            if (tickerPtr->bestSellIdx.compare_exchange_weak(expectedIdx, listIdx)) {
-                break;
-            }
-            expectedIdx = tickerPtr->bestSellIdx.load();
-        }
     }
     buyRequestPool.deallocate(nodePtr->memoryBlock);
 }
@@ -263,21 +318,11 @@ void OrderBook::processSell(RemoveRequest* nodePtr) {
     int listIdx = getListIdx(orderNodePtr->order->price);
     string side = orderNodePtr->order->side;
     string ticker = orderNodePtr->order->ticker;
+    Ticker* tickerPtr = tickerMap[ticker];
 
     bool deleteLevel = !orderNodePtr->prev.load() && !orderNodePtr->next.load();
 
-    // Update best buy or best sell if necessary
-    if (deleteLevel) {
-        if (side == "BUY" && listIdx == tickerMap[ticker]->bestBuyIdx) {
-            // BUILD LOCKLESS PRIORITY QUEUE AND REVERSE PRIORITY QUEUE
-        } else if (side == "SELL" && listIdx == tickerMap[ticker]->bestSellIdx) {
-
-        }
-    }
-
     // Remove node
-    // OrderNode* orderNode = orderMap[nodePtr->ID];
-    // Order* orderPtr = orderNode->order;
     if (side == "BUY") {
         tickerMap[ticker]->buyOrderList[listIdx]->remove(orderNodePtr);
     } else { // side == "SELL"
@@ -287,8 +332,21 @@ void OrderBook::processSell(RemoveRequest* nodePtr) {
 
     // Clear memory
     if (deleteLevel) {
-        priceLevelPool.deallocate(tickerMap[ticker]->buyOrderList[listIdx]);
-        tickerMap[ticker]->buyOrderList[listIdx] = nullptr;
+        if (side == "BUY") {
+            priceLevelPool.deallocate(tickerMap[ticker]->buyOrderList[listIdx]);
+            tickerMap[ticker]->buyOrderList[listIdx] = nullptr;
+            tickerPtr->activeBuyLevels[listIdx] = false;
+            if (listIdx == tickerMap[ticker]->bestBuyIdx) {
+                updateBestIdx(tickerPtr->priorityBuyPrices, tickerPtr->activeBuyLevels, tickerPtr->bestBuyIdx);
+            }
+        } else if (side == "SELL") {
+            priceLevelPool.deallocate(tickerMap[ticker]->sellOrderList[listIdx]);
+            tickerMap[ticker]->sellOrderList[listIdx] = nullptr;
+            tickerPtr->activeSellLevels[listIdx] = false;
+            if (listIdx == tickerMap[ticker]->bestSellIdx) {
+                updateBestIdx(tickerPtr->prioritySellPrices, tickerPtr->activeSellLevels, tickerPtr->bestSellIdx);
+            }
+        }
     }
 
     // Delete request
@@ -299,16 +357,33 @@ int OrderBook::getListIdx(double price) {
     return int((price - minPrice) * 100);
 }
 
+void OrderBook::updateBestIdx(PriorityQueue &queue, vector<bool> &activeLevels, atomic<int> &bestIdx) {
+    // Remove first
+    queue.remove();
+
+    Node<int>* current = queue.remove();
+    while (!activeLevels[current->data]) {
+        priceQueuePool.deallocate(current->memoryBlock);
+        current = queue.remove();
+    }
+    if (current) {
+        bestIdx.store(current->data);
+    } else { // !current
+        bestIdx.store(-1);
+    }
+    priceQueuePool.deallocate(current->memoryBlock);
+}
+
 // To-do:
-// Seperate level creation logic between buy and sell
-// Add price queues
+// Do test cases
 // Get rid of OrderNode and just use template node?
 // Add a way to reuse order IDs or at least spaces in orders
 
-int main() {
-    OrderBook orderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0);
-    orderBook.removeOrder(0);
-    return 0;
-}
+// int main() {
+//     OrderBook orderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     usleep(2000000);
+//     orderBook.removeOrder(0, false);
+//     return 0;
+// }

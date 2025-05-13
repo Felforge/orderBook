@@ -11,6 +11,7 @@
 #include "../memoryPool/memoryPool.h"
 #include "../lockless/orderList/orderList.h"
 #include "../lockless/queue/queue.h"
+#include "../lockless/priorityQueue/priorityQueue.h"
 
 const int MAX_THREADS = 8; // Laptop
 // const int MAX_THREADS = 24; // PC
@@ -41,13 +42,14 @@ struct alignas(64) Ticker {
     std::string ticker;
     std::vector<OrderList*> buyOrderList;
     std::vector<OrderList*> sellOrderList;
-    std::vector<bool> activeLevels; // To avoid contention for memory blocks
     std::atomic<int> bestBuyIdx; // List index of best buy order
     std::atomic<int> bestSellIdx; // List index of best sell order
     
     // Priority queues for active price levels
-    std::priority_queue<double> priorityBuyPrices; // Max-heap for buy prices
-    std::priority_queue<double, std::vector<double>, std::greater<double>> prioritySellPrices; // Min-heap for sell prices
+    std::vector<bool> activeBuyLevels; // Track active buy price levels
+    std::vector<bool> activeSellLevels; // Track active sell price levels
+    PriorityQueue priorityBuyPrices; // Queue of buy prices
+    PriorityQueue prioritySellPrices; // Reverse queue of sell prices
     
     Ticker(void* memoryBlock, std::string ticker, int numLevels);
 };
@@ -66,6 +68,7 @@ class OrderBook {
         MemoryPool tickerPool; // Memory pool for allocating Tickers
         MemoryPool buyRequestPool; // Memory pool for allocating buy requests
         MemoryPool removeRequestPool; // Memory pool for allocating remove requests
+        MemoryPool priceQueuePool; // Memory pool for allocating price queue nodes
 
         // Hold threads
         std::vector<std::thread> threads;
@@ -85,6 +88,9 @@ class OrderBook {
         void processBuy(BuyRequest* nodePtr);
         void processSell(RemoveRequest* nodePtr);
 
+        // Utility functions
+        void updateBestIdx(PriorityQueue &queue, std::vector<bool> &activeLevels, std::atomic<int> &bestIdx);
+
     public:
         // Easy access to every order
         // Just make sure to erase from here if the order gets deleted
@@ -92,8 +98,6 @@ class OrderBook {
         std::unordered_map<std::string, Ticker*> tickerMap;
         OrderBook(int numTickers, int maxOrders, double inpMinPrice, double inpMaxPrice);
         ~OrderBook();
-        void updateBestBuyOrder(std::string ticker);
-        void updateBestSellOrder(std::string ticker);
         // void removePriceLevel(std::string side, std::string ticker, double price, PriceLevel* levelPtr);
         void addTicker(std::string ticker);
         void addOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print = true);

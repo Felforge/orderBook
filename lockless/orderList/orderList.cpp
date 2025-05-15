@@ -15,11 +15,7 @@ OrderNode::OrderNode(void* memoryBlock, Order* order)
     }
 
 OrderList::OrderList(void* memoryBlock, MemoryPool& orderPool, MemoryPool& nodePool)
-    : memoryBlock(memoryBlock), orderPool(orderPool), nodePool(nodePool) {
-        // Initialize head and tail
-        head.store(nullptr);
-        tail.store(nullptr);
-    }
+    : memoryBlock(memoryBlock), orderPool(orderPool), nodePool(nodePool) {}
 
 OrderList::~OrderList() {
     OrderNode* current = tail.load();

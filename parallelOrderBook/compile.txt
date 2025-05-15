@@ -1,4 +1,6 @@
-g++ -std=c++17 parallelOrderBook.cpp ../lockless/orderList/orderList.cpp ../memoryPool/memoryPool.cpp -o parallelOrderBook.exe
+g++ -std=c++17 parallelOrderBook.cpp ../lockless/orderList/orderList.cpp ../memoryPool/memoryPool.cpp ../lockless/priorityQueue/priorityQueue.cpp -o parallelOrderBook.exe
+g++ -std=c++17 parallelOrderBook.cpp testParallelOrderBook.cpp ../lockless/orderList/orderList.cpp ../memoryPool/memoryPool.cpp ../lockless/priorityQueue/priorityQueue.cpp -lgtest -o testParallelOrderBook.exe
 
 For Debugging:
-g++ -std=c++17 -fsanitize=address parallelOrderBook.cpp ../lockless/orderList/orderList.cpp ../memoryPool/memoryPool.cpp -o parallelOrderBook.exe
+g++ -std=c++17 -fsanitize=address parallelOrderBook.cpp ../lockless/orderList/orderList.cpp ../memoryPool/memoryPool.cpp ../lockless/priorityQueue/priorityQueue.cpp -o parallelOrderBook.exe
+g++ -std=c++17 -fsanitize=address parallelOrderBook.cpp testParallelOrderBook.cpp ../lockless/orderList/orderList.cpp ../memoryPool/memoryPool.cpp ../lockless/priorityQueue/priorityQueue.cpp -lgtest -o testParallelOrderBook.exe

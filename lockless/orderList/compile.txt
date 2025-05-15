@@ -1,1 +1,4 @@
 g++ -std=c++17 testOrderList.cpp orderList.cpp ../../memoryPool/memoryPool.cpp -lgtest -o testOrderList.exe
+
+For debugging:
+g++ -std=c++17 -fsanitize=address testOrderList.cpp orderList.cpp ../../memoryPool/memoryPool.cpp -lgtest -o testOrderList.exe

@@ -268,7 +268,7 @@ TEST(OrderBookTest, HandlesValidBuyOrderRemoving) {
     // Make sure order map is empty
     EXPECT_TRUE(orderBook.orderMap.empty());
 
-    // Make sure price level is empty`
+    // Make sure price level is empty
     EXPECT_TRUE(orderBook.tickerMap["AAPL"]->buyOrderMap.find(100.0) == orderBook.tickerMap["AAPL"]->buyOrderMap.end());
 }
 

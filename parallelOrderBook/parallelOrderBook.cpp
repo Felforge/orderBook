@@ -191,12 +191,9 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     Order* newOrder = new (orderMemoryBlock) Order(orderMemoryBlock, orderID, userID, side, ticker, quantity, price);
     OrderNode* orderNode = new (nodeMemoryBlock) OrderNode(nodeMemoryBlock, newOrder);
 
-    void* levelBlock;
-    void* queueBlock;
-    if (side == "BUY" && tickerMap[ticker]->activeBuyLevels[getListIdx(price)] || side == "SELL" && tickerMap[ticker]->activeSellLevels[getListIdx(price)]) {
-        levelBlock = nullptr;
-        queueBlock = nullptr;
-    } else { // side == "BUY" && !tickerMap[ticker]->activeBuyLevels[getListIdx(price)] || side == "SELL" && !tickerMap[ticker]->activeSellLevels[getListIdx(price)]
+    void* levelBlock = nullptr;
+    void* queueBlock = nullptr;
+    if (side == "BUY" && !tickerMap[ticker]->activeBuyLevels[getListIdx(price)] || side == "SELL" && !tickerMap[ticker]->activeSellLevels[getListIdx(price)]) {
         levelBlock = priceLevelPool.allocate();
         queueBlock = priceQueuePool.allocate();
         if (side == "BUY") {
@@ -320,7 +317,7 @@ void OrderBook::processSell(RemoveRequest* nodePtr) {
     string ticker = orderNodePtr->order->ticker;
     Ticker* tickerPtr = tickerMap[ticker];
 
-    cout << "test" << endl;
+    cout << "here" << endl;
 
     bool deleteLevel = !orderNodePtr->prev.load() && !orderNodePtr->next.load();
 

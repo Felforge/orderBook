@@ -172,7 +172,7 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     } else if (tickerMap.find(ticker) == tickerMap.end()) {
         cout << "Order Book Error: Ticker is Invalid" << endl;
         return;
-    } else if (orderID + 1 >= maxOrders) {
+    } else if (orderID >= maxOrders) {
         cout << "Order Book Error: Max Order Limit Reached" << endl;
         return;
     } else if (price > maxPrice) {

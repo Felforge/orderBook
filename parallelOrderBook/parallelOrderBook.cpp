@@ -114,6 +114,8 @@ OrderBook::~OrderBook() {
 
         tickerPool.deallocate(pair.second->memoryBlock);
     }
+
+
 }
 
 // Start threads
@@ -136,6 +138,7 @@ void OrderBook::receiveRequests() {
     while (running) {
         BuyRequest* buyRequest = buyQueue.remove();
         if (buyRequest) {
+            cout << buyRequest->memoryBlock << endl;
             processBuy(buyRequest);
             continue;  
         }
@@ -372,6 +375,8 @@ void OrderBook::updateBestIdx(PriorityQueue &queue, vector<bool> &activeLevels, 
         bestIdx.store(-1);
     }
 }
+
+// ERROR IN DESTRUCTOR
 
 // To-do:
 // Do test cases

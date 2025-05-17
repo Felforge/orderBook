@@ -1,10 +1,6 @@
 #include "priorityQueue.h"
 
 PriorityQueue::PriorityQueue(bool inpReverse) {
-    // Initialize head and tail
-    head.store(nullptr);
-    tail.store(nullptr);
-
     // Save reverse bool
     reverse = inpReverse;
 }

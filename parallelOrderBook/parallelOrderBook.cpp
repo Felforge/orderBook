@@ -191,14 +191,11 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
     Order* newOrder = new (orderMemoryBlock) Order(orderMemoryBlock, orderID, userID, side, ticker, quantity, price);
     OrderNode* orderNode = new (nodeMemoryBlock) OrderNode(nodeMemoryBlock, newOrder);
 
-    void* levelBlock;
-    void* queueBlock;
-    if (side == "BUY" && tickerMap[ticker]->activeBuyLevels[getListIdx(price)] || side == "SELL" && tickerMap[ticker]->activeSellLevels[getListIdx(price)]) {
-        levelBlock = nullptr;
-        queueBlock = nullptr;
-    } else { // side == "BUY" && !tickerMap[ticker]->activeBuyLevels[getListIdx(price)] || side == "SELL" && !tickerMap[ticker]->activeSellLevels[getListIdx(price)]
-        void* levelBlock = priceLevelPool.allocate();
-        void* queueBlock = priceQueuePool.allocate();
+    void* levelBlock = nullptr;
+    void* queueBlock = nullptr;
+    if (side == "BUY" && !tickerMap[ticker]->activeBuyLevels[getListIdx(price)] || side == "SELL" && !tickerMap[ticker]->activeSellLevels[getListIdx(price)]) {
+        levelBlock = priceLevelPool.allocate();
+        queueBlock = priceQueuePool.allocate();
         if (side == "BUY") {
             tickerMap[ticker]->activeBuyLevels[getListIdx(price)] = true;
         } else { // side == "SELL"
@@ -320,6 +317,8 @@ void OrderBook::processSell(RemoveRequest* nodePtr) {
     string ticker = orderNodePtr->order->ticker;
     Ticker* tickerPtr = tickerMap[ticker];
 
+    cout << "here" << endl;
+
     bool deleteLevel = !orderNodePtr->prev.load() && !orderNodePtr->next.load();
 
     // Remove node
@@ -362,29 +361,28 @@ void OrderBook::updateBestIdx(PriorityQueue &queue, vector<bool> &activeLevels, 
     queue.remove();
 
     Node<int>* current = queue.remove();
-    while (!activeLevels[current->data]) {
+    while (current && !activeLevels[current->data]) {
         priceQueuePool.deallocate(current->memoryBlock);
         current = queue.remove();
     }
     if (current) {
         bestIdx.store(current->data);
-    } else { // !current
+        priceQueuePool.deallocate(current->memoryBlock);
+    } else {
         bestIdx.store(-1);
     }
-    priceQueuePool.deallocate(current->memoryBlock);
 }
 
 // To-do:
 // Do test cases
-// Add Cmake?
 // Get rid of OrderNode and just use template node?
 // Add a way to reuse order IDs or at least spaces in orders
 
 // int main() {
 //     OrderBook orderBook(1, 10, 50.0, 150.0);
 //     orderBook.addTicker("AAPL");
-//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0);
 //     usleep(2000000);
-//     orderBook.removeOrder(0, false);
+//     orderBook.removeOrder(0);
 //     return 0;
 // }

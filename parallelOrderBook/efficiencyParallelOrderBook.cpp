@@ -2,6 +2,7 @@
 #include <chrono>
 #include <string>
 #include <fstream>
+#include <unistd.h>
 #include "parallelOrderBook.h"
 
 // for timing purposes
@@ -41,51 +42,77 @@ std::string formatTable(std::chrono::high_resolution_clock::time_point t0, std::
     return optStr;
 }
 
-void runAdding(OrderBook& orderBook, int numOrders) {
+std::pair<std::__1::chrono::steady_clock::time_point, std::__1::chrono::steady_clock::time_point> runAdding(int numOrders) {
+    OrderBook orderBook(1, 2 * numOrders, 50.0, 150.0);
+    orderBook.addTicker("AAPL");
+    usleep(1000000);
+    auto t0 = high_resolution_clock::now(); // initial time
     for (int i = 0; i < numOrders; i++) {
-        orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+        orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0);
     }
+    while (orderBook.ordersProcessed.load() < numOrders - 1) {
+        std::this_thread::yield();
+    }
+    auto t1 = high_resolution_clock::now(); // time after
+    return std::pair(t0, t1);
 }
 
 std::string createAddOrderTimeTable() {
     std::string optStr;
 
     // New orderBook will be created for each one to make data more precise
+    // OrderBook orderBook(1, 200000, 50.0, 150.0);
 
     // Get time for 10 Orders
-    OrderBook orderBookT(1, 20, 50.0, 150.0);
-    orderBookT.addTicker("AAPL");
-    auto t0 = high_resolution_clock::now(); // initial time
-    runAdding(orderBookT, 10);
-    auto t1 = high_resolution_clock::now(); // time after 10
+    // OrderBook orderBookT(1, 20, 50.0, 150.0);
+    // orderBook.addTicker("AAPL");
+    // auto t0 = high_resolution_clock::now(); // initial time
+    // runAdding(orderBook, 10);
+    // auto t1 = high_resolution_clock::now(); // time after 10
+    auto timePair = runAdding(10);
+    auto t0 = timePair.first;
+    auto t1 = timePair.second;
+    usleep(1000000);
 
     // Get time for 100 Orders
-    OrderBook orderBookH(1, 200, 50.0, 150.0);
-    orderBookH.addTicker("AAPL");
-    auto t2 = high_resolution_clock::now(); // initial time
-    runAdding(orderBookH, 100);
-    auto t3 = high_resolution_clock::now(); // time after 100
+    // OrderBook orderBookH(1, 200, 50.0, 150.0);
+    // orderBookH.addTicker("AAPL");
+    // auto t2 = high_resolution_clock::now(); // initial time
+    // runAdding(orderBook, 100);
+    // auto t3 = high_resolution_clock::now(); // time after 100
+    timePair = runAdding(100);
+    auto t2 = timePair.first;
+    auto t3 = timePair.second;
 
     // Get time for 1000 Orders
-    OrderBook orderBookK(1, 2000, 50.0, 150.0);
-    orderBookK.addTicker("AAPL");
-    auto t4 = high_resolution_clock::now(); // initial time
-    runAdding(orderBookK, 1000);
-    auto t5 = high_resolution_clock::now(); // time after 1000
+    // OrderBook orderBookK(1, 2000, 50.0, 150.0);
+    // orderBookK.addTicker("AAPL");
+    // auto t4 = high_resolution_clock::now(); // initial time
+    // runAdding(orderBook, 1000);
+    // auto t5 = high_resolution_clock::now(); // time after 1000
+    timePair = runAdding(1000);
+    auto t4 = timePair.first;
+    auto t5 = timePair.second;
 
     // Get time for 10000 Orders
-    OrderBook orderBookTK(1, 20000, 50.0, 150.0);
-    orderBookTK.addTicker("AAPL");
-    auto t6 = high_resolution_clock::now(); // initial time
-    runAdding(orderBookTK, 10000);
-    auto t7 = high_resolution_clock::now(); // time after 10000
+    // OrderBook orderBookTK(1, 20000, 50.0, 150.0);
+    // orderBookTK.addTicker("AAPL");
+    // auto t6 = high_resolution_clock::now(); // initial time
+    // runAdding(orderBook, 10000);
+    // auto t7 = high_resolution_clock::now(); // time after 10000
+    timePair = runAdding(10000);
+    auto t6 = timePair.first;
+    auto t7 = timePair.second;
 
     // Get time for 100000 Orders
-    OrderBook orderBookHK(1, 200000, 50.0, 150.0);
-    orderBookHK.addTicker("AAPL");
-    auto t8 = high_resolution_clock::now(); // initial time
-    runAdding(orderBookHK, 100000);
-    auto t9 = high_resolution_clock::now(); // time after 100000
+    // OrderBook orderBookHK(1, 200000, 50.0, 150.0);
+    // orderBookHK.addTicker("AAPL");
+    // auto t8 = high_resolution_clock::now(); // initial time
+    // runAdding(orderBook, 100000);
+    // auto t9 = high_resolution_clock::now(); // time after 100000
+    timePair = runAdding(100000);
+    auto t8 = timePair.first;
+    auto t9 = timePair.second;
 
     // Return formatted string
     std::string opt = formatTable(t0, t1, t2, t3, t4, t5, t6, t7, t8, t9);

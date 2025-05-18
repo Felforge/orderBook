@@ -65,6 +65,9 @@ OrderBook::OrderBook(int numTickers, int numOrders, double inpMinPrice, double i
     // Declare ID counter
     orderID = 0;
 
+    // Count number of processed orders
+    ordersProcessed.store(0);
+
     // Start threads
     running = true;
     startup();
@@ -138,7 +141,6 @@ void OrderBook::receiveRequests() {
     while (running) {
         BuyRequest* buyRequest = buyQueue.remove();
         if (buyRequest) {
-            cout << buyRequest->memoryBlock << endl;
             processBuy(buyRequest);
             continue;  
         }
@@ -224,6 +226,8 @@ void OrderBook::addOrder(int userID, string ticker, string side, int quantity, d
              << "  Order ID: " << orderID << endl;
     }
 
+    cout << ordersProcessed.load() << " " << buyQueue.head.load() << endl;
+
     // Increment orderID
     orderID++;
 }
@@ -288,6 +292,9 @@ void OrderBook::processBuy(BuyRequest* nodePtr) {
 
     }
     buyRequestPool.deallocate(nodePtr->memoryBlock);
+
+    // Count buy orders as they are processed
+    ordersProcessed.fetch_add(1, std::memory_order_relaxed);
 }
 
 void OrderBook::removeOrder(int id, bool print) {

@@ -98,11 +98,13 @@ class OrderBook {
         std::unordered_map<std::string, Ticker*> tickerMap;
         OrderBook(int numTickers, int maxOrders, double inpMinPrice, double inpMaxPrice);
         ~OrderBook();
-        // void removePriceLevel(std::string side, std::string ticker, double price, PriceLevel* levelPtr);
         void addTicker(std::string ticker);
         void addOrder(int userID, std::string ticker, std::string side, int quantity, double price, bool print = true);
         void removeOrder(int id, bool print = true);
         void matchOrders(std::string ticker, bool print=true, int count=0);
+
+        // For testing
+        std::atomic<int> ordersProcessed;
     };
 
 #endif

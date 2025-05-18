@@ -32,16 +32,16 @@ class Queue {
         }
 
         virtual void insert(NodeType* nodePtr) {
-            NodeType* headPtr = head.load();
-            NodeType* tailPtr = tail.load();
             while(true) {
+                NodeType* headPtr = head.load();
+                NodeType* tailPtr = tail.load();
                 if (!headPtr) {
                     // List is empty, set both head and tail to newNode
                     if (head.compare_exchange_weak(headPtr, nodePtr)) {
                         tail.store(nodePtr);
                         return;
                     }
-                } else {
+                } else if (tailPtr) {
                     // Update the next pointer of the current tail
                     NodeType* nullNode = nullptr;
                     if (tailPtr->next.compare_exchange_weak(nullNode, nodePtr)) {
@@ -49,21 +49,19 @@ class Queue {
                         nodePtr->prev.store(tailPtr);
                         tail.store(nodePtr);
                         return;
-                    } else {
-                        // Failed to update, reload tailPtr and retry
-                        tailPtr = tail.load();
                     }
                 }
+                 // Retry
             }
         }
 
         // Removes head
         virtual NodeType* remove(NodeType* nodePtr = nullptr) {
-            NodeType* headPtr = head.load();
             NodeType* nullNode = nullptr;
             NodeType* headNext;
 
             while (true) {
+                NodeType* headPtr = head.load();
                 if (!headPtr) {
                     return nullptr;
                 } 
@@ -80,7 +78,6 @@ class Queue {
                     }
                 }
                 // Failed, retry
-                headPtr = head.load();
             }
         }
 };

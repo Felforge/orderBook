@@ -79,5 +79,3 @@ void MemoryPool::deallocate(void* blockPtr) {
     // memorder_order_release blocks all other memory operations if CAS succeeds 
     // memory_order_relaxed does nothing if CAS fails
 }
-
-// CREATE TEST CASES FOR THIS AND THE SINGLE THREADED VERSION

@@ -43,6 +43,8 @@ void MemoryPool::deallocate(void* ptr) {
     freeList = block;
 }
 
+// MAKE MEMORY POOL CONCURRENT
+
 // int main() {
 //     try {
 //         std::cout << "DEBUG: Creating MemoryPool object" << std::endl;

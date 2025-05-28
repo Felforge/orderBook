@@ -148,6 +148,10 @@ Node<T>* deref(std::atomic<MarkedPtr<T>>* ptr) {
 template<typename T>
 class LocklessQueue {
     public:
+        LocklessQueue() {
+            // Make memory pool concurrent first
+        }
+
     private:
 };
 

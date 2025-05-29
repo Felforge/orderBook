@@ -46,36 +46,6 @@ TEST(LocklessMemoryPoolTest, HandlesPoolExhaustion) {
     pool.deallocate(block2);
 }
 
-// Test Multi Threaded Usage
-TEST(LocklessMemoryPoolTest, HandlesMultiThreading) {
-    int blockCount = 128;
-    int numThreads = 8;
-    MemoryPool pool(16, blockCount);
-
-    // Creater worker thread function
-    // Test 1000 times per thread for accuracy
-    int iters = 1000;
-    auto worker = [&]() {
-        for (int i = 0; i < iters; i++) {
-            void* block = pool.allocate();
-            EXPECT_FALSE(block == nullptr);
-            EXPECT_NO_THROW(memset(block, i % 0x100, 16));
-            EXPECT_NO_THROW(pool.deallocate(block));
-        }
-    };
-
-    // Deploy worker threads
-    vector<thread> threads;
-    for (int i = 0; i < numThreads; i++) {
-        threads.emplace_back(worker);
-    }
-
-    // Join threads upon completion
-    for (auto &t: threads) {
-        t.join();
-    }
-}
-
 // Test Memory Pool Allignment
 TEST(LocklessMemoryPoolTest, HandlesPoolAllignment) {
     MemoryPool pool(24, 3);

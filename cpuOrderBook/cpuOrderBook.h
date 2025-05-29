@@ -6,7 +6,7 @@
 #include <queue>
 #include "../memoryPool/memoryPool.h"
 
-struct alignas(64) Order {
+struct Order {
     void* memoryBlock;
     int orderID;
     int userID;
@@ -17,7 +17,7 @@ struct alignas(64) Order {
     Order(void* memoryBlock, int orderID, int userID, std::string side, std::string ticker, int quantity, double price);
 };
 
-struct alignas(64) OrderNode {
+struct OrderNode {
     void* memoryBlock;
     Order* order;
     OrderNode* prev;
@@ -25,7 +25,7 @@ struct alignas(64) OrderNode {
     OrderNode(void* memoryBlock, Order* order);
 };
 
-struct alignas(64) PriceLevel {
+struct PriceLevel {
     void* memoryBlock;
     OrderNode* head;
     OrderNode* tail;
@@ -33,7 +33,7 @@ struct alignas(64) PriceLevel {
 };
 
 // Best orders are being left as PriceLevel to access the whole doubly linked list
-struct alignas(64) Ticker {
+struct Ticker {
     void* memoryBlock;
     std::string ticker;
     std::unordered_map<double, PriceLevel*> buyOrderMap;

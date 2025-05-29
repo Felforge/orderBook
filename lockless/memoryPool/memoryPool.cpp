@@ -35,7 +35,7 @@ MemoryPool::~MemoryPool() {
 }
 
 // Function to allocate memory block
-void* MemoryPool::allocate() {
+void* MemoryPool::allocate(bool test) {
     Block* head = nullptr;
     Block* next = nullptr;
 
@@ -46,8 +46,10 @@ void* MemoryPool::allocate() {
 
         // Throw error if memory pool is full
         if (!head) {
-            std::cerr << "ALLOCATION ERROR: Memory pool exhausted!" << std::endl;
-            throw std::bad_alloc();
+            if (!test) {
+                cerr << "ALLOCATION ERROR: Memory pool exhausted!" << std::endl;
+            }
+            throw bad_alloc();
         }
 
         // Retrieve next value
@@ -57,6 +59,9 @@ void* MemoryPool::allocate() {
     } while (!freeList.compare_exchange_weak(head, next, memory_order_acquire, memory_order_relaxed));
     // memorder_order_acquire swaps the value if CAS succeeds 
     // memory_order_relaxed does nothing if CAS fails
+
+    // Return memory block
+    return head;
 }
 
 // Function to deallocate memory block

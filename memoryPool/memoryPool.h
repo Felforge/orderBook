@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <vector>
 
-struct alignas(64) Block {
+struct Block {
     Block* next;
 };
 
@@ -17,7 +17,7 @@ private:
 public:
     MemoryPool(size_t inpBlockSize, size_t inpBlockCount);
     ~MemoryPool();
-    void* allocate();
+    void* allocate(bool test=false);
     void deallocate(void* ptr);
 };
 

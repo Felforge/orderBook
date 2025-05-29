@@ -1,0 +1,1 @@
+g++ -std=c++17 testMemoryPool.cpp memoryPool.cpp -lgtest -o testMemoryPool.exe

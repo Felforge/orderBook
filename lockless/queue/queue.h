@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstddef>
+#include "../memoryPool/memoryPool.h"
 
 // Based off of an algorithm developed by Sundell and Tsigas
 
@@ -55,7 +56,7 @@ template <typename T>
 struct Node {
     std::atomic<MarkedPtr<T>> prev;
     std::atomic<MarkedPtr<T>> next;
-    T* data;
+    T data;
 
     // Number of threads that are currently holding a reference to this node
     std::atomic<size_t> refCount;
@@ -67,92 +68,116 @@ struct Node {
     void* memoryBlock;
 
     // Used if no parameters are provided
-    Node() : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
-        data(nullptr), refcount(1), is_dummy(true), memoryBlock(nullptr) {}
+    Node(void* memoryBlock) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
+        data(nullptr), refCount(1), isDummy(true), memoryBlock(memoryBlock) {}
     
     // Used if parameters are provided
     Node(void* memoryBlock, const T& val) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
-        data(val), refcount(1), value(val), is_dummy(false), memoryBlock(memoryBlock) {}
+        data(val), refCount(1), value(val), isDummy(false), memoryBlock(memoryBlock) {}
 };
-
-// Returns a node pointer and incraments the reference count
-template <typename T>
-Node<T>* copy(Node<T>* node) {
-    if (node) {
-    // Incrament counter while avoiding contention
-        node->refCount.fetch_add(1, std::memory_order_relaxed);
-    }
-    return node;
-}
-
-// Predeclare for usage in terminateNode
-template <typename T>
-void releaseNode(Node<T>* node);
-
-template <typename T>
-void terminateNode(Node<T>* node) {
-    if (!node) {
-        return;
-    }
-    releaseNode<T>(node->prev.load().getPtr());
-    releaseNode<T>(node->next.load().getPtr());
-
-    // Handle memory block if needed
-    if (node->memoryBlock) {
-        // Free memory
-    } else {
-        delete node;
-    }
-}
-
-template <typename T>
-void releaseNode(Node<T>* node) {
-    if (!node) {
-        return;
-    }
-    // Only reference is being deleted so node can also be terminated
-    if (node->refCount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-        terminateNode<T>(node);
-    }
-}
-
-// Increments the node's reference count so that the node won't be deleted while being used
-// Returns nullptr if mark is set and returns node pointer otherwise
-template <typename T>
-Node<T>* deref(std::atomic<MarkedPtr<T>>* ptr) {
-    // Load MarpedPtr object from atomic
-    MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
-    
-    // Return nullptr if mark is set
-    if (mPtr.getMark()) {
-        return nullptr;
-    }
-
-    // Load node from MarkedPtr
-    Node<T>* node = mPtr.getPtr();
-
-    // If node is invalid copy handles it
-    return copy<T>(node);
-}
-
-// Like deref but a pointer is always returned
-template <typename T>
-Node<T>* deref(std::atomic<MarkedPtr<T>>* ptr) {
-    // Load node from atomic MarkedPtr
-    Node<T>* node = ptr->load(std::memory_order_acquire).getPtr();
-
-    // If node is invalid copy handles it
-    return copy<T>(node);
-}
 
 template<typename T>
 class LocklessQueue {
-    public:
-        LocklessQueue() {
-            // Make memory pool concurrent first
+    private:
+        // Node memory pool
+        // Size must be assigned in constructor
+        MemoryPool pool; 
+
+        // Head and tail node pointers
+        Node<T>* head;
+        Node<T>* tail;
+
+        // Returns a node pointer and incraments the reference count
+        Node<T>* copy(Node<T>* node) {
+            if (node) {
+            // Incrament counter while avoiding contention
+                node->refCount.fetch_add(1, std::memory_order_relaxed);
+            }
+            return node;
         }
 
-    private:
+        // Predeclare for usage in terminateNode
+        void releaseNode(Node<T>* node);
+
+        template <typename T>
+        void terminateNode(Node<T>* node) {
+            if (!node) {
+                return;
+            }
+            releaseNode(node->prev.load().getPtr());
+            releaseNode(node->next.load().getPtr());
+
+            // Handle memory block
+            pool.deallocate(node->memoryBlock);
+        }
+
+        // Self explanatory
+        void releaseNode(Node<T>* node) {
+            if (!node) {
+                return;
+            }
+            // Only reference is being deleted so node can also be terminated
+            if (node->refCount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+                terminateNode(node);
+            }
+        }
+
+        // Increments the node's reference count so that the node won't be deleted while being used
+        // Returns nullptr if mark is set and returns node pointer otherwise
+        Node<T>* deref(std::atomic<MarkedPtr<T>>* ptr) {
+            // Load MarpedPtr object from atomic
+            MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
+            
+            // Return nullptr if mark is set
+            if (mPtr.getMark()) {
+                return nullptr;
+            }
+
+            // Load node from MarkedPtr
+            Node<T>* node = mPtr.getPtr();
+
+            // If node is invalid copy handles it
+            return copy(node);
+        }
+
+        // Like deref but a pointer is always returned
+        Node<T>* derefD(std::atomic<MarkedPtr<T>>* ptr) {
+            // Load node from atomic MarkedPtr
+            Node<T>* node = ptr->load(std::memory_order_acquire).getPtr();
+
+            // If node is invalid copy handles it
+            return copy(node);
+        }
+
+    public:
+        LocklessQueue(size_t numNodes)
+            // 2 is added to account for head and tail dummy nodes
+            : pool(sizeof(Node<T>), numNodes + 2) {
+
+            // Allocate memory for head and tail
+            void* headBlock = pool.allocate();
+            void* tailBlock = pool.allocate();
+
+            // Initialize head and tail
+            head = new (headBlock) Node<T>(headBlock);
+            tail = new (tailBlock) Node<T>(tailBlock);
+
+            // Connect nodes
+            head->next.store(MarkedPtr<T>(tail, false));
+            tail->prev.store(MarkedPtr<T>(head, false));
+        }
+
+        ~LocklessQueue() {
+            Node<T>* curr = head->next.load().getPtr();
+            Node<T>* next;
+            while (curr != tail) {
+                next = curr->next.load().getPtr();
+                releaseNode(curr);
+                curr = next;
+            }
+            releaseNode(head);
+            releaseNode(tail);
+        }
 };
 
 #endif

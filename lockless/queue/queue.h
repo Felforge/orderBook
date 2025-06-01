@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstddef>
+#include <thread>
 #include "../memoryPool/memoryPool.h"
 
 // Based off of an algorithm developed by Sundell and Tsigas
@@ -28,7 +29,7 @@ class MarkedPtr {
 
         // Marked as const as to not modify any member variables of the parent class
         Node<T>* getPtr() const {
-            // ~MARK_MASK inverts tje bits of MARK_MASK
+            // ~MARK_MASK inverts the bits of MARK_MASK
             // The return statement clears the first bit and casts it to Node<T>*
             return (Node<T>*)(bits & ~MARK_MASK);
         }
@@ -40,7 +41,7 @@ class MarkedPtr {
             return bits & MARK_MASK;
         }
 
-        // Comparison operators for MakredPtr objects
+        // Comparison operators for MarkedPtr objects
         // Marked as const as to not modify any member variables of the parent class
         bool operator==(const MarkedPtr& other) const {
             return bits == other.bits;
@@ -69,11 +70,11 @@ struct Node {
 
     // Used if no parameters are provided
     Node(void* memoryBlock) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
-        data(nullptr), refCount(1), isDummy(true), memoryBlock(memoryBlock) {}
+        data(), refCount(1), isDummy(true), memoryBlock(memoryBlock) {}
     
     // Used if parameters are provided
     Node(void* memoryBlock, const T& val) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
-        data(val), refCount(1), value(val), isDummy(false), memoryBlock(memoryBlock) {}
+        data(val), refCount(1), isDummy(false), memoryBlock(memoryBlock) {}
 };
 
 template<typename T>
@@ -99,7 +100,6 @@ class LocklessQueue {
         // Predeclare for usage in terminateNode
         void releaseNode(Node<T>* node);
 
-        template <typename T>
         void terminateNode(Node<T>* node) {
             if (!node) {
                 return;
@@ -116,7 +116,9 @@ class LocklessQueue {
             if (!node) {
                 return;
             }
-            // Only reference is being deleted so node can also be terminated
+
+            // Subtracts 1 from refCount atomically
+            // If refCount is one the node may be terminated as refCount will drop to 0
             if (node->refCount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
                 terminateNode(node);
             }
@@ -147,6 +149,107 @@ class LocklessQueue {
 
             // If node is invalid copy handles it
             return copy(node);
+        }
+
+        // Atomically sets deletion marker on prev pointer
+        // Tells other threads not to use this connection
+        void markPrev(Node<T>* node) {
+            while (true) {
+                // Retrieve marked pointer from node
+                MarkedPtr<T> link = node->prev.load();
+
+                // Exchange for marked version of the same pointer
+                // Return when exchange is successful
+                if (link.getMark() || node->prev.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
+                    return;
+                }
+            }
+        }
+
+        // Predeclare for usage in pushCommon
+        Node<T>* helpInsert(Node<T>* prev, Node<T>* node);
+
+        // Common logic for push operations
+        // Pushed to back if back is set to true
+        void pushCommon(Node<T>* node, bool back) {
+            // For push back
+            while (back) {
+                // Retrieve marked pointer from tail->prev
+                MarkedPtr<T> link = tail->prev.load();
+
+                // Increment refCount
+                copy(link.getPtr());
+
+                // Break if prev or node->next does not equal unmarked tail
+                if (link.getMark() || node->next.load() != MarkedPtr<T>(tail, false)) {
+                    return;
+                }
+
+                // Exchange tail->prev with new node
+                if (tail->prev.compare_exchange_weak(link, MarkedPtr<T>(node, false))) {
+                    // Increase refCount of node
+                    copy(node);
+
+                    // Decrement link refCount
+                    releaseNode(link.getPtr());
+
+                    // Helps complete incomplete left side of insertion
+                    if (node->prev.load().getMark()) {
+                        copy(node);
+                        helpInsert(node, tail);
+                        releaseNode(node);
+                    }
+
+                    // Decrement node refCount
+                    releaseNode(node);
+
+                    return;
+                }
+
+                // Decrement link refCount
+                releaseNode(link.getPtr());
+
+                // Yield the thread if unsuccessful
+                std::this_thread::yield();
+            }
+
+            // For push front
+            while (!back) {
+                // Retrieve marked pointer from tail->prev
+                MarkedPtr<T> link = head->next.load();
+
+                // Increment refCount
+                copy(link.getPtr());
+
+                // Break if prev or node->prev does not equal unmarked head
+                if (link.getMark() || node->prev.load() != MarkedPtr<T>(head, false)) {
+                    return;
+                }
+
+                // Exchange head->next with new node
+                if (head->next.compare_exchange_weak(link, MarkedPtr<T>(node, false))) {
+                    // Increase refCount of node
+                    copy(node);
+
+                    // Decrement link refCount
+                    releaseNode(link.getPtr());
+
+                    // Helps complete incomplete right side of insertion
+                    if (node->next.load().getMark()) {
+                        copy(node);
+                        helpInsert(node, head);
+                        releaseNode(node);
+                    }
+
+                    // Decrement node refCount
+                    releaseNode(node);
+
+                    return;
+                }
+
+                // Yield the thread if unsuccessful
+                std::this_thread::yield();
+            }
         }
 
     public:

@@ -53,6 +53,8 @@ class MarkedPtr {
 
 // Node of doubly linked list
 // memoryBlock is for memory pool allocation
+// Custom destructor may possibly be needed but not at the moment
+// It will be needed if there is memory management to be done
 template <typename T>
 struct Node {
     std::atomic<MarkedPtr<T>> prev;
@@ -88,10 +90,10 @@ class LocklessQueue {
         Node<T>* head;
         Node<T>* tail;
 
-        // Returns a node pointer and incraments the reference count
+        // Returns a node pointer and increments the reference count
         Node<T>* copy(Node<T>* node) {
             if (node) {
-            // Incrament counter while avoiding contention
+            // Increment counter while avoiding contention
                 node->refCount.fetch_add(1, std::memory_order_relaxed);
             }
             return node;
@@ -106,6 +108,9 @@ class LocklessQueue {
             }
             releaseNode(node->prev.load().getPtr());
             releaseNode(node->next.load().getPtr());
+
+            // Explicitly call destructor for Node<T>
+            node->~Node<T>();
 
             // Handle memory block
             pool.deallocate(node->memoryBlock);
@@ -171,63 +176,19 @@ class LocklessQueue {
 
         // Common logic for push operations
         // Pushed to back if back is set to true
-        void pushCommon(Node<T>* node, bool back) {
-            // For push back
-            while (back) {
-                // Retrieve marked pointer from tail->prev
-                MarkedPtr<T> link = tail->prev.load();
+        void pushCommon(Node<T>* node, Node<T>* next) {
+            while (true) {
+                // Retrieve next->prev
+                MarkedPtr<T> link = next->prev;
 
-                // Increment refCount
-                copy(link.getPtr());
-
-                // Break if prev or node->next does not equal unmarked tail
-                if (link.getMark() || node->next.load() != MarkedPtr<T>(tail, false)) {
-                    return;
+                // If link is marked or node->next does not equal unmarked next
+                if (link.getMark() || node->next != MarkedPtr<T>(next, false)) {
+                    // Break out of loop
+                    break;
                 }
 
-                // Exchange tail->prev with new node
-                if (tail->prev.compare_exchange_weak(link, MarkedPtr<T>(node, false))) {
-                    // Increase refCount of node
-                    copy(node);
-
-                    // Decrement link refCount
-                    releaseNode(link.getPtr());
-
-                    // Helps complete incomplete left side of insertion
-                    if (node->prev.load().getMark()) {
-                        copy(node);
-                        helpInsert(node, tail);
-                        releaseNode(node);
-                    }
-
-                    // Decrement node refCount
-                    releaseNode(node);
-
-                    return;
-                }
-
-                // Decrement link refCount
-                releaseNode(link.getPtr());
-
-                // Yield the thread if unsuccessful
-                std::this_thread::yield();
-            }
-
-            // For push front
-            while (!back) {
-                // Retrieve marked pointer from tail->prev
-                MarkedPtr<T> link = head->next.load();
-
-                // Increment refCount
-                copy(link.getPtr());
-
-                // Break if prev or node->prev does not equal unmarked head
-                if (link.getMark() || node->prev.load() != MarkedPtr<T>(head, false)) {
-                    return;
-                }
-
-                // Exchange head->next with new node
-                if (head->next.compare_exchange_weak(link, MarkedPtr<T>(node, false))) {
+                // Attempt to swap next->prev from link to unmarked pointer to node
+                if (next->prev.compare_exchange_weak(link, MarkedPtr<T>(node, false))) {
                     // Increase refCount of node
                     copy(node);
 
@@ -237,20 +198,152 @@ class LocklessQueue {
                     // Helps complete incomplete right side of insertion
                     if (node->next.load().getMark()) {
                         copy(node);
-                        helpInsert(node, head);
+                        helpInsert(head, node);
                         releaseNode(node);
                     }
 
                     // Decrement node refCount
                     releaseNode(node);
-
-                    return;
+                    
+                    // Break out of the loop
+                    break;
                 }
 
                 // Yield the thread if unsuccessful
                 std::this_thread::yield();
             }
+
+            // Release references to next and node
+            releaseNode(node);
+            releaseNode(next);
         }
+
+        // Helps complete insert operation that was interrupted
+        Node<T>* helpInsert(Node<T>* prev, Node<T>* node) {
+            // Used to remember a node that separates prev and node if we need to backtrack
+            Node<T>* last = nullptr;
+
+            while (true) {
+                // Retrieves safe to use copy of prev->next
+                Node<T>* prev2 = deref(&prev->next);
+
+                // if prev2 is invalid
+                if (!prev2) {
+                    // If we previously saved a valid node that seperates prev and node
+                    if (last) {
+                        // Atomically mark prev's prev pointer
+                        markPrev(prev);
+
+                        // Get a safe pointer to prev's next again
+                        Node<T>* next2 = derefD(&prev->next);
+
+                        // Prepare an expected value for CAS
+                        MarkedPtr<T> expected(prev, false);
+
+                        // Try to atomically update last's next pointer to next2, if it still points to prev
+                        if (last->next.compare_exchange_weak(expected, MarkedPtr<T>(next2, false))) {
+                            // If successful, release reference to prev as it's now fixed or transitioned
+                            releaseNode(prev);
+                        } else {
+                            // If CAS failed, release reference to next2
+                            // It will be reinstated next cycle if needed
+                            releaseNode(next2);
+                        }
+
+                        // Release reference to prev regardless
+                        releaseNode(prev);
+
+                        // Set prev to last
+                        prev = last;
+
+                        // Reset last to nullptr
+                        last = nullptr;
+
+                    } else {
+                        // If last does not exist try moving back to prev->prev
+                        prev2 = derefD(&prev->prev);
+
+                        // Release the former prev
+                        releaseNode(prev);
+
+                        // Move backwards
+                        prev = prev2;
+                    }
+
+                    // Yield the thread before going to next loop iteration
+                    std::this_thread::yield();
+                    continue;
+                }
+
+                // Load the current value of node's prev pointer
+                MarkedPtr<T> link = node->prev.load();
+
+                // If link is marked
+                if (link.getMark()) {
+                    // Release prev2 reference
+                    releaseNode(prev2);
+                    // Break out of loop
+                    break;
+                }
+
+                // If prev2 doesn't point to node we need to traverse further
+                if (prev2 != node) {
+                    // If last exists release it
+                    if (last) {
+                        releaseNode(last);
+                    }
+
+                    // Save the current prev for backtracking
+                    last = prev;
+
+                    // Move forward in the queue
+                    prev = prev2;
+                    
+                    // Yield the thread before going to next loop iteration
+                    std::this_thread::yield();
+                    continue;
+                }
+
+                // It is assumed here that prev2 == node so a reference could be released
+                // This is because a reference added to prev2 added it to node
+                releaseNode(prev2);
+
+                // If link alread points to prev the process is complete
+                if (link.getPtr() == prev) {
+                    // Success, break out of the loop
+                    break;
+                }
+
+                // If prev->next still equals node and CAS is successfully completed
+                // CAS is needed to prev and node together, as the field above asserted they aren't
+                if (prev->next.load() == MarkedPtr<T>(node, false) && 
+                    node->prev.compare_exchange_weak(link, MarkedPtr<T>(prev, false))) {
+                    // Increment prev's refCount for memory safety
+                    copy(prev);
+
+                    // Release the reference to the old previous node
+                    releaseNode(link.getPtr());
+
+                    // If prev's prev pointer is not marked we are done
+                    if (!prev->prev.load().getMark()) {
+                        // Break out of the loop
+                        break;
+                    }
+                }
+                // Yield the thread if unsuccessful
+                std::this_thread::yield();
+            }
+
+            // Clean up remaining saved node if it exists
+            if (last) {
+                releaseNode(last);
+            }
+
+            // Return the node that now precedes the inserted node
+            return prev;
+        }
+
+        // REDO PUSH COMMON
 
     public:
         LocklessQueue(size_t numNodes)

@@ -383,7 +383,8 @@ void OrderBook::updateBestIdx(PriorityQueue &queue, vector<bool> &activeLevels, 
     }
 }
 
-// ERROR IN DESTRUCTOR
+// MAKE SURE DESTRUCTOR IS BEING EXPLICITELY CALLED WHERE NEEDED BEFORE DEALLOCATION
+// IF NOT THERE COULD BE BIG MEMORY LEAKS
 
 // To-do:
 // Do test cases

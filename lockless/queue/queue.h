@@ -229,7 +229,7 @@ class LocklessQueue {
 
                 // if prev2 is invalid
                 if (!prev2) {
-                    // If we previously saved a valid node that seperates prev and node
+                    // If we previously saved a valid node that separates prev and node
                     if (last) {
                         // Atomically mark prev's prev pointer
                         markPrev(prev);
@@ -308,7 +308,7 @@ class LocklessQueue {
                 // This is because a reference added to prev2 added it to node
                 releaseNode(prev2);
 
-                // If link alread points to prev the process is complete
+                // If link already points to prev the process is complete
                 if (link.getPtr() == prev) {
                     // Success, break out of the loop
                     break;
@@ -343,7 +343,148 @@ class LocklessQueue {
             return prev;
         }
 
-        // REDO PUSH COMMON
+        // Help complete a delete operation that may have been interrupted
+        void helpDelete(Node<T>* node) {
+            // Mark node's prev connection
+            markPrev(node);
+
+            // Initialize last as nullptr
+            Node<T>* last = nullptr;
+
+            // Retrieve prev and next and increment refCount
+            Node<T>* prev = derefD(&node->prev);
+            Node<T>* next = derefD(&node->next);
+
+            while (true) {
+                // if prev and next are equal
+                if (prev == next) {
+                    // Break out of loop
+                    break;
+                }
+
+                // If next->next is marked
+                if (next->next.load().getMark()) {
+                    // Mark node through the connection from next
+                    markPrev(next);
+
+                    // Retrieve next->next and increment refCount
+                    Node<T>* next2 = derefD(&next->next);
+
+                    // Release next
+                    releaseNode(next);
+
+                    // Set next to next2
+                    next = next2;
+
+                    // Yield the thread before going to next loop iteration
+                    std::this_thread::yield();
+                    continue;
+                }
+
+                // Retrieve prev->next
+                Node<T>* prev2 = deref(&prev->next);
+
+                // If prev2 is nullptr
+                // This happens if it is marked
+                if (!prev2) {
+                    // If last is not nullptr
+                    if (last) {
+                        // Mark prev->prev
+                        markPrev(prev);
+
+                        // Retrieve node through prev->next
+                        Node<T>* next2 = derefD(&prev->next);
+
+                        // Created expected value
+                        MarkedPtr<T> expected(prev, false);
+
+                        // Try to atomically update last's next pointer to next2, if it still points to prev
+                        if (last->next.compare_exchange_weak(expected, MarkedPtr<T>(next2, false))) {
+                            // If successful, release reference to prev as it's now fixed or transitioned
+                            releaseNode(prev);
+                        } else {
+                            // If CAS failed, release reference to next2
+                            // It will be reinstated next cycle if needed
+                            releaseNode(next2);
+                        }
+
+                        // Release prev
+                        releaseNode(prev);
+
+                        // Set prev to last
+                        prev = last;
+
+                        // Reset last to nullptr
+                        last = nullptr;
+                    } else {
+                        // Retrieve prev->prev
+                        prev2 = derefD(&prev->prev);
+
+                        // Release prev
+                        releaseNode(prev);
+
+                        // Set prev to prev2
+                        // This is done for backtracking
+                        prev = prev2;
+                    }
+
+                    // Yield the thread before going to next loop iteration
+                    std::this_thread::yield();
+                    continue;
+                }
+
+                // If prev2 is not equal to node
+                // prev2 == node is the expected behavior
+                if (prev2 != node) {
+                    // If last is not nullptr
+                    if (last) {
+                        // Release last
+                        releaseNode(last);
+                    }
+
+                    // Set last equal to prev
+                    last = prev;
+
+                    // Set prev equal to prev2
+                    // This is done for backtracking
+                    prev = prev2;
+
+                    // Yield the thread before going to next loop iteration
+                    std::this_thread::yield();
+                    continue;
+                }
+
+                // Release prev2
+                releaseNode(prev2);
+
+                // Created expected value
+                MarkedPtr<T> expected(node, false);
+
+                // Try to atomically update prev's next pointer to next, if it still points to node
+                if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(next, false))) {
+                    // Increment node refCount
+                    copy(node);
+
+                    // Release node
+                    releaseNode(node);
+
+                    // Break out of loop
+                    break;
+                }
+
+                // Yield the thread before going to next loop iteration
+                std::this_thread::yield();
+            }
+
+            // If last is not nullptr then release it
+            if (last) {
+                releaseNode(last);
+            }
+
+            // Release prev and next
+            releaseNode(prev);
+            releaseNode(next);
+        }
 
     public:
         LocklessQueue(size_t numNodes)

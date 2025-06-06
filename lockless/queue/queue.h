@@ -102,10 +102,12 @@ class LocklessQueue {
         // Predeclare for usage in terminateNode
         void releaseNode(Node<T>* node);
 
+        // Calls Node destructor and deletes it from memory
         void terminateNode(Node<T>* node) {
             if (!node) {
                 return;
             }
+
             releaseNode(node->prev.load().getPtr());
             releaseNode(node->next.load().getPtr());
 
@@ -175,7 +177,6 @@ class LocklessQueue {
         Node<T>* helpInsert(Node<T>* prev, Node<T>* node);
 
         // Common logic for push operations
-        // Pushed to back if back is set to true
         void pushCommon(Node<T>* node, Node<T>* next) {
             while (true) {
                 // Retrieve next->prev
@@ -270,8 +271,7 @@ class LocklessQueue {
                         prev = prev2;
                     }
 
-                    // Yield the thread before going to next loop iteration
-                    std::this_thread::yield();
+                    // Go into the next loop iteration
                     continue;
                 }
 
@@ -299,8 +299,7 @@ class LocklessQueue {
                     // Move forward in the queue
                     prev = prev2;
                     
-                    // Yield the thread before going to next loop iteration
-                    std::this_thread::yield();
+                    // Go into the next loop iteration
                     continue;
                 }
 
@@ -376,8 +375,7 @@ class LocklessQueue {
                     // Set next to next2
                     next = next2;
 
-                    // Yield the thread before going to next loop iteration
-                    std::this_thread::yield();
+                    // Go into the next loop iteration
                     continue;
                 }
 
@@ -428,8 +426,7 @@ class LocklessQueue {
                         prev = prev2;
                     }
 
-                    // Yield the thread before going to next loop iteration
-                    std::this_thread::yield();
+                    // Go into the next loop iteration
                     continue;
                 }
 
@@ -449,8 +446,7 @@ class LocklessQueue {
                     // This is done for backtracking
                     prev = prev2;
 
-                    // Yield the thread before going to next loop iteration
-                    std::this_thread::yield();
+                    // Go into the next loop iteration
                     continue;
                 }
 
@@ -487,7 +483,7 @@ class LocklessQueue {
         }
 
         // Tries to break cross references between the given node and any of the nodes it references
-        // This is done by repeatdely updating the prev and next point as long as they reference a fully marked node
+        // This is done by repeatedly updating the prev and next point as long as they reference a fully marked node
         void removeCrossReference(Node<T>* node) {
             while (true) {
                 // Retrieve node->prev marked pointer
@@ -504,8 +500,7 @@ class LocklessQueue {
                     // Release old node->prev
                     releaseNode(prev.getPtr());
 
-                    // Yield the thread before going to next loop iteration
-                    std::this_thread::yield();
+                    // Go into the next loop iteration
                     continue;
                 }
 
@@ -523,8 +518,7 @@ class LocklessQueue {
                     // Release old node->next
                     releaseNode(next.getPtr());
 
-                    // Yield the thread before going to next loop iteration
-                    std::this_thread::yield();
+                    // Go into the next loop iteration
                     continue;
                 }
 
@@ -561,6 +555,73 @@ class LocklessQueue {
             }
             releaseNode(head);
             releaseNode(tail);
+        }
+
+        // Returns a node created with the given data
+        Node<T>* createNode(T data) {
+            // Allocate memory
+            void* block = pool.allocate();
+
+            // Create node object
+            Node<T>* node = new (block) Node<T>(block, data);
+
+            // Return node
+            return node;
+        }
+
+        // Function to push to the left side of the queue
+        // Returns a pointer to the node incase it is needed later
+        Node<T>* pushLeft(T data) {
+            // Create node object
+            Node<T>* node = createNode(data);
+
+            // Increment refCount of head
+            Node<T>* prev = copy(head);
+
+            // Gets pointer to current prev->next
+            // node will take it's place
+            // Will be nullptr if prev->next is marked
+            Node<T>* next = deref(&prev->next);
+
+            while (true) {
+                // if prev->next does not equal unmarked next
+                if (prev->next != MarkedPtr<T>(next, false)) {
+                    // Release current next
+                    releaseNode(next);
+                    
+                    // Redeclare it
+                    next = deref(&prev->next);
+
+                    // Go into the next loop iteration
+                    continue;
+                }
+
+                // Set values for node->prev and node->next
+                // These pointers are unmarked
+                node->prev.store(MarkedPtr<T>(prev, false));
+                node->next.store(MarkedPtr<T>(next, false));
+
+                // Set expected value
+                MarkedPtr<T> expected(next, false);
+
+                // Try to atomically update prev->next pointer to next, if it still points to unmarked next
+                if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(node, false))) {
+                    // Increment node refCount
+                    copy(node);
+
+                    // Break out of loop
+                    break;
+                }
+
+                // Yield the thread before going to next loop iteration
+                std::this_thread::yield();
+            }
+
+            // Run pushCommon to fully insert node into the queue
+            pushCommon(node, next);
+
+            // Return node
+            return node;
         }
 };
 

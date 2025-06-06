@@ -623,6 +623,58 @@ class LocklessQueue {
             // Return node
             return node;
         }
+
+        // Function to push to the right side of the queue
+        // Returns a pointer to the node incase it is needed later
+        Node<T>* pushRight(T data) {
+            // Create node object
+            Node<T>* node = createNode(data);
+
+            // Increment refCount of head
+            Node<T>* next = copy(tail);
+
+            // Gets pointer to current prev->next
+            // node will take it's place
+            // Will be nullptr if prev->next is marked
+            Node<T>* prev = deref(&next->prev);
+
+            while (true) {
+                // if prev->next does not equal unmarked next
+                if (prev->next != MarkedPtr<T>(next, false)) {
+                    // prev->next is broken so run helpInsert on it
+                    prev = helpInsert(prev, next);
+
+                    // Go into the next loop iteration
+                    continue;
+                }
+
+                // Set values for node->prev and node->next
+                // These pointers are unmarked
+                node->prev.store(MarkedPtr<T>(prev, false));
+                node->next.store(MarkedPtr<T>(next, false));
+
+                // Set expected value
+                MarkedPtr<T> expected(next, false);
+
+                // Try to atomically update prev->next pointer to next, if it still points to unmarked next
+                if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(node, false))) {
+                    // Increment node refCount
+                    copy(node);
+
+                    // Break out of loop
+                    break;
+                }
+
+                // Yield the thread before going to next loop iteration
+                std::this_thread::yield();
+            }
+
+            // Run pushCommon to fully insert node into the queue
+            pushCommon(node, next);
+
+            // Return node
+            return node;
+        }
 };
 
 #endif

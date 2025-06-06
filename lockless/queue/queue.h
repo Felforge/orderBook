@@ -486,6 +486,53 @@ class LocklessQueue {
             releaseNode(next);
         }
 
+        // Tries to break cross references between the given node and any of the nodes it references
+        // This is done by repeatdely updating the prev and next point as long as they reference a fully marked node
+        void removeCrossReference(Node<T>* node) {
+            while (true) {
+                // Retrieve node->prev marked pointer
+                MarkedPtr<T> prev = node->prev.load();
+
+                // If prev is marked
+                if (prev.getMark()) {
+                    // Retrieve prev->prev
+                    Node<T>* prev2 = derefD(&prev.getPtr()->prev);
+
+                    // Replace node->prev with marked node->prev->prev
+                    node->prev.store(MarkedPtr<T>(prev2, true));
+
+                    // Release old node->prev
+                    releaseNode(prev.getPtr());
+
+                    // Yield the thread before going to next loop iteration
+                    std::this_thread::yield();
+                    continue;
+                }
+
+                // Retrieve node->next marked pointer
+                MarkedPtr<T> next = node->next.load();
+
+                // If next is marked
+                if (next.getMark()) {
+                    // Retrieve next->next
+                    Node<T>* next2 = derefD(&next.getPtr()->next);
+
+                    // Replace node->next with marked node->next->next
+                    node->next.store(MarkedPtr<T>(next2, true));
+
+                    // Release old node->next
+                    releaseNode(next.getPtr());
+
+                    // Yield the thread before going to next loop iteration
+                    std::this_thread::yield();
+                    continue;
+                }
+
+                // Break from loop
+                break;
+            }
+        }
+
     public:
         LocklessQueue(size_t numNodes)
             // 2 is added to account for head and tail dummy nodes

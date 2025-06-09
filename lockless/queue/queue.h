@@ -546,6 +546,7 @@ class LocklessQueue {
         }
 
         ~LocklessQueue() {
+            // Cycle through all remaining items and release them
             Node<T>* curr = head->next.load().getPtr();
             Node<T>* next;
             while (curr != tail) {
@@ -674,6 +675,171 @@ class LocklessQueue {
 
             // Return node
             return node;
+        }
+
+        // Function to pop from the left side of the queue
+        // Returns the data from the node
+        T popLeft() {
+            // To be returned
+            T data;
+
+            // Retrieve prev which is head for the left side
+            Node<T>* prev = copy(head);
+
+            // Declare outside of loop for later use
+            Node<T>* node;
+
+            while (true) {
+
+                // Check if node is nullptr or node->next is incorrect
+                if (!node) {
+                    // node is marked but not yet deleted
+                    // call helpDelete to help the process along
+                    // This means another thread is already trying to delete it
+                    helpDelete(node);
+                    
+                    // Go into the next loop iteration
+                    continue;
+
+                // Check if queue is empty
+                } else if (node == tail) {
+                    // Algorithm specific to call releaseNode on head and tail
+                    // However, this seems like it would only lead to bad things
+                    // Return nullptr as the queue is empty
+                    return nullptr;
+                }
+
+                // Get MarkedPtr of node->next
+                MarkedPtr<T> link = node->next;
+
+                // If link is marked
+                if (link.getMark()) {
+                    // Help unlink node from logically delete node->next
+                    helpDelete(node);
+
+                    // release node before the next loop iteration
+                    // Will be incremented again next loop
+                    releaseNode(node);
+
+                    // Go into the next loop iteration
+                    continue;
+                }
+
+                // Try to atomically update node->next pointer to marked link, if it still points to unmarked link
+                if (prev->next.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
+                    // Call helpDelete to help remove the node now that it is marked
+                    helpDelete(node);
+
+                    // Retrieve next
+                    // Was checked above for if it was marked
+                    Node<T>* next = derefD(&node->next);
+
+                    // Connect prev and next
+                    helpInsert(prev, next);
+
+                    // Decrement prev and next
+                    releaseNode(prev);
+                    releaseNode(next);
+
+                    // Initialize data
+                    data = node->data;
+
+                    // Break out of loop
+                    break;
+                }
+
+                // release node before the next loop iteration
+                // Will be incremented again next loop
+                releaseNode(node);
+                
+                // Yield the thread before going to next loop iteration
+                std::this_thread::yield();
+            }
+
+            // Break possible cyclic references that include node
+            removeCrossReference(node);
+
+            // Fully decrement node for deletion
+            releaseNode(node);
+
+            // Return data
+            return data;
+        }
+
+        // Function to pop from the right side of the queue
+        // Returns the data from the node
+        T popRight() {
+            // To be returned
+            T data;
+
+            // Retrieve next which is tail for the right side
+            Node<T>* next = copy(tail);
+
+            // Retrieve node
+            // Will return nullptr if prev->next is marked
+            Node<T>* node = deref(&next->prev);
+
+            while (true) {
+
+                // Check if node is nullptr or node->next is incorrect
+                if (!node || node->next != MarkedPtr<T>(next, false)) {
+                    // node is marked but not yet deleted
+                    // call helpDelete to help the process along
+                    // This means another thread is already trying to delete it
+                    helpDelete(node);
+                    
+                    // Go into the next loop iteration
+                    continue;
+                } else if (node->next != MarkedPtr<T>(next, false)) {
+                    // Call helpInsert to update the prev pointer of next
+                    node = helpInsert(node, next);
+
+                    // Go into the next loop iteration
+                    continue;
+
+                // Check if queue is empty
+                } else if (node == head) {
+                    // Algorithm specific to call releaseNode on head and tail
+                    // However, this seems like it would only lead to bad things
+                    // Return nullptr as the queue is empty
+                    return nullptr;
+                }
+
+                // Try to atomically update node->next pointer to marked pointer to next, if it is still an unmarked pointer to next
+                if (prev->next.compare_exchange_weak(MarkedPtr<T>(next, false), MarkedPtr<T>(next, true))) {
+                    // Call helpDelete to help remove the node now that it is marked
+                    helpDelete(node);
+
+                    // Retrieve prev
+                    Node<T>* prev = derefD(&node->prev);
+
+                    // Connect prev and next
+                    // If prev is marked helpInsert will deal with it
+                    helpInsert(prev, next);
+
+                    // Decrement prev and next
+                    releaseNode(prev);
+                    releaseNode(next);
+
+                    // Initialize data
+                    data = node->data;
+
+                    // Break out of loop
+                    break;
+                }
+                
+                // Yield the thread before going to next loop iteration
+                std::this_thread::yield();
+            }
+
+            // Break possible cyclic references that include node
+            removeCrossReference(node);
+
+            // Fully decrement node for deletion
+            releaseNode(node);
+
+            // Return data
+            return data;
         }
 };
 

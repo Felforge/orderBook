@@ -691,13 +691,18 @@ class LocklessQueue {
 
             while (true) {
 
+                // Retrieve node
+                // Will return nullptr if prev->next is marked
+                node = deref(&prev->next);
+
                 // Check if node is nullptr or node->next is incorrect
                 if (!node) {
                     // node is marked but not yet deleted
-                    // call helpDelete to help the process along
                     // This means another thread is already trying to delete it
-                    helpDelete(node);
-                    
+                    // call helpDelete on prev to help the process along
+                    // This will update connected nodes, deleting marked ones
+                    helpDelete(prev);
+
                     // Go into the next loop iteration
                     continue;
 
@@ -726,7 +731,7 @@ class LocklessQueue {
                 }
 
                 // Try to atomically update node->next pointer to marked link, if it still points to unmarked link
-                if (prev->next.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
+                if (node->next.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
                     // Call helpDelete to help remove the node now that it is marked
                     helpDelete(node);
 
@@ -781,15 +786,22 @@ class LocklessQueue {
 
             while (true) {
 
-                // Check if node is nullptr or node->next is incorrect
-                if (!node || node->next != MarkedPtr<T>(next, false)) {
+                // Check if node is nullptr
+                if (!node) {
                     // node is marked but not yet deleted
-                    // call helpDelete to help the process along
                     // This means another thread is already trying to delete it
-                    helpDelete(node);
-                    
+                    // call helpDelete on next to help the process along
+                    // This will update connected nodes, deleting marked ones
+                    helpDelete(next);
+
+                    // Update node value
+                    // Must be done here as it isn't updated within the loop
+                    node = deref(&next->prev);
+
                     // Go into the next loop iteration
                     continue;
+
+                // Check if node->next is incorrect
                 } else if (node->next != MarkedPtr<T>(next, false)) {
                     // Call helpInsert to update the prev pointer of next
                     node = helpInsert(node, next);
@@ -806,7 +818,7 @@ class LocklessQueue {
                 }
 
                 // Try to atomically update node->next pointer to marked pointer to next, if it is still an unmarked pointer to next
-                if (prev->next.compare_exchange_weak(MarkedPtr<T>(next, false), MarkedPtr<T>(next, true))) {
+                if (node->next.compare_exchange_weak(MarkedPtr<T>(next, false), MarkedPtr<T>(next, true))) {
                     // Call helpDelete to help remove the node now that it is marked
                     helpDelete(node);
 
@@ -837,6 +849,78 @@ class LocklessQueue {
 
             // Fully decrement node for deletion
             releaseNode(node);
+
+            // Return data
+            return data;
+        }
+
+        // Function to remove a given node
+        // node must not be nullptr or dummy node
+        // Returns the data from the node
+        T removeNode(Node<T>* node) {
+
+            // Check for head and tail remove
+            if (node->prev.load() == MarkedPtr<T>(head, false)) {
+                // Removing from head, return popLeft
+                return popLeft();
+            } else if (node->next.load() == MarkedPtr<T>(tail, false)) {
+                // Removing from tail, return popRight
+                return popRight();
+            }
+
+            // To be returned
+            T data = node->data;
+
+            while (true) {
+
+                // Get MarkedPtr of node->prev
+                MarkedPtr<T> link1 = node->prev;
+
+                // Get MarkedPtr of node-next
+                MarkedPtr<T> link2 = node->next;
+
+                // If link1 or link2 are marked
+                if (link1.getMark() || link2.getMark()) {
+                    // Help unlink node from logically delete node->next
+                    helpDelete(node);
+
+                    // Go into the next loop iteration
+                    continue;
+                }
+
+                // Try to atomically update node->next pointer to marked link2, if it still points to unmarked link2
+                if (node->next.compare_exchange_weak(link2, MarkedPtr<T>(link2.getPtr(), true))) {
+                    // Call helpDelete to help remove the node now that it's connection is marked
+                    helpDelete(node);
+
+                    // Retrieve prev
+                    // Was checked above for if it was marked
+                    Node<T>* prev = derefD(&node->prev);
+
+                    // Retrieve next
+                    // Was checked above for if it was marked
+                    Node<T>* next = derefD(&node->next);
+
+                    // Connect prev and next
+                    helpInsert(prev, next);
+
+                    // Decrement prev and next
+                    releaseNode(prev);
+                    releaseNode(next);
+
+                    // Initialize data
+                    data = node->data;
+
+                    // Break out of loop
+                    break;
+                }
+                
+                // Yield the thread before going to next loop iteration
+                std::this_thread::yield();
+            }
+
+            // Break possible cyclic references that include node
+            removeCrossReference(node);
 
             // Return data
             return data;

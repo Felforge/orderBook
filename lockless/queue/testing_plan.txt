@@ -1,0 +1,62 @@
+Basic Operations
+
+ pushLeft
+Inserting into an empty deque
+Inserting into a non-empty deque
+Inserting multiple elements
+
+ pushRight
+Inserting into an empty deque
+Inserting into a non-empty deque
+Inserting multiple elements
+
+ popLeft
+Removing from an empty deque (should return nullptr or equivalent)
+Removing from a deque with one element
+Removing from a deque with multiple elements
+Removing after previous pops
+
+ popRight
+Removing from an empty deque
+Removing from a deque with one element
+Removing from a deque with multiple elements
+Removing after previous pops
+
+ removeNode
+Removing a node in the middle
+Removing the first data node (head’s next)
+Removing the last data node (tail’s prev)
+Removing after previous removes/pops
+Attempting to remove a node not currently in the deque (should not be possible, but worth asserting if possible)
+Attempting to remove a dummy node or nullptr (should not be possible, assert/prevent if needed)
+
+Reference Counting / Memory Management
+ No memory leaks (all nodes are properly released after pops/removes)
+ No double frees (node is never released more than once)
+ Reference count is correct after every operation
+ Nodes are deleted when no longer referenced
+ No use-after-free (accessing a node that was deleted)
+
+Concurrency / Thread Safety
+ Concurrent pushLeft and pushRight (from multiple threads)
+ Concurrent popLeft and popRight
+ Concurrent removeNode and pop operations
+ Concurrent mixed operations (all operations from all ends)
+ High contention scenarios (many threads, rapid insertion/removal)
+ ABA problem (node reuse from memory pool; ensure no stale pointers)
+ Correctness under thread preemption (simulate yielding at critical points)
+
+Edge Cases and Robustness
+ Popping until empty (repeatedly pop until the deque is empty)
+ Removing until empty
+ Removing/popping after all nodes are removed (should handle gracefully)
+ Interleaved pushes and pops (randomized order)
+ Stress test with large number of elements
+ Stress test with rapid allocation and deallocation (memory pool exhaustion)
+ Correct order preservation (FIFO/LIFO as appropriate for each operation)
+ Stress with all operations and memory pool at maximum capacity
+
+API Contract
+ Returned nodes/data are correct
+ After pop or remove, node is not accessible from the queue
+ Attempting to interact with an already removed node does not break anything

@@ -1,98 +1,163 @@
 #include <gtest/gtest.h>
 #include <thread>
 #include <vector>
+#include <optional>
 #include "queue.h"
 using namespace std;
 
-void threadWorkerInsert(Queue<Node<int>>& queue, Node<int>* node) {
-    queue.insert(node);
-}
-
-void threadWorkerDelete(Queue<Node<int>>& queue) {
-    queue.remove();
-}
-
-// Test General Functionality
-TEST(OrderListTest, HandlesGeneralUsage) {
+// Test Pushing to the Left
+TEST(LocklessQueueTest, HandlesPushLeft) {
     // Create queue
-    Queue queue = Queue<Node<int>>();
+    LocklessQueue<int> queue = LocklessQueue<int>(3);
 
-    // Create some nodes
-    Node<int> node1 = Node(1);
-    Node<int> node2 = Node(2);
-    Node<int> node3 = Node(3);
+    // Push to left on empty queue
+    queue.pushLeft(1);
 
-    // Insert everything
-    queue.insert(&node1);
-    queue.insert(&node2);
-    queue.insert(&node3);
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
 
-    // Verify expected order
-    EXPECT_EQ(queue.head.load()->data, 1);
-    EXPECT_EQ(queue.head.load()->next.load()->data, 2);
-    EXPECT_EQ(queue.tail.load()->data, 3);
+    // Push to left again
+    queue.pushLeft(2);
 
-    // Remove one and verify
-    queue.remove();
-    EXPECT_EQ(queue.head.load()->data, 2);
-    EXPECT_EQ(queue.tail.load()->data, 3);
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
 
-    // Remove another and verify
-    queue.remove();
-    EXPECT_EQ(queue.head.load()->data, 3);
-    EXPECT_EQ(queue.tail.load()->data, 3);
+    // Push to left again
+    queue.pushLeft(3);
 
-    // Remove last and verify
-    queue.remove();
-    EXPECT_EQ(queue.head.load(), nullptr);
-    EXPECT_EQ(queue.tail.load(), nullptr);
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
 }
 
-// Test Concurrency
-TEST(OrderListTest, HandlesConcurrency) {
+// Test Pushing to the Right
+TEST(LocklessQueueTest, HandlesPushRight) {
     // Create queue
-    Queue queue = Queue<Node<int>>();
+    LocklessQueue<int> queue = LocklessQueue<int>(3);
 
-    // Create nodes
-    Node<int>* node1 = new Node(1);
-    Node<int>* node2 = new Node(2);
-    Node<int>* node3 = new Node(3);
+    // Push to left on empty queue
+    queue.pushRight(1);
 
-    // Create and start threads
-    vector<thread> addThreads;
-    addThreads.emplace_back(threadWorkerInsert, ref(queue), node1);
-    addThreads.emplace_back(threadWorkerInsert, ref(queue), node2);
-    addThreads.emplace_back(threadWorkerInsert, ref(queue), node3);
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
 
-    // Wait for threads to finish
-    for (auto& thread : addThreads) {
-        thread.join();
-    }
+    // Push to left again
+    queue.pushRight(2);
 
-    // Verify expected order
-    EXPECT_EQ(queue.head.load()->data, 1);
-    EXPECT_EQ(queue.head.load()->next.load()->data, 2);
-    EXPECT_EQ(queue.tail.load()->data, 3);
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
 
-    // Delete everything
-    vector<thread> removeThreads;
-    for (int i = 0; i < 3; i++) {
-        removeThreads.emplace_back(threadWorkerDelete, ref(queue));
-    }
+    // Push to left again
+    queue.pushRight(3);
 
-    // Wait for threads to finish
-    for (auto& thread : removeThreads) {
-        thread.join();
-    }
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+}
+
+// Test Pushing with Left and Right
+TEST(LocklessQueueTest, HandlesPushCombination) {
+    // Create queue
+    LocklessQueue<int> queue = LocklessQueue<int>(3);
+
+    // Push to left on empty queue
+    queue.pushLeft(1);
+
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
+
+    // Push to left again
+    queue.pushRight(2);
+
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
+
+    // Push to left again
+    queue.pushLeft(3);
+
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
+}
+
+// Test Pop Left
+TEST(LocklessQueueTest, HandlesPopLeft) {
+    // Create queue
+    LocklessQueue<int> queue = LocklessQueue<int>(3);
+
+    // Pop from empty queue
+    auto val = queue.popLeft();
 
     // Verify expected result
-    EXPECT_EQ(queue.head.load(), nullptr);
-    EXPECT_EQ(queue.tail.load(), nullptr);
+    EXPECT_EQ(val, std::nullopt);
+    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
 
-    // Clear memory
-    delete node1;
-    delete node2;
-    delete node3;
+    // Pop one element to empty queue
+    queue.pushLeft(1);
+
+    // Pop element
+    val = queue.popLeft();
+
+    // Verify expected result
+    EXPECT_EQ(*val, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+
+    // Pop three elements one by one to empty queue
+    queue.pushRight(1);
+    queue.pushRight(2);
+    queue.pushRight(3);
+
+    // Pop first element
+    val = queue.popLeft();
+
+    // Verify expected result
+    EXPECT_EQ(*val, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+
+    // Pop second element
+    val = queue.popLeft();
+
+    // Verify expected result
+    EXPECT_EQ(*val, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+
+    // Pop third element
+    val = queue.popLeft();
+
+    // Verify expected result
+    EXPECT_EQ(*val, 3);
+    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
 }
 
 // Run all tests

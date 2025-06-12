@@ -1,1 +1,4 @@
-g++ -std=c++17 testQueue.cpp -lgtest -o testQueue.exe
+g++ -std=c++17 testQueue.cpp ../memoryPool/memoryPool.cpp -lgtest -o testQueue.exe
+
+For Debugging:
+g++ -std=c++17 -fsanitize=address testQueue.cpp ../memoryPool/memoryPool.cpp -lgtest -o testQueue.exe

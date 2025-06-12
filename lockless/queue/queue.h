@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <thread>
+#include <optional>
 #include "../memoryPool/memoryPool.h"
 
 // Based off of an algorithm developed by Sundell and Tsigas
@@ -86,10 +87,6 @@ class LocklessQueue {
         // Size must be assigned in constructor
         MemoryPool pool; 
 
-        // Head and tail node pointers
-        Node<T>* head;
-        Node<T>* tail;
-
         // Returns a node pointer and increments the reference count
         Node<T>* copy(Node<T>* node) {
             if (node) {
@@ -98,9 +95,6 @@ class LocklessQueue {
             }
             return node;
         }
-
-        // Predeclare for usage in terminateNode
-        void releaseNode(Node<T>* node);
 
         // Calls Node destructor and deletes it from memory
         void terminateNode(Node<T>* node) {
@@ -173,9 +167,6 @@ class LocklessQueue {
             }
         }
 
-        // Predeclare for usage in pushCommon
-        Node<T>* helpInsert(Node<T>* prev, Node<T>* node);
-
         // Common logic for push operations
         void pushCommon(Node<T>* node, Node<T>* next) {
             while (true) {
@@ -183,7 +174,7 @@ class LocklessQueue {
                 MarkedPtr<T> link = next->prev;
 
                 // If link is marked or node->next does not equal unmarked next
-                if (link.getMark() || node->next != MarkedPtr<T>(next, false)) {
+                if (link.getMark() || node->next.load() != MarkedPtr<T>(next, false)) {
                     // Break out of loop
                     break;
                 }
@@ -491,17 +482,20 @@ class LocklessQueue {
 
                 // If prev is marked
                 if (prev.getMark()) {
-                    // Retrieve prev->prev
-                    Node<T>* prev2 = derefD(&prev.getPtr()->prev);
+                    // Make sure prev's pointer is not nullptr
+                    if (prev.getPtr()) {
+                        // Retrieve prev->prev
+                        Node<T>* prev2 = derefD(&prev.getPtr()->prev);
 
-                    // Replace node->prev with marked node->prev->prev
-                    node->prev.store(MarkedPtr<T>(prev2, true));
+                        // Replace node->prev with marked node->prev->prev
+                        node->prev.store(MarkedPtr<T>(prev2, true));
 
-                    // Release old node->prev
-                    releaseNode(prev.getPtr());
+                        // Release old node->prev
+                        releaseNode(prev.getPtr());
 
-                    // Go into the next loop iteration
-                    continue;
+                        // Go into the next loop iteration
+                        continue;
+                    }
                 }
 
                 // Retrieve node->next marked pointer
@@ -509,17 +503,20 @@ class LocklessQueue {
 
                 // If next is marked
                 if (next.getMark()) {
-                    // Retrieve next->next
-                    Node<T>* next2 = derefD(&next.getPtr()->next);
+                    // Make sure next's pointer is not nullptr
+                    if (next.getPtr()) {
+                        // Retrieve next->next
+                        Node<T>* next2 = derefD(&next.getPtr()->next);
 
-                    // Replace node->next with marked node->next->next
-                    node->next.store(MarkedPtr<T>(next2, true));
+                        // Replace node->next with marked node->next->next
+                        node->next.store(MarkedPtr<T>(next2, true));
 
-                    // Release old node->next
-                    releaseNode(next.getPtr());
+                        // Release old node->next
+                        releaseNode(next.getPtr());
 
-                    // Go into the next loop iteration
-                    continue;
+                        // Go into the next loop iteration
+                        continue;
+                    }
                 }
 
                 // Break from loop
@@ -528,6 +525,12 @@ class LocklessQueue {
         }
 
     public:
+
+        // Head and tail node pointers
+        // public for testing purposes
+        Node<T>* head;
+        Node<T>* tail;
+
         LocklessQueue(size_t numNodes)
             // 2 is added to account for head and tail dummy nodes
             : pool(sizeof(Node<T>), numNodes + 2) {
@@ -586,7 +589,7 @@ class LocklessQueue {
 
             while (true) {
                 // if prev->next does not equal unmarked next
-                if (prev->next != MarkedPtr<T>(next, false)) {
+                if (prev->next.load() != MarkedPtr<T>(next, false)) {
                     // Release current next
                     releaseNode(next);
                     
@@ -641,7 +644,7 @@ class LocklessQueue {
 
             while (true) {
                 // if prev->next does not equal unmarked next
-                if (prev->next != MarkedPtr<T>(next, false)) {
+                if (prev->next.load() != MarkedPtr<T>(next, false)) {
                     // prev->next is broken so run helpInsert on it
                     prev = helpInsert(prev, next);
 
@@ -678,8 +681,8 @@ class LocklessQueue {
         }
 
         // Function to pop from the left side of the queue
-        // Returns the data from the node
-        T popLeft() {
+        // Returns the data from the node or nothing
+        std::optional<T> popLeft() {
             // To be returned
             T data;
 
@@ -711,7 +714,7 @@ class LocklessQueue {
                     // Algorithm specific to call releaseNode on head and tail
                     // However, this seems like it would only lead to bad things
                     // Return nullptr as the queue is empty
-                    return nullptr;
+                    return std::nullopt;
                 }
 
                 // Get MarkedPtr of node->next
@@ -772,8 +775,8 @@ class LocklessQueue {
         }
 
         // Function to pop from the right side of the queue
-        // Returns the data from the node
-        T popRight() {
+        // Returns the data from the node or nothing
+        std::optional<T> popRight() {
             // To be returned
             T data;
 
@@ -802,7 +805,7 @@ class LocklessQueue {
                     continue;
 
                 // Check if node->next is incorrect
-                } else if (node->next != MarkedPtr<T>(next, false)) {
+                } else if (node->next.load() != MarkedPtr<T>(next, false)) {
                     // Call helpInsert to update the prev pointer of next
                     node = helpInsert(node, next);
 
@@ -814,7 +817,7 @@ class LocklessQueue {
                     // Algorithm specific to call releaseNode on head and tail
                     // However, this seems like it would only lead to bad things
                     // Return nullptr as the queue is empty
-                    return nullptr;
+                    return std::nullopt;
                 }
 
                 // Try to atomically update node->next pointer to marked pointer to next, if it is still an unmarked pointer to next
@@ -856,8 +859,8 @@ class LocklessQueue {
 
         // Function to remove a given node
         // node must not be nullptr or dummy node
-        // Returns the data from the node
-        T removeNode(Node<T>* node) {
+        // Returns the data from the node or nothing
+        std::optional<T> removeNode(Node<T>* node) {
 
             // Check for head and tail remove
             if (node->prev.load() == MarkedPtr<T>(head, false)) {

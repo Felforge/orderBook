@@ -131,7 +131,7 @@ class LocklessQueue {
             // Load MarpedPtr object from atomic
             MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
             
-            // Return nullptr if mark is set
+            // Return nullptr if mark is set or ptr is nullptr
             if (mPtr.getMark()) {
                 return nullptr;
             }
@@ -704,7 +704,10 @@ class LocklessQueue {
                     // This means another thread is already trying to delete it
                     // call helpDelete on prev to help the process along
                     // This will update connected nodes, deleting marked ones
-                    helpDelete(prev);
+                    helpDelete(node);
+
+                    // release reference to node
+                    releaseNode(node);
 
                     // Go into the next loop iteration
                     continue;

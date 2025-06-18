@@ -155,6 +155,7 @@ class LocklessQueue {
         // Atomically sets deletion marker on prev pointer
         // Tells other threads not to use this connection
         void markPrev(Node<T>* node) {
+
             while (true) {
                 // Retrieve marked pointer from node
                 MarkedPtr<T> link = node->prev.load();
@@ -480,43 +481,39 @@ class LocklessQueue {
                 // Retrieve node->prev marked pointer
                 MarkedPtr<T> prev = node->prev.load();
 
-                // If prev is marked
-                if (prev.getMark()) {
-                    // Make sure prev's pointer is not nullptr
-                    if (prev.getPtr()) {
-                        // Retrieve prev->prev
-                        Node<T>* prev2 = derefD(&prev.getPtr()->prev);
+                // If prev->next is marked
+                // Make sure prev's pointer is not nullptr
+                if (prev.getPtr() && !prev.getPtr()->isDummy && prev.getPtr()->next.load().getMark()) {
+                    // Retrieve prev->prev
+                    Node<T>* prev2 = derefD(&prev.getPtr()->prev);
 
-                        // Replace node->prev with marked node->prev->prev
-                        node->prev.store(MarkedPtr<T>(prev2, true));
+                    // Replace node->prev with marked node->prev->prev
+                    node->prev.store(MarkedPtr<T>(prev2, true));
 
-                        // Release old node->prev
-                        releaseNode(prev.getPtr());
+                    // Release old node->prev
+                    releaseNode(prev.getPtr());
 
-                        // Go into the next loop iteration
-                        continue;
-                    }
+                    // Go into the next loop iteration
+                    continue;
                 }
 
                 // Retrieve node->next marked pointer
                 MarkedPtr<T> next = node->next.load();
 
-                // If next is marked
-                if (next.getMark()) {
-                    // Make sure next's pointer is not nullptr
-                    if (next.getPtr()) {
-                        // Retrieve next->next
-                        Node<T>* next2 = derefD(&next.getPtr()->next);
+                // If next->next is marked
+                // Make sure next's pointer is not nullptr
+                if (next.getPtr() && !next.getPtr()->isDummy && next.getPtr()->next.load().getMark()) {
+                    // Retrieve next->next
+                    Node<T>* next2 = derefD(&next.getPtr()->next);
 
-                        // Replace node->next with marked node->next->next
-                        node->next.store(MarkedPtr<T>(next2, true));
+                    // Replace node->next with marked node->next->next
+                    node->next.store(MarkedPtr<T>(next2, true));
 
-                        // Release old node->next
-                        releaseNode(next.getPtr());
+                    // Release old node->next
+                    releaseNode(next.getPtr());
 
-                        // Go into the next loop iteration
-                        continue;
-                    }
+                    // Go into the next loop iteration
+                    continue;
                 }
 
                 // Break from loop
@@ -714,8 +711,11 @@ class LocklessQueue {
 
                 // Check if queue is empty
                 } else if (node == tail) {
-                    // Algorithm specific to call releaseNode on head and tail
-                    // However, this seems like it would only lead to bad things
+                    // Release head and tail
+                    // They were incremented above
+                    releaseNode(head);
+                    releaseNode(tail);
+
                     // Return nullptr as the queue is empty
                     return std::nullopt;
                 }
@@ -746,7 +746,7 @@ class LocklessQueue {
                     Node<T>* next = derefD(&node->next);
 
                     // Connect prev and next
-                    helpInsert(prev, next);
+                    prev = helpInsert(prev, next);
 
                     // Decrement prev and next
                     releaseNode(prev);
@@ -767,8 +767,12 @@ class LocklessQueue {
                 std::this_thread::yield();
             }
 
+            std::cout << prev->next.load().getPtr()->prev.load().getPtr() << std::endl;
+
             // Break possible cyclic references that include node
             removeCrossReference(node);
+
+            std::cout << prev->next.load().getPtr()->prev.load().getPtr() << std::endl;
 
             // Fully decrement node for deletion
             releaseNode(node);
@@ -817,8 +821,11 @@ class LocklessQueue {
 
                 // Check if queue is empty
                 } else if (node == head) {
-                    // Algorithm specific to call releaseNode on head and tail
-                    // However, this seems like it would only lead to bad things
+                    // Release head and tail
+                    // They were incremented above
+                    releaseNode(head);
+                    releaseNode(tail);
+
                     // Return nullptr as the queue is empty
                     return std::nullopt;
                 }

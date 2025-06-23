@@ -155,7 +155,6 @@ class LocklessQueue {
         // Atomically sets deletion marker on prev pointer
         // Tells other threads not to use this connection
         void markPrev(Node<T>* node) {
-
             while (true) {
                 // Retrieve marked pointer from node
                 MarkedPtr<T> link = node->prev.load();
@@ -189,14 +188,11 @@ class LocklessQueue {
                     releaseNode(link.getPtr());
 
                     // Helps complete incomplete right side of insertion
-                    if (node->next.load().getMark()) {
-                        copy(node);
-                        helpInsert(head, node);
-                        releaseNode(node);
+                    if (node->prev.load().getMark()) {
+                        Node<T>* prev2 = copy(node);
+                        helpInsert(prev2, next);
+                        releaseNode(prev2);
                     }
-
-                    // Decrement node refCount
-                    releaseNode(node);
                     
                     // Break out of the loop
                     break;
@@ -213,8 +209,8 @@ class LocklessQueue {
 
         // Helps complete insert operation that was interrupted
         Node<T>* helpInsert(Node<T>* prev, Node<T>* node) {
-            // Used to remember a node that separates prev and node if we need to backtrack
-            Node<T>* last = nullptr;
+            // Get mark of last connection
+            bool lastMark = true;
 
             while (true) {
                 // Retrieves safe to use copy of prev->next
@@ -222,46 +218,23 @@ class LocklessQueue {
 
                 // if prev2 is invalid
                 if (!prev2) {
-                    // If we previously saved a valid node that separates prev and node
-                    if (last) {
-                        // Atomically mark prev's prev pointer
-                        markPrev(prev);
+                    // If lastMark is set to false
+                    if (!lastMark) {
+                        // Calc helpDelete on prev
+                        helpDelete(prev);
 
-                        // Get a safe pointer to prev's next again
-                        Node<T>* next2 = derefD(&prev->next);
-
-                        // Prepare an expected value for CAS
-                        MarkedPtr<T> expected(prev, false);
-
-                        // Try to atomically update last's next pointer to next2, if it still points to prev
-                        if (last->next.compare_exchange_weak(expected, MarkedPtr<T>(next2, false))) {
-                            // If successful, release reference to prev as it's now fixed or transitioned
-                            releaseNode(prev);
-                        } else {
-                            // If CAS failed, release reference to next2
-                            // It will be reinstated next cycle if needed
-                            releaseNode(next2);
-                        }
-
-                        // Release reference to prev regardless
-                        releaseNode(prev);
-
-                        // Set prev to last
-                        prev = last;
-
-                        // Reset last to nullptr
-                        last = nullptr;
-
-                    } else {
-                        // If last does not exist try moving back to prev->prev
-                        prev2 = derefD(&prev->prev);
-
-                        // Release the former prev
-                        releaseNode(prev);
-
-                        // Move backwards
-                        prev = prev2;
+                        // Set lastMark back to true
+                        lastMark = true;
                     }
+
+                    // Update prev2
+                    prev2 = deref(&prev->next);
+
+                    // Release reference from prev
+                    releaseNode(prev);
+
+                    // Update prev to prev2
+                    prev = prev2;
 
                     // Go into the next loop iteration
                     continue;
@@ -280,13 +253,11 @@ class LocklessQueue {
 
                 // If prev2 doesn't point to node we need to traverse further
                 if (prev2 != node) {
-                    // If last exists release it
-                    if (last) {
-                        releaseNode(last);
-                    }
+                    // Set lastMark to false to mark prev for deletion
+                    lastMark = false;
 
-                    // Save the current prev for backtracking
-                    last = prev;
+                    // Release reference from prev
+                    releaseNode(prev);
 
                     // Move forward in the queue
                     prev = prev2;
@@ -299,16 +270,8 @@ class LocklessQueue {
                 // This is because a reference added to prev2 added it to node
                 releaseNode(prev2);
 
-                // If link already points to prev the process is complete
-                if (link.getPtr() == prev) {
-                    // Success, break out of the loop
-                    break;
-                }
-
-                // If prev->next still equals node and CAS is successfully completed
-                // CAS is needed to prev and node together, as the field above asserted they aren't
-                if (prev->next.load() == MarkedPtr<T>(node, false) && 
-                    node->prev.compare_exchange_weak(link, MarkedPtr<T>(prev, false))) {
+                // CAS is needed to connect prev and node together, as the field above asserted they aren't
+                if (node->prev.compare_exchange_weak(link, MarkedPtr<T>(prev, false))) {
                     // Increment prev's refCount for memory safety
                     copy(prev);
 
@@ -316,18 +279,16 @@ class LocklessQueue {
                     releaseNode(link.getPtr());
 
                     // If prev's prev pointer is not marked we are done
-                    if (!prev->prev.load().getMark()) {
-                        // Break out of the loop
-                        break;
+                    if (prev->prev.load().getMark()) {
+                        // Continue into next loop iteration
+                        continue;
                     }
+
+                    // Break out of loop otherwise
+                    break;
                 }
                 // Yield the thread if unsuccessful
                 std::this_thread::yield();
-            }
-
-            // Clean up remaining saved node if it exists
-            if (last) {
-                releaseNode(last);
             }
 
             // Return the node that now precedes the inserted node
@@ -339,8 +300,8 @@ class LocklessQueue {
             // Mark node's prev connection
             markPrev(node);
 
-            // Initialize last as nullptr
-            Node<T>* last = nullptr;
+            // Marker of last link
+            bool lastMark = true;
 
             // Retrieve prev and next and increment refCount
             Node<T>* prev = derefD(&node->prev);
@@ -355,9 +316,6 @@ class LocklessQueue {
 
                 // If next->next is marked
                 if (next->next.load().getMark()) {
-                    // Mark node through the connection from next
-                    markPrev(next);
-
                     // Retrieve next->next and increment refCount
                     Node<T>* next2 = derefD(&next->next);
 
@@ -377,46 +335,23 @@ class LocklessQueue {
                 // If prev2 is nullptr
                 // This happens if it is marked
                 if (!prev2) {
-                    // If last is not nullptr
-                    if (last) {
-                        // Mark prev->prev
-                        markPrev(prev);
+                    // If lastMark is false
+                    if (!lastMark) {
+                        // Calc helpDelete on prev
+                        helpDelete(prev);
 
-                        // Retrieve node through prev->next
-                        Node<T>* next2 = derefD(&prev->next);
-
-                        // Created expected value
-                        MarkedPtr<T> expected(prev, false);
-
-                        // Try to atomically update last's next pointer to next2, if it still points to prev
-                        if (last->next.compare_exchange_weak(expected, MarkedPtr<T>(next2, false))) {
-                            // If successful, release reference to prev as it's now fixed or transitioned
-                            releaseNode(prev);
-                        } else {
-                            // If CAS failed, release reference to next2
-                            // It will be reinstated next cycle if needed
-                            releaseNode(next2);
-                        }
-
-                        // Release prev
-                        releaseNode(prev);
-
-                        // Set prev to last
-                        prev = last;
-
-                        // Reset last to nullptr
-                        last = nullptr;
-                    } else {
-                        // Retrieve prev->prev
-                        prev2 = derefD(&prev->prev);
-
-                        // Release prev
-                        releaseNode(prev);
-
-                        // Set prev to prev2
-                        // This is done for backtracking
-                        prev = prev2;
+                        // Set lastMark back to true
+                        lastMark = true;
                     }
+
+                    // Update prev2
+                    prev2 = deref(&prev->next);
+
+                    // Release reference from prev
+                    releaseNode(prev);
+
+                    // Update prev to prev2
+                    prev = prev2;
 
                     // Go into the next loop iteration
                     continue;
@@ -425,14 +360,11 @@ class LocklessQueue {
                 // If prev2 is not equal to node
                 // prev2 == node is the expected behavior
                 if (prev2 != node) {
-                    // If last is not nullptr
-                    if (last) {
-                        // Release last
-                        releaseNode(last);
-                    }
+                    // Set lastMark to false to indicate prev must be deleted
+                    lastMark = false;
 
-                    // Set last equal to prev
-                    last = prev;
+                    // Release reference from prev
+                    releaseNode(prev);
 
                     // Set prev equal to prev2
                     // This is done for backtracking
@@ -442,7 +374,7 @@ class LocklessQueue {
                     continue;
                 }
 
-                // Release prev2
+                // Release reference from prev2
                 releaseNode(prev2);
 
                 // Created expected value
@@ -462,11 +394,6 @@ class LocklessQueue {
 
                 // Yield the thread before going to next loop iteration
                 std::this_thread::yield();
-            }
-
-            // If last is not nullptr then release it
-            if (last) {
-                releaseNode(last);
             }
 
             // Release prev and next
@@ -642,7 +569,6 @@ class LocklessQueue {
             while (true) {
                 // if prev->next does not equal unmarked next
                 if (prev->next.load() != MarkedPtr<T>(next, false)) {
-                    // prev->next is broken so run helpInsert on it
                     prev = helpInsert(prev, next);
 
                     // Go into the next loop iteration
@@ -695,26 +621,12 @@ class LocklessQueue {
                 // Will return nullptr if prev->next is marked
                 node = deref(&prev->next);
 
-                // Check if node is nullptr or node->next is incorrect
-                if (!node) {
-                    // node is marked but not yet deleted
-                    // This means another thread is already trying to delete it
-                    // call helpDelete on prev to help the process along
-                    // This will update connected nodes, deleting marked ones
-                    helpDelete(node);
-
-                    // release reference to node
-                    releaseNode(node);
-
-                    // Go into the next loop iteration
-                    continue;
-
                 // Check if queue is empty
-                } else if (node == tail) {
-                    // Release head and tail
+                if (node == tail) {
+                    // Release node and prev
                     // They were incremented above
-                    releaseNode(head);
-                    releaseNode(tail);
+                    releaseNode(node);
+                    releaseNode(prev);
 
                     // Return nullptr as the queue is empty
                     return std::nullopt;
@@ -767,15 +679,13 @@ class LocklessQueue {
                 std::this_thread::yield();
             }
 
-            std::cout << prev->next.load().getPtr()->prev.load().getPtr() << std::endl;
-
             // Break possible cyclic references that include node
             removeCrossReference(node);
 
-            std::cout << prev->next.load().getPtr()->prev.load().getPtr() << std::endl;
-
             // Fully decrement node for deletion
             releaseNode(node);
+
+            std::cout << node->refCount << std::endl;
 
             // Return data
             return data;

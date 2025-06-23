@@ -16,6 +16,8 @@ TEST(LocklessQueueTest, HandlesPushLeft) {
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr(), queue.head);
     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
@@ -153,41 +155,39 @@ TEST(LocklessQueueTest, HandlesPopLeft) {
     // Pop three elements one by one to empty queue
     queue.pushRight(1);
     queue.pushRight(2);
-    // queue.pushRight(3);
+    queue.pushRight(3);
 
-    // // Pop first element
-    // val = queue.popLeft();
+    // Pop first element
+    val = queue.popLeft();
 
-    // cout << queue.tail->prev.load().getPtr() << endl;
+    // Verify expected result
+    EXPECT_EQ(*val, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // // Verify expected result
-    // EXPECT_EQ(*val, 1);
-    // EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    // EXPECT_EQ(queue.head->next.load().getPtr()->data, 2);
-    // EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
-    // EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
-    // EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-    // EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Pop second element
+    val = queue.popLeft();
 
-    // // Pop second element
-    // val = queue.popLeft();
+    // Verify expected result
+    EXPECT_EQ(*val, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // // Verify expected result
-    // EXPECT_EQ(*val, 2);
-    // EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    // EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
-    // EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-    // EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Pop third element
+    val = queue.popLeft();
 
-    // // Pop third element
-    // val = queue.popLeft();
-
-    // // Verify expected result
-    // EXPECT_EQ(*val, 3);
-    // EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    // EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-    // EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-    // EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Verify expected result
+    EXPECT_EQ(*val, 3);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 }
 
 // Run all tests

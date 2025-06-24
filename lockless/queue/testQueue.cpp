@@ -140,7 +140,7 @@ TEST(LocklessQueueTest, HandlesPopLeft) {
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
     // Pop one element to empty queue
-    queue.pushLeft(1);
+    queue.pushRight(1);
 
     // Pop element
     val = queue.popLeft();

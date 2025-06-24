@@ -97,13 +97,16 @@ class LocklessQueue {
         }
 
         // Calls Node destructor and deletes it from memory
-        void terminateNode(Node<T>* node) {
+        // destrurctor flag should be true if and only if called from the destructor
+        void terminateNode(Node<T>* node, bool destructor=false) {
             if (!node) {
                 return;
             }
 
-            releaseNode(node->prev.load().getPtr());
-            releaseNode(node->next.load().getPtr());
+            if (!destructor) {
+                releaseNode(node->prev.load().getPtr());
+                releaseNode(node->next.load().getPtr());
+            }
 
             // Explicitly call destructor for Node<T>
             node->~Node<T>();
@@ -114,7 +117,9 @@ class LocklessQueue {
 
         // Self explanatory
         void releaseNode(Node<T>* node) {
-            if (!node) {
+            // Return if node is invalid or is a dummy node
+            // Dummy nodes should never be deleted during runtime and should thus be ignored
+            if (!node || node->isDummy) {
                 return;
             }
 
@@ -190,7 +195,7 @@ class LocklessQueue {
                     // Helps complete incomplete right side of insertion
                     if (node->prev.load().getMark()) {
                         Node<T>* prev2 = copy(node);
-                        helpInsert(prev2, next);
+                        prev2 = helpInsert(prev2, next);
                         releaseNode(prev2);
                     }
                     
@@ -203,8 +208,8 @@ class LocklessQueue {
             }
 
             // Release references to next and node
-            releaseNode(node);
             releaseNode(next);
+            releaseNode(node);
         }
 
         // Helps complete insert operation that was interrupted
@@ -272,8 +277,10 @@ class LocklessQueue {
 
                 // CAS is needed to connect prev and node together, as the field above asserted they aren't
                 if (node->prev.compare_exchange_weak(link, MarkedPtr<T>(prev, false))) {
-                    // Increment prev's refCount for memory safety
-                    copy(prev);
+                    // Incrament prev's refCount if necessary
+                    if (!link.getPtr()) {
+                        copy(prev);
+                    }
 
                     // Release the reference to the old previous node
                     releaseNode(link.getPtr());
@@ -382,8 +389,8 @@ class LocklessQueue {
 
                 // Try to atomically update prev's next pointer to next, if it still points to node
                 if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(next, false))) {
-                    // Increment node refCount
-                    copy(node);
+                    // Increment next refCount
+                    copy(next);
 
                     // Release node
                     releaseNode(node);
@@ -470,17 +477,18 @@ class LocklessQueue {
             tail->prev.store(MarkedPtr<T>(head, false));
         }
 
+        // It is assumed that no threads will be using the queue when this runs
         ~LocklessQueue() {
-            // Cycle through all remaining items and release them
+            // Cycle through all remaining items and terminate them
             Node<T>* curr = head->next.load().getPtr();
             Node<T>* next;
             while (curr != tail) {
                 next = curr->next.load().getPtr();
-                releaseNode(curr);
+                terminateNode(curr, true);
                 curr = next;
             }
-            releaseNode(head);
-            releaseNode(tail);
+            terminateNode(head, true);
+            terminateNode(tail, true);
         }
 
         // Returns a node created with the given data
@@ -584,7 +592,7 @@ class LocklessQueue {
                 // Try to atomically update prev->next pointer to next, if it still points to unmarked next
                 if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(node, false))) {
                     // Increment node refCount
-                    copy(node);
+                    copy(node); 
 
                     // Break out of loop
                     break;
@@ -658,13 +666,6 @@ class LocklessQueue {
                     // Connect prev and next
                     prev = helpInsert(prev, next);
 
-                    // // If last real node is removed
-                    // if (prev == head && next == tail) {
-                    //     // Reconnect head and tail
-                    //     head->next.store(MarkedPtr<T>(tail, false));
-                    //     tail->prev.store(MarkedPtr<T>(head, false));
-                    // }
-
                     // Decrement prev and next
                     releaseNode(prev);
                     releaseNode(next);
@@ -689,8 +690,6 @@ class LocklessQueue {
 
             // Fully decrement node for deletion
             releaseNode(node);
-
-            std::cout << node->refCount << std::endl;
 
             // Return data
             return data;

@@ -210,7 +210,7 @@ class LocklessQueue {
         // Helps complete insert operation that was interrupted
         Node<T>* helpInsert(Node<T>* prev, Node<T>* node) {
             // Get mark of last connection
-            bool lastMark = true;
+            bool lastMark = prev->next.load().getMark();
 
             while (true) {
                 // Retrieves safe to use copy of prev->next
@@ -223,7 +223,7 @@ class LocklessQueue {
                         // Calc helpDelete on prev
                         helpDelete(prev);
 
-                        // Set lastMark back to true
+                        // Set lastMark to true to match helpDelete
                         lastMark = true;
                     }
 
@@ -253,8 +253,8 @@ class LocklessQueue {
 
                 // If prev2 doesn't point to node we need to traverse further
                 if (prev2 != node) {
-                    // Set lastMark to false to mark prev for deletion
-                    lastMark = false;
+                    // Update lastMark
+                    lastMark = prev->next.load().getMark();
 
                     // Release reference from prev
                     releaseNode(prev);
@@ -300,12 +300,12 @@ class LocklessQueue {
             // Mark node's prev connection
             markPrev(node);
 
-            // Marker of last link
-            bool lastMark = true;
-
             // Retrieve prev and next and increment refCount
             Node<T>* prev = derefD(&node->prev);
             Node<T>* next = derefD(&node->next);
+
+            // Marker of last link
+            bool lastMark = prev->next.load().getMark();
 
             while (true) {
                 // if prev and next are equal
@@ -340,7 +340,7 @@ class LocklessQueue {
                         // Calc helpDelete on prev
                         helpDelete(prev);
 
-                        // Set lastMark back to true
+                        // Set lastMark to true to match helpDelete
                         lastMark = true;
                     }
 
@@ -360,8 +360,8 @@ class LocklessQueue {
                 // If prev2 is not equal to node
                 // prev2 == node is the expected behavior
                 if (prev2 != node) {
-                    // Set lastMark to false to indicate prev must be deleted
-                    lastMark = false;
+                    // Update lastMark
+                    lastMark = prev->next.load().getMark();
 
                     // Release reference from prev
                     releaseNode(prev);
@@ -405,39 +405,37 @@ class LocklessQueue {
         // This is done by repeatedly updating the prev and next point as long as they reference a fully marked node
         void removeCrossReference(Node<T>* node) {
             while (true) {
-                // Retrieve node->prev marked pointer
-                MarkedPtr<T> prev = node->prev.load();
+                // Retrieve node->prev pointer
+                Node<T>* prev = node->prev.load().getPtr();
 
                 // If prev->next is marked
-                // Make sure prev's pointer is not nullptr
-                if (prev.getPtr() && !prev.getPtr()->isDummy && prev.getPtr()->next.load().getMark()) {
+                if (prev->next.load().getMark()) {
                     // Retrieve prev->prev
-                    Node<T>* prev2 = derefD(&prev.getPtr()->prev);
+                    Node<T>* prev2 = derefD(&prev->prev);
 
                     // Replace node->prev with marked node->prev->prev
                     node->prev.store(MarkedPtr<T>(prev2, true));
 
                     // Release old node->prev
-                    releaseNode(prev.getPtr());
+                    releaseNode(prev);
 
                     // Go into the next loop iteration
                     continue;
                 }
 
-                // Retrieve node->next marked pointer
-                MarkedPtr<T> next = node->next.load();
+                // Retrieve node->next pointer
+                Node<T>* next = node->next.load().getPtr();
 
                 // If next->next is marked
-                // Make sure next's pointer is not nullptr
-                if (next.getPtr() && !next.getPtr()->isDummy && next.getPtr()->next.load().getMark()) {
+                if (next->next.load().getMark()) {
                     // Retrieve next->next
-                    Node<T>* next2 = derefD(&next.getPtr()->next);
+                    Node<T>* next2 = derefD(&next->next);
 
                     // Replace node->next with marked node->next->next
                     node->next.store(MarkedPtr<T>(next2, true));
 
                     // Release old node->next
-                    releaseNode(next.getPtr());
+                    releaseNode(next);
 
                     // Go into the next loop iteration
                     continue;
@@ -659,6 +657,13 @@ class LocklessQueue {
 
                     // Connect prev and next
                     prev = helpInsert(prev, next);
+
+                    // // If last real node is removed
+                    // if (prev == head && next == tail) {
+                    //     // Reconnect head and tail
+                    //     head->next.store(MarkedPtr<T>(tail, false));
+                    //     tail->prev.store(MarkedPtr<T>(head, false));
+                    // }
 
                     // Decrement prev and next
                     releaseNode(prev);

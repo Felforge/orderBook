@@ -1,4 +1,7 @@
 g++ -std=c++17 testQueue.cpp ../memoryPool/memoryPool.cpp -lgtest -o testQueue.exe
 
-For Debugging:
+For Debugging Single Threaded:
 g++ -std=c++17 -fsanitize=address testQueue.cpp ../memoryPool/memoryPool.cpp -lgtest -o testQueue.exe
+
+For Debugging Concurrency:
+g++ -std=c++17 -fsanitize=thread testQueue.cpp ../memoryPool/memoryPool.cpp -lgtest -o testQueue.exe

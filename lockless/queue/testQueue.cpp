@@ -2,6 +2,7 @@
 #include <thread>
 #include <vector>
 #include <optional>
+#include <set>
 #include "queue.h"
 using namespace std;
 
@@ -284,6 +285,16 @@ TEST(LocklessQueueTest, HandlesRemoveNode) {
     // Verify expected result
     EXPECT_EQ(val, nullopt);
 
+    // Try contention case
+    Node<int>* node = new Node<int>(nullptr);
+    val = queue.removeNode(node);
+
+    // Verify expected result
+    EXPECT_EQ(val, nullopt);
+
+    // Clean up memory
+    delete node;
+
     // Try removing middle node
     val = queue.removeNode(node2);
 
@@ -419,6 +430,223 @@ TEST(LocklessQueueTest, HandlesRemoveCombination) {
     EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 }
+
+// Test For Correct Ref Counts
+TEST(LocklessQueueTest, HandlesReferenceCounting) {
+    // Create queue
+    LocklessQueue<int> queue = LocklessQueue<int>(3);
+
+    // Verify expected state
+    EXPECT_EQ(queue.head->refCount, 1);
+    EXPECT_EQ(queue.tail->refCount, 1);
+
+    // Push To Left on Empty
+    queue.pushLeft(1);
+
+    // Verify expected state
+    EXPECT_EQ(queue.head->refCount, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->refCount, 1);
+
+    // Empty the queue
+    queue.popLeft();
+
+    // Verify expected state
+    EXPECT_EQ(queue.head->refCount, 1);
+    EXPECT_EQ(queue.tail->refCount, 1);
+
+    // Push three nodes to the right
+    queue.pushRight(1);
+    Node<int>* node2 = queue.pushRight(2);
+    Node<int>* node3 = queue.pushRight(3);
+
+    // Verify expected state
+    EXPECT_EQ(queue.head->refCount, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->refCount, 1);
+
+    // Remove middle node
+    queue.removeNode(node2);
+
+    // Verify expected state
+    EXPECT_EQ(queue.head->refCount, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->refCount, 1);
+
+    // Add back a node to the right
+    queue.pushRight(4);
+
+    // Verify expected state
+    EXPECT_EQ(queue.head->refCount, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->refCount, 1);
+
+    // Pop node from the right
+    queue.popRight();
+
+    // Verify expected state
+    EXPECT_EQ(queue.head->refCount, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->refCount, 1);
+
+    // Pop node from the left
+    queue.popLeft();
+
+    // Verify expected state
+    EXPECT_EQ(queue.head->refCount, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+    EXPECT_EQ(queue.tail->refCount, 1);
+
+    // Remove last node
+    queue.removeNode(node3);
+
+    // Verify expected state
+    EXPECT_EQ(queue.head->refCount, 1);
+    EXPECT_EQ(queue.tail->refCount, 1);
+}
+
+// Test Concurrent Pushing
+// Testing with 8 threads
+TEST(LocklessQueueTest, HandlesConcurrentPushing) {
+    // Reference constant to be used in testing
+    const int N = 1000;
+
+    // Queue will have a capacity of 10 times this reference constant
+    LocklessQueue<int> queue(8*N);
+
+    // Create vector to hold working threads
+    vector<thread> threads;
+
+    // pushLeft threads
+    for (int t = 0; t < 4; t++) {
+        threads.emplace_back([&, t] {
+            for(int i = 0; i < N; ++i) {
+                queue.pushLeft(t * N + i);
+            }
+        });
+    }
+
+    // pushRight threads
+    for (int t = 5; t <= 8; t++) {
+        threads.emplace_back([&, t] {
+            for(int i = 0; i < N; ++i) {
+                queue.pushRight(t * N + i);
+            }
+        });
+    }
+
+    // Wait for threads to finish
+    for (auto& thread : threads) {
+        thread.join();
+    }
+
+    // Create set to remember all seen elements
+    // sets guarentee all elements are unique
+    set<int> seen;
+
+    // Pop all elements
+    for (int i = 0; i < 8*N; ++i) {
+        // Pop and retrieve value
+        auto val = queue.popLeft();
+
+        // Make sure val is valid
+        EXPECT_TRUE(val.has_value());
+
+        // Insert val into set
+        seen.insert(*val);
+    }
+
+    // Verify expected size
+    EXPECT_EQ(seen.size(), 8*N);
+}
+
+// To Remember:
+// Use thread sanitizer
+// Memory pool is the issue, fix it
+// Maybe do thread local pools?
+
+// // Test Concurrent Removing
+// // Testing with 6 threads
+// TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
+//     // Reference constant to be used in testing
+//     const int N = 1000;
+
+//     // Queue will have a capacity of 10 times this reference constant
+//     LocklessQueue<int> queue(6*N);
+
+//     // Create vector to hold working threads
+//     vector<thread> threads;
+
+//     // Create vector to hold nodes to be removed
+//     vector<Node<int>*> nodes;
+
+//     // Add all nodes
+//     for (int i = 0; i <= 2; i++) {
+//         for (int j = 1; j <= 2*N; j++) {
+//             Node<int>* node = queue.pushRight(2*i*N + j);
+
+//             // Store middle nodes for deletion
+//             if (i == 1) {
+//                 nodes.push_back(node);
+//             }
+//         }
+//     }
+
+//     // Two threads popping from left
+//     for (int t = 0; t < 1; t++) {
+//         threads.emplace_back([&] {
+//             for(int i = 0; i < N; ++i) {
+//                 auto val = queue.popLeft();
+
+//                 // Make sure return value is valid
+//                 EXPECT_NE(val, nullopt);
+//             }
+//         });
+//     }
+
+//     // // Two threads running removeNode on nodes
+//     // for (int t = 0; t < 2; t++) {
+//     //     threads.emplace_back([&] {
+//     //         for (Node<int>* node: nodes) {
+//     //             auto val = queue.removeNode(node);
+
+//     //             // Make sure return value is valid
+//     //             EXPECT_NE(val, nullopt);
+//     //         }
+//     //     });
+//     // }
+
+//     // Two threads popping from right
+//     for (int t = 0; t < 1; t++) {
+//         threads.emplace_back([&] {
+//             for(int i = 0; i < N; ++i) {
+//                 auto val = queue.popRight();
+
+//                 // Make sure return value is valid
+//                 EXPECT_NE(val, nullopt);
+//             }
+//         });
+//     }
+
+//     // Wait for threads to finish
+//     for (auto& thread : threads) {
+//         thread.join();
+//     }
+
+//     // Verify that the queue is empty
+//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+//     EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+//     EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+// }
 
 // Run all tests
 int main(int argc, char **argv) {

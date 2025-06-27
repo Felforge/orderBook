@@ -8,7 +8,13 @@
 // Memory block struct
 // Constructor will not be needed due to the way it is being used
 struct Block {
-    Block* next;
+    std::atomic<Block*> next;
+};
+
+// Used to avoid the ABA problem
+struct TaggedPtr {
+    Block* ptr;
+    uint64_t tag;
 };
 
 class MemoryPool {
@@ -23,7 +29,7 @@ class MemoryPool {
         size_t blockSize;
         size_t blockCount;
         std::vector<char> pool;
-        std::atomic<Block*> freeList; // atomic for lock-free
+        std::atomic<TaggedPtr> freeList;
 };
 
 #endif

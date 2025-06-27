@@ -2,3 +2,6 @@ g++ -std=c++17 testMemoryPool.cpp memoryPool.cpp -lgtest -o testMemoryPool.exe
 
 For Debugging:
 g++ -std=c++17 -fsanitize=address testMemoryPool.cpp memoryPool.cpp -lgtest -o testMemoryPool.exe
+
+For Debugging Multi-Threaded:
+g++ -std=c++17 -fsanitize=thread testMemoryPool.cpp memoryPool.cpp -lgtest -o testMemoryPool.exe

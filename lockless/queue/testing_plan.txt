@@ -1,12 +1,5 @@
 Basic Operations
 
-Reference Counting / Memory Management
- No memory leaks (all nodes are properly released after pops/removes)
- No double frees (node is never released more than once)
- Reference count is correct after every operation
- Nodes are deleted when no longer referenced
- No use-after-free (accessing a node that was deleted)
-
 Concurrency / Thread Safety
  Concurrent pushLeft and pushRight (from multiple threads)
  Concurrent popLeft and popRight

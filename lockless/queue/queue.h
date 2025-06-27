@@ -773,12 +773,21 @@ class LocklessQueue {
             T data = node->data;
 
             while (true) {
+                // node is already deleted
+                if (!node) {
+                    return std::nullopt;
+                }
 
                 // Get node->prev
                 Node<T>* prev = deref(&node->prev);
 
                 // Get node->next
                 Node<T>* next = deref(&node->next);
+
+                // node is already in the process of getting removed
+                if (!prev || !next) {
+                    return std::nullopt;
+                }
 
                 // Get MarkedPtr of node->next  
                 MarkedPtr<T> link = node->next.load();

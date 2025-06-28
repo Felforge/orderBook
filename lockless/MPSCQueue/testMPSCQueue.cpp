@@ -210,6 +210,17 @@ TEST(LocklessQueueTest, HandlesPopFromEmpty) {
     EXPECT_FALSE(queue.isFull());
 }
 
+// Used for testing below
+void createInvalidQueue() {
+    MPSCQueue<int, 3> queue;
+}
+
+// Test Invalid Capacity
+TEST(LocklessQueueTest, HandlesInvalidCapacity) {
+    // Create queue with a capacity that is not a power of 2
+    EXPECT_DEATH(createInvalidQueue(), "Capacity must be a power of two");
+}
+
 // Run all tests
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

@@ -31,6 +31,120 @@ TEST(LocklessQueueTest, HandlesSingleItem) {
     EXPECT_TRUE(freeList.isEmpty());
 }
 
+// Test Multiple Items
+TEST(LocklessQueueTest, HandlesMultipleItems) {
+    // Create free list
+    FreeList<testStruct> freeList;
+
+    // Verify expected state
+    EXPECT_TRUE(freeList.isEmpty());
+
+    // Add in four objects
+    testStruct val1 = testStruct(1);
+    freeList.push(&val1);
+
+    testStruct val2 = testStruct(2);
+    freeList.push(&val2);
+
+    testStruct val3 = testStruct(3);
+    freeList.push(&val3);
+
+    testStruct val4 = testStruct(4);
+    freeList.push(&val4);
+
+    // Verify expected state
+    EXPECT_FALSE(freeList.isEmpty());
+
+    // Retrieve all objects and verify values
+    testStruct* result = freeList.pop();
+    EXPECT_EQ(result, &val4);
+
+    result = freeList.pop();
+    EXPECT_EQ(result, &val3);
+
+    result = freeList.pop();
+    EXPECT_EQ(result, &val2);
+
+    result = freeList.pop();
+    EXPECT_EQ(result, &val1);
+
+    // Verify expected state
+    EXPECT_TRUE(freeList.isEmpty());
+}
+
+// Test Push-Pop Combination
+TEST(LocklessQueueTest, HandlesPushPopCombo) {
+    // Create free list
+    FreeList<testStruct> freeList;
+
+    // Verify expected state
+    EXPECT_TRUE(freeList.isEmpty());
+
+    // Add in two objects
+    testStruct val1 = testStruct(1);
+    freeList.push(&val1);
+
+    testStruct val2 = testStruct(2);
+    freeList.push(&val2);
+
+    // Verify expected state
+    EXPECT_FALSE(freeList.isEmpty());
+
+    // Retrieve top object and verify value
+    testStruct* result = freeList.pop();
+    EXPECT_EQ(result, &val2);
+
+    // Verify expected state
+    EXPECT_FALSE(freeList.isEmpty());
+
+    // Add back object
+    freeList.push(&val2);
+
+    // Verify expected state
+    EXPECT_FALSE(freeList.isEmpty());
+
+    // Retrieve both objects and verify values
+    result = freeList.pop();
+    EXPECT_EQ(result, &val2);
+
+    result = freeList.pop();
+    EXPECT_EQ(result, &val1);
+
+    // Verify expected state
+    EXPECT_TRUE(freeList.isEmpty());
+}
+
+// Test Push Nullptr
+TEST(LocklessQueueTest, HandlesPushNullptr) {
+    // Create free list
+    FreeList<testStruct> freeList;
+
+    // Verify expected state
+    EXPECT_TRUE(freeList.isEmpty());
+
+    // Attempt to push nullptr
+    EXPECT_THROW(freeList.push(nullptr), invalid_argument);
+}
+
+// Test Pop From Empty List
+TEST(LocklessQueueTest, HandlesPopEmpty) {
+    // Create free list
+    FreeList<testStruct> freeList;
+
+    // Verify expected state
+    EXPECT_TRUE(freeList.isEmpty());
+
+    // Attempt to remove from empty queue
+    testStruct* result = freeList.pop();
+    EXPECT_EQ(result, nullptr);
+}
+
+// Test Invalid Type
+TEST(LocklessQueueTest, HandlesInvalidType) {
+    // Create free list with a type that is too small
+    EXPECT_DEATH(FreeList<int> freeList, "Type T must be at least 8 bytes");
+}
+
 // Run all tests
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

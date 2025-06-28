@@ -6,15 +6,9 @@
 #include <vector>
 
 // Memory block struct
-// Constructor will not be needed due to the way it is being used
 struct Block {
-    std::atomic<Block*> next;
-};
-
-// Used to avoid the ABA problem
-struct TaggedPtr {
-    Block* ptr;
-    uint64_t tag;
+    size_t ownerThreadID;
+    Block* next;
 };
 
 class MemoryPool {

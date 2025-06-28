@@ -24,6 +24,7 @@ TEST(LocklessQueueTest, HandlesSingleItem) {
 
     // Verify expected result
     EXPECT_EQ(result, &val);
+    EXPECT_TRUE(queue.isEmpty());
 }
 
 // Run all tests

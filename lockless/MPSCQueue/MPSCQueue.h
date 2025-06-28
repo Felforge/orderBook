@@ -3,7 +3,6 @@
 
 #include <atomic>
 #include <cstddef>
-#include <vector>
 
 // Multiple-producer single-consumer (MPSC) lock-free queue implemented as a ring buffer
 // Used for remote free queues between threads
@@ -24,7 +23,7 @@ class MPSCQueue {
         std::atomic<T*> buffer[Capacity];
 
         // Constructor
-        SPSCQueue() {
+        MPSCQueue() {
             // Initalize head and tail
             head.store(0);
             tail.store(0);
@@ -58,7 +57,8 @@ class MPSCQueue {
             // It is needed to check if the queue is truly full reliably
             // memory_order_release applies if the exchange is successful
             // This ensures other threads will see the newly initialized object
-            if (!buffer[idx].compare_exchange_strong(expected, std::memory_order_release, std::memory_order_relaxed)) {
+            T* expected = nullptr;
+            if (!buffer[idx].compare_exchange_strong(expected, item, std::memory_order_release, std::memory_order_relaxed)) {
                 // The slot was not empty, this means the queue is full
                 return false;
             }

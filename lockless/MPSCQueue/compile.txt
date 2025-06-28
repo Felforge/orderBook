@@ -1,0 +1,7 @@
+g++ -std=c++17 testMPSCQueue.cpp -lgtest -o testMPSCQueue.exe
+
+For Debugging Single Threaded:
+g++ -std=c++17 -fsanitize=address testMPSCQueue.cpp -lgtest -o testMPSCQueue.exe
+
+For Debugging Concurrency:
+g++ -std=c++17 -fsanitize=thread testMPSCQueue.cpp -lgtest -o testMPSCQueue.exe

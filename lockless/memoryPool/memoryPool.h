@@ -70,7 +70,7 @@ class MemoryPool {
 
         // Deallocate (free) an object
         void deallocate(T* obj) {
-            if (is_owner_thread()) {
+            if (isOwnerThread()) {
                 // Is owner thread, push to free List
                 freeList.push(obj);
 

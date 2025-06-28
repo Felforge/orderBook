@@ -1,7 +1,9 @@
-g++ -std=c++17 testMemoryPool.cpp memoryPool.cpp -lgtest -o testMemoryPool.exe
+g++ -std=c++17 testMemoryPool.cpp -lgtest -o testMemoryPool.exe
+g++ -std=c++17 testFreeList.cpp -lgtest -o testFreeList.exe
 
 For Debugging:
-g++ -std=c++17 -fsanitize=address testMemoryPool.cpp memoryPool.cpp -lgtest -o testMemoryPool.exe
+g++ -std=c++17 -fsanitize=address testMemoryPool.cpp -lgtest -o testMemoryPool.exe
+g++ -std=c++17 -fsanitize=address testFreeList.cpp -lgtest -o testFreeList.exe
 
 For Debugging Multi-Threaded:
-g++ -std=c++17 -fsanitize=thread testMemoryPool.cpp memoryPool.cpp -lgtest -o testMemoryPool.exe
+g++ -std=c++17 -fsanitize=thread testMemoryPool.cpp -lgtest -o testMemoryPool.exe

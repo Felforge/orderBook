@@ -132,7 +132,7 @@ TEST(LocklessQueueTest, HandlesConcurrentAddRemove) {
     for (int t = 0; t < 8; t++) {
         threads.emplace_back([&, t] {
             for(int i = 0; i < 128; ++i) {
-                queue.push(&vals[t * 128 + i - 1]);
+                queue.push(&vals[t * 128 + i]);
             }
         });
     }

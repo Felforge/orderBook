@@ -4,6 +4,7 @@
 // SPSC Free List
 // Used for managing reusable objects
 // Only safe for a single thread
+// type T must be at least 8 bytes
 template<typename T>
 class FreeList {
     private:

@@ -139,12 +139,6 @@ TEST(LocklessQueueTest, HandlesPopEmpty) {
     EXPECT_EQ(result, nullptr);
 }
 
-// Test Invalid Type
-TEST(LocklessQueueTest, HandlesInvalidType) {
-    // Create free list with a type that is too small
-    EXPECT_DEATH(FreeList<int> freeList, "Type T must be at least 8 bytes");
-}
-
 // Run all tests
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

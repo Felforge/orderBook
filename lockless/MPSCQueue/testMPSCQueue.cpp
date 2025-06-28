@@ -48,7 +48,7 @@ TEST(LocklessQueueTest, HandlesFullCapacity) {
 
     // Verify expected state
     EXPECT_EQ(queue.buffer[0].load(), &val1);
-    EXPECT_EQ(queue.buffer[1].load(), &val1);
+    EXPECT_EQ(queue.buffer[1].load(), &val2);
     EXPECT_FALSE(queue.isEmpty());
     EXPECT_TRUE(queue.isFull());
 

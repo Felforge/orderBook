@@ -16,19 +16,21 @@ TEST(LocklessQueueTest, HandlesSingleItem) {
 
     // Push an item
     int val = 1;
-    queue.push(&val);
+    bool result = queue.push(&val);
 
     // Verify expected state
+    EXPECT_TRUE(result);
     EXPECT_EQ(queue.buffer[0].load(), &val);
     EXPECT_FALSE(queue.isEmpty());
     EXPECT_FALSE(queue.isFull());
 
     // Pop the item
-    int *result;
-    queue.pop(result);
+    int *num;
+    result = queue.pop(num);
 
     // Verify expected state
-    EXPECT_EQ(result, &val);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(num, &val);
     EXPECT_TRUE(queue.isEmpty());
     EXPECT_FALSE(queue.isFull());
 }
@@ -44,23 +46,27 @@ TEST(LocklessQueueTest, HandlesFullCapacity) {
 
     // Push two items
     int val1 = 1, val2 = 2;
-    queue.push(&val1);
-    queue.push(&val2);
+    bool result1 = queue.push(&val1);
+    bool result2 = queue.push(&val2);
 
     // Verify expected state
+    EXPECT_TRUE(result1);
+    EXPECT_TRUE(result2);
     EXPECT_EQ(queue.buffer[0].load(), &val1);
     EXPECT_EQ(queue.buffer[1].load(), &val2);
     EXPECT_FALSE(queue.isEmpty());
     EXPECT_TRUE(queue.isFull());
 
     // Pop the items
-    int *result1, *result2;
-    queue.pop(result1);
-    queue.pop(result2);
+    int *num1, *num2;
+    result1 = queue.pop(num1);
+    result2 = queue.pop(num2);
 
     // Verify expected state
-    EXPECT_EQ(result1, &val1);
-    EXPECT_EQ(result2, &val2);
+    EXPECT_TRUE(result1);
+    EXPECT_TRUE(result2);
+    EXPECT_EQ(num1, &val1);
+    EXPECT_EQ(num2, &val2);
     EXPECT_TRUE(queue.isEmpty());
     EXPECT_FALSE(queue.isFull());
 }
@@ -154,6 +160,54 @@ TEST(LocklessQueueTest, HandlesConcurrentAddRemove) {
     EXPECT_TRUE(queue.isEmpty());
     EXPECT_FALSE(queue.isFull());
     EXPECT_EQ(seen.size(), 1024);
+}
+
+// Test Push To Full
+TEST(LocklessQueueTest, HandlesPushToFull) {
+    // Create queue
+    MPSCQueue<int, 2> queue;
+
+    // Verify expected state
+    EXPECT_TRUE(queue.isEmpty());
+    EXPECT_FALSE(queue.isFull());
+
+    // Fill Queue
+    int val1 = 1, val2 = 2;
+    queue.push(&val1);
+    queue.push(&val2);
+
+    // Verify expected state
+    EXPECT_FALSE(queue.isEmpty());
+    EXPECT_TRUE(queue.isFull());
+
+    // Attempt to push to full queue
+    int val3 = 3;
+    bool result = queue.push(&val3);
+
+    // Verify expected state
+    EXPECT_FALSE(result);
+    EXPECT_FALSE(queue.isEmpty());
+    EXPECT_TRUE(queue.isFull());
+}
+
+// Test Pop From Empty
+TEST(LocklessQueueTest, HandlesPopFromEmpty) {
+    // Create queue
+    MPSCQueue<int, 2> queue;
+
+    // Verify expected state
+    EXPECT_TRUE(queue.isEmpty());
+    EXPECT_FALSE(queue.isFull());
+
+    // Attempt to pop from empty queue
+    int* num = nullptr;
+    bool result = queue.pop(num);
+
+    // Verify expected state
+    EXPECT_EQ(num, nullptr);
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(queue.isEmpty());
+    EXPECT_FALSE(queue.isFull());
 }
 
 // Run all tests

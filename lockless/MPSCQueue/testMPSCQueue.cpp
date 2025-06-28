@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <thread>
 #include <vector>
+#include <set>
 #include "MPSCQueue.h"
 using namespace std;
 
@@ -100,6 +101,59 @@ TEST(LocklessQueueTest, HandlesConcurrentAdding) {
     // Verify expected state
     EXPECT_FALSE(queue.isEmpty());
     EXPECT_TRUE(queue.isFull());
+}
+
+// Test Concurrent Adding and Removing
+// Testing with 5 threads
+TEST(LocklessQueueTest, HandlesConcurrentAddRemove) {
+    // Create queue
+    MPSCQueue<int, 1024> queue;
+
+    // Verify expected state
+    EXPECT_TRUE(queue.isEmpty());
+    EXPECT_FALSE(queue.isFull());
+
+    // Create vector to hold working threads
+    vector<thread> threads;
+
+    // Create vector of values to be pushed
+    vector<int> vals;
+    for (int i = 1; i <= 1024; i++) {
+        vals.push_back(i);
+    }
+
+    // Run Add threads
+    for (int t = 0; t < 8; t++) {
+        threads.emplace_back([&, t] {
+            for(int i = 0; i < 128; ++i) {
+                queue.push(&vals[t * 128 + i - 1]);
+            }
+        });
+    }
+
+    // Use set to verify unique numbers
+    // Sets guarentee all elements are unique
+    set<int> seen;
+    
+    // Run Single Remove thread
+    threads.emplace_back([&] {
+        for(int i = 0; i < 1024; ++i) {
+            int* result;
+            queue.pop(result);
+            seen.insert(*result);
+        }
+    });
+
+
+    // Wait for threads to finish
+    for (auto& thread : threads) {
+        thread.join();
+    }
+
+    // Verify expected state
+    EXPECT_TRUE(queue.isEmpty());
+    EXPECT_FALSE(queue.isFull());
+    EXPECT_EQ(seen.size(), 1024);
 }
 
 // Run all tests

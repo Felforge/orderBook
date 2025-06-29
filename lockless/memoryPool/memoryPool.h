@@ -12,8 +12,12 @@ template<size_t BlockSize, size_t NumBlocks, size_t RemoteFreeCapacity>
 class MemoryPool {
     private:
         // Private memory block structure
+        // Next will not be used but it is needed
+        // Otherwise it will be too small for FreeList
+        // FreeList requires a data type of 8 bytes or more
         struct Block {
             char data[BlockSize];
+            Block* next;
         };
 
         // SPSC free list for the owner thread
@@ -50,7 +54,7 @@ class MemoryPool {
 
             // Drain and delete anything left in the remote free queue
             while (!remoteFree.isEmpty()) {
-                block = remoteFree.pop();
+                remoteFree.pop(block);
                 delete block;
             }        
         }
@@ -97,7 +101,7 @@ class MemoryPool {
         void drainRemoteFree() {
             Block* block;
             while (!remoteFree.isEmpty()) {
-                block = remoteFree.pop();
+                remoteFree.pop(block);
                 freeList.push(block);
             }
         }

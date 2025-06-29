@@ -6,13 +6,21 @@
 #include "queue.h"
 using namespace std;
 
+// WILL NEED TO TAKE ALL MEMORY POOLS AND TRACK WHERE EACH BLOCK BELONGS
+// Maybe take all pools and put them into an unordered map
+// Pair this with a marker for each block documenting who owns it
+
 // Test Pushing to the Left
 TEST(LocklessQueueTest, HandlesPushLeft) {
     // Create queue
     LocklessQueue<int> queue = LocklessQueue<int>(3);
 
+    // Create memory pool
+    MemoryPool<sizeof(int), 3> pool;
+
     // Push to left on empty queue
-    queue.pushLeft(1);
+    void* block = pool.allocate();
+    queue.pushLeft(1, block);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -23,7 +31,8 @@ TEST(LocklessQueueTest, HandlesPushLeft) {
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
     // Push to left again
-    queue.pushLeft(2);
+    block = pool.allocate();
+    queue.pushLeft(2, block);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -34,7 +43,8 @@ TEST(LocklessQueueTest, HandlesPushLeft) {
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
     // Push to left again
-    queue.pushLeft(3);
+    block = pool.allocate();
+    queue.pushLeft(3, block);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -52,8 +62,12 @@ TEST(LocklessQueueTest, HandlesPushRight) {
     // Create queue
     LocklessQueue<int> queue = LocklessQueue<int>(3);
 
+    // Create memory pool
+    MemoryPool<sizeof(int), 3> pool;
+
     // Push to left on empty queue
-    queue.pushRight(1);
+    void* block = pool.allocate();
+    queue.pushRight(1, block);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -62,7 +76,8 @@ TEST(LocklessQueueTest, HandlesPushRight) {
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
     // Push to left again
-    queue.pushRight(2);
+    block = pool.allocate();
+    queue.pushRight(2, block);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -73,7 +88,8 @@ TEST(LocklessQueueTest, HandlesPushRight) {
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
     // Push to left again
-    queue.pushRight(3);
+    block = pool.allocate();
+    queue.pushRight(3, block);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -91,8 +107,12 @@ TEST(LocklessQueueTest, HandlesPushCombination) {
     // Create queue
     LocklessQueue<int> queue = LocklessQueue<int>(3);
 
+    // Create memory pool
+    MemoryPool<sizeof(int), 3> pool;
+
     // Push to left on empty queue
-    queue.pushLeft(1);
+    void* block = pool.allocate();
+    queue.pushLeft(1, block);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -101,7 +121,8 @@ TEST(LocklessQueueTest, HandlesPushCombination) {
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
     // Push to left again
-    queue.pushRight(2);
+    block = pool.allocate();
+    queue.pushRight(2, block);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -112,7 +133,8 @@ TEST(LocklessQueueTest, HandlesPushCombination) {
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
     // Push to left again
-    queue.pushLeft(3);
+    block = pool.allocate();
+    queue.pushLeft(3, block);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);

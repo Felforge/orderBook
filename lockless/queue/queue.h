@@ -459,9 +459,9 @@ class LocklessQueue {
         Node<T>* head;
         Node<T>* tail;
 
-        LocklessQueue(size_t numNodes)
-            // 2 is added to account for head and tail dummy nodes
-            : pool(sizeof(Node<T>), numNodes + 2) {
+        LocklessQueue()
+            // head and tail will belong to local memory pool
+            : pool(sizeof(Node<T>), 2) {
 
             // Allocate memory for head and tail
             void* headBlock = pool.allocate();
@@ -491,12 +491,10 @@ class LocklessQueue {
         }
 
         // Returns a node created with the given data
-        Node<T>* createNode(T data) {
-            // Allocate memory
-            void* block = pool.allocate();
+        Node<T>* createNode(T data, void* memoryBlock) {
 
             // Create node object
-            Node<T>* node = new (block) Node<T>(block, data);
+            Node<T>* node = new (memoryBlock) Node<T>(memoryBlock, data);
 
             // Return node
             return node;
@@ -504,9 +502,10 @@ class LocklessQueue {
 
         // Function to push to the left side of the queue
         // Returns a pointer to the node incase it is needed later
-        Node<T>* pushLeft(T data) {
+        // Creation of a node requires a memory block from an external memory pool
+        Node<T>* pushLeft(T data, void* memoryBlock) {
             // Create node object
-            Node<T>* node = createNode(data);
+            Node<T>* node = createNode(data, memoryBlock);
 
             // Increment refCount of head
             Node<T>* prev = copy(head);
@@ -559,9 +558,10 @@ class LocklessQueue {
 
         // Function to push to the right side of the queue
         // Returns a pointer to the node incase it is needed later
-        Node<T>* pushRight(T data) {
+        // Creation of a node requires a memory block from an external memory pool
+        Node<T>* pushRight(T data, void* memoryBlock) {
             // Create node object
-            Node<T>* node = createNode(data);
+            Node<T>* node = createNode(data, memoryBlock);
 
             // Increment refCount of head
             Node<T>* next = copy(tail);

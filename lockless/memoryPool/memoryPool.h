@@ -120,6 +120,12 @@ class MemoryPool {
             return std::this_thread::get_id() == owner;
         }
 
+        // Returns true if the memory pool is drained
+        // For testing purposes
+        bool isDrained() {
+            return freeList.isEmpty();
+        }
+
         // Returns true if the remoteFree is empty
         // For testing purposes
         bool isRemoteFreeEmpty() {

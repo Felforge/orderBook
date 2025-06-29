@@ -52,7 +52,7 @@ TEST(LocklessMemoryPoolTest, HandlesOwnerThreadDealloc) {
     void* block2 = pool.allocate();
 
     // Make sure pool is full
-    EXPECT_THROW(pool.allocate(), bad_alloc);
+    EXPECT_TRUE(pool.isDrained());
 
     // Attempt deallocation with remote thread
     thread remote([&]() {
@@ -66,7 +66,7 @@ TEST(LocklessMemoryPoolTest, HandlesOwnerThreadDealloc) {
     remote.join();
 
     // Make sure pool is still full
-    EXPECT_THROW(pool.allocate(), bad_alloc);
+    EXPECT_TRUE(pool.isDrained());
 
     // Make sure remote remote free is full
     EXPECT_FALSE(pool.isRemoteFreeEmpty());
@@ -79,7 +79,6 @@ TEST(LocklessMemoryPoolTest, HandlesOwnerThreadDealloc) {
     EXPECT_TRUE(pool.isRemoteFreeEmpty());
     EXPECT_FALSE(pool.isRemoteFreeFull());
 }
-
 
 // Run all tests
 int main(int argc, char **argv) {

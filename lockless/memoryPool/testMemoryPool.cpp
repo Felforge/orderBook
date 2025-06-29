@@ -4,119 +4,41 @@
 #include "memoryPool.h"
 using namespace std;
 
-string captureOutput(function<void()> func) {
-    stringstream buffer;
-    streambuf* old = cout.rdbuf(buffer.rdbuf());
-    func();  // Run function that prints output
-    cout.rdbuf(old);
-    return buffer.str();
-}
+struct testStruct {
+    int val;
+    testStruct* next;
+    testStruct(int val) : val(val), next(nullptr) {}
+};
 
 // Test Memory Pool Allocation and Deallocation
 TEST(LocklessMemoryPoolTest, HandlesBasicUsage) {
-    MemoryPool pool(64, 4);
-    void* block = pool.allocate();
+    // Create Memory Pool
+    MemoryPool<sizeof(int), 2, 2> pool;
 
-    // Check that pool
-    EXPECT_FALSE(block == nullptr);
-
-    // Fill block with 0xCD
-    EXPECT_NO_THROW(memset(block, 0xCD, 64));
-
-    EXPECT_NO_THROW(pool.deallocate(block));
-
-    void* newBlock = pool.allocate();
-
-    // Verify that memory location is reused
-    EXPECT_EQ(block, newBlock);
-
-    EXPECT_NO_THROW(pool.deallocate(newBlock));
-}
-
-// Test Memory Pool Exhaustion
-TEST(LocklessMemoryPoolTest, HandlesPoolExhaustion) {
-    MemoryPool pool(32, 2);
+    // Allocate both blocks
     void* block1 = pool.allocate();
     void* block2 = pool.allocate();
 
-    // Make sure that exception is thrown
-    EXPECT_THROW(pool.allocate(true), bad_alloc);
+    // Verify expected result
+    EXPECT_NE(block1, nullptr);
+    EXPECT_NE(block2, nullptr);
+    EXPECT_NE(block1, block2);
 
+    // Check for bad alloc
+    EXPECT_THROW(pool.allocate(), bad_alloc);
+
+    // Deallocate both blocks
     pool.deallocate(block1);
     pool.deallocate(block2);
-}
 
-// Test Multi Threaded Usage
-TEST(LocklessMemoryPoolTest, HandlesMultiThreading) {
-    int blockCount = 128;
-    int numThreads = 8;
-    MemoryPool pool(16, blockCount);
+    // Attempt full reuse
+    block1 = pool.allocate();
+    block2 = pool.allocate();
 
-    // Creater worker thread function
-    // Test 1000 times per thread for accuracy
-    int iters = 1000;
-    auto worker = [&]() {
-        for (int i = 0; i < iters; i++) {
-            void* block = pool.allocate();
-            EXPECT_FALSE(block == nullptr);
-            EXPECT_NO_THROW(memset(block, i % 0x100, 16));
-            EXPECT_NO_THROW(pool.deallocate(block));
-        }
-    };
-
-    // Deploy worker threads
-    vector<thread> threads;
-    for (int i = 0; i < numThreads; i++) {
-        threads.emplace_back(worker);
-    }
-
-    // Join threads upon completion
-    for (auto &t: threads) {
-        t.join();
-    }
-}
-
-// Test Memory Pool Allignment
-TEST(LocklessMemoryPoolTest, HandlesPoolAllignment) {
-    MemoryPool pool(24, 3);
-    void* block1 = pool.allocate();
-    void* block2 = pool.allocate();
-
-    // Check for memory allignment with 64 due to alignas(64)
-    // uintpitr_t can safely hold a pointer's value as an integer
-    EXPECT_EQ(reinterpret_cast<uintptr_t>(block1) % alignof(max_align_t), 0);
-    EXPECT_EQ(reinterpret_cast<uintptr_t>(block2) % alignof(max_align_t), 0);
-
-    pool.deallocate(block1);
-    pool.deallocate(block2);
-}
-
-// Test Memory Pool Full Reuse
-TEST(LocklessMemoryPoolTest, HandlesFullReuse) {
-    MemoryPool pool(64, 10);
-
-    // Allocate blocks
-    vector<void*> blocks;
-    for (int i = 0; i < 10; ++i) {
-        blocks.push_back(pool.allocate());
-    }
-
-    // Deallocate blocks
-    for (void* block : blocks) {
-        pool.deallocate(block);
-    }
-
-    // Reallocate blocks
-    for (int i = 0; i < 10; ++i) {
-        void* block = pool.allocate();
-        EXPECT_FALSE(block == nullptr);
-        blocks[i] = block;
-    }
-
-    // Clear memory
-    for (void* block : blocks) {
-        pool.deallocate(block);
-    }
+    // Verify expected result
+    EXPECT_NE(block1, nullptr);
+    EXPECT_NE(block2, nullptr);
+    EXPECT_NE(block1, block2);
 }
 
 

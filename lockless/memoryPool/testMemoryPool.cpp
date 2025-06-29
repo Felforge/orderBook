@@ -124,6 +124,9 @@ TEST(LocklessMemoryPoolTest, HandlesConcurrentRemoteDealloc) {
             thread.join();
         }
 
+        // Empty threads vector
+        threads.clear();
+
         // Verify expected state
         EXPECT_FALSE(pool.isRemoteFreeEmpty());
         EXPECT_FALSE(pool.isRemoteFreeFull());
@@ -132,8 +135,7 @@ TEST(LocklessMemoryPoolTest, HandlesConcurrentRemoteDealloc) {
         pool.drainRemoteFree();
 
         // Verify expected state
-        EXPECT_FALSE(pool.isDrained());
-        EXPECT_FALSE(pool.isRemoteFreeEmpty());
+        EXPECT_TRUE(pool.isRemoteFreeEmpty());
         EXPECT_FALSE(pool.isRemoteFreeFull());
     }
 

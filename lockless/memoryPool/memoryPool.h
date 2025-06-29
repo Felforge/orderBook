@@ -53,6 +53,8 @@ class MemoryPool {
             }
 
             // Drain and delete anything left in the remote free queue
+            // remoteFree.pop returns a bool indicatng if it succeeded
+            // However, it will only fail if empty which is not possible here
             while (!remoteFree.isEmpty()) {
                 remoteFree.pop(block);
                 delete block;
@@ -100,6 +102,10 @@ class MemoryPool {
         // Should be called periodically by the owner thread
         void drainRemoteFree() {
             Block* block;
+
+            // Drain remoteFree and add it to freeList
+            // remoteFree.pop returns a bool indicatng if it succeeded
+            // However, it will only fail if empty which is not possible here
             while (!remoteFree.isEmpty()) {
                 remoteFree.pop(block);
                 freeList.push(block);

@@ -2,6 +2,7 @@
 #define LOCKLESSMEMORYPOOL_H
 
 #include <thread>
+#include <bit>
 #include "freeList.h"
 #include "../MPSCQueue/MPSCQueue.h"
 
@@ -22,9 +23,16 @@ class MemoryPool {
         // SPSC free list for the owner thread
         FreeList<Block> freeList;
 
+        // Get next power of 2 for capacity of remoteFree
+        // constexpr instructs the program to evaluate the function at compile time
+        constexpr size_t nextPow2(size_t x) {
+            return x <= 1 ? 1 : 1ull << (std::bit_width(x - 1));
+        }
+
         // MPSC queue for remote frees
         // Capacity must be at least the same as the number of blocks for safety
-        MPSCQueue<Block, NumBlocks> remoteFree;
+        // Capacity must also be a power of 2 for performance reasons
+        MPSCQueue<Block, pow(2, nextPow2(NumBlocks))> remoteFree;
 
         // Thread id of the owner (set at construction)
         std::thread::id owner = std::this_thread::get_id();

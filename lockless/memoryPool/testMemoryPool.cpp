@@ -13,7 +13,7 @@ struct testStruct {
 // Test Memory Pool Allocation and Deallocation
 TEST(LocklessMemoryPoolTest, HandlesBasicUsage) {
     // Create Memory Pool
-    MemoryPool<sizeof(int), 2, 2> pool;
+    MemoryPool<sizeof(int), 2> pool;
 
     // Allocate both blocks
     void* block1 = pool.allocate();
@@ -39,6 +39,45 @@ TEST(LocklessMemoryPoolTest, HandlesBasicUsage) {
     EXPECT_NE(block1, nullptr);
     EXPECT_NE(block2, nullptr);
     EXPECT_NE(block1, block2);
+}
+
+// Test Memory Pool Owner Thread Deallocation
+// Tetsing with 2 threads
+TEST(LocklessMemoryPoolTest, HandlesOwnerThreadDealloc) {
+    // Create Memory Pool
+    MemoryPool<sizeof(int), 2> pool;
+
+    // Allocate both blocks
+    void* block1 = pool.allocate();
+    void* block2 = pool.allocate();
+
+    // Make sure pool is full
+    EXPECT_THROW(pool.allocate(), bad_alloc);
+
+    // Attempt deallocation with remote thread
+    thread remote([&]() {
+        // Verify expected result
+        EXPECT_FALSE(pool.isOwnerThread());
+
+        // Attempt block deallocation
+        pool.deallocate(block1);
+        pool.deallocate(block2);
+    });
+    remote.join();
+
+    // Make sure pool is still full
+    EXPECT_THROW(pool.allocate(), bad_alloc);
+
+    // Make sure remote remote free is full
+    EXPECT_FALSE(pool.isRemoteFreeEmpty());
+    EXPECT_TRUE(pool.isRemoteFreeFull());
+
+    // Drain remote free
+    pool.drainRemoteFree();
+
+    // Make sure remote remote free is empty
+    EXPECT_TRUE(pool.isRemoteFreeEmpty());
+    EXPECT_FALSE(pool.isRemoteFreeFull());
 }
 
 

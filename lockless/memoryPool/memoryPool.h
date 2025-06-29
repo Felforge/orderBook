@@ -7,8 +7,7 @@
 
 // SPSC Memory Pool with remote free support via MPSC queue
 // NumBlocks is the number of objects in the free list
-// RemoteFreeCapacity is the number of objects that can be waiting in the MPSC queue
-template<size_t BlockSize, size_t NumBlocks, size_t RemoteFreeCapacity>
+template<size_t BlockSize, size_t NumBlocks>
 class MemoryPool {
     private:
         // Private memory block structure
@@ -24,7 +23,8 @@ class MemoryPool {
         FreeList<Block> freeList;
 
         // MPSC queue for remote frees
-        MPSCQueue<Block, RemoteFreeCapacity> remoteFree;
+        // Capacity must be at least the same as the number of blocks for safety
+        MPSCQueue<Block, NumBlocks> remoteFree;
 
         // Thread id of the owner (set at construction)
         std::thread::id owner = std::this_thread::get_id();
@@ -33,6 +33,9 @@ class MemoryPool {
         // Constructor
         // Preallocates NumBlocks objects and adds them to the free list
         MemoryPool() {
+            // Make sure construction parameters are valid
+            static_assert(NumBlocks > 0, "Number of blocks must be an integer greater than zero!");
+
             for (size_t i = 0; i < NumBlocks; ++i) {
                 // Allocate memory block
                 Block* block= new Block();
@@ -115,6 +118,18 @@ class MemoryPool {
         // Returns true if this thread is the owner of the memory pool
         bool isOwnerThread() {
             return std::this_thread::get_id() == owner;
+        }
+
+        // Returns true if the remoteFree is empty
+        // For testing purposes
+        bool isRemoteFreeEmpty() {
+            return remoteFree.isEmpty();
+        }
+
+        // Returns true if the remoteFree is full
+        // For testing purposes
+        bool isRemoteFreeFull() {
+            return remoteFree.isFull();
         }
 };
 

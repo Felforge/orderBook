@@ -50,313 +50,316 @@ TEST(LocklessQueueTest, HandlesPushLeft) {
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 }
 
-// // Test Pushing to the Right
-// TEST(LocklessQueueTest, HandlesPushRight) {
-//     // Create queue
-//     LocklessQueue<int> queue = LocklessQueue<int>(3);
+// Test Pushing to the Right
+TEST(LocklessQueueTest, HandlesPushRight) {
+    // Create queue
+    LocklessQueue<int> queue = LocklessQueue<int>();
 
-//     // Create memory pool
-//     MemoryPool<sizeof(int), 3> pool;
+    // Create memory pool
+    auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-//     // Push to left on empty queue
-//     void* block = pool.allocate();
-//     queue.pushRight(1, block);
+    // Push to left on empty queue
+    queue.pushRight(1, pool);
 
-//     // Verify expected results
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Push to left again
-//     block = pool.allocate();
-//     queue.pushRight(2, block);
+    // Push to left again
+    queue.pushRight(2, pool);
 
-//     // Verify expected results
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Push to left again
-//     block = pool.allocate();
-//     queue.pushRight(3, block);
+    // Push to left again
+    queue.pushRight(3, pool);
 
-//     // Verify expected results
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
-// }
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+}
 
-// // Test Pushing with Left and Right
-// TEST(LocklessQueueTest, HandlesPushCombination) {
-//     // Create queue
-//     LocklessQueue<int> queue = LocklessQueue<int>(3);
+// Test Pushing with Left and Right
+TEST(LocklessQueueTest, HandlesPushCombination) {
+    // Create queue
+    LocklessQueue<int> queue = LocklessQueue<int>();
 
-//     // Create memory pool
-//     MemoryPool<sizeof(int), 3> pool;
+    // Create memory pool
+    auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-//     // Push to left on empty queue
-//     void* block = pool.allocate();
-//     queue.pushLeft(1, block);
+    // Push to left on empty queue
+    queue.pushLeft(1, pool);
 
-//     // Verify expected results
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Push to left again
-//     block = pool.allocate();
-//     queue.pushRight(2, block);
+    // Push to left again
+    queue.pushRight(2, pool);
 
-//     // Verify expected results
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Push to left again
-//     block = pool.allocate();
-//     queue.pushLeft(3, block);
+    // Push to left again
+    queue.pushLeft(3, pool);
 
-//     // Verify expected results
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
-// }
+    // Verify expected results
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+}
 
-// // Test Pop Left
-// TEST(LocklessQueueTest, HandlesPopLeft) {
-//     // Create queue
-//     LocklessQueue<int> queue = LocklessQueue<int>(3);
+// Test Pop Left
+TEST(LocklessQueueTest, HandlesPopLeft) {
+    // Create queue
+    LocklessQueue<int> queue = LocklessQueue<int>();
 
-//     // Pop from empty queue
-//     auto val = queue.popLeft();
+    // Create memory pool
+    auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-//     // Verify expected result
-//     EXPECT_EQ(val, nullopt);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Pop from empty queue
+    auto val = queue.popLeft();
 
-//     // Pop one element to empty queue
-//     queue.pushRight(1);
+    // Verify expected result
+    EXPECT_EQ(val, nullopt);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Pop element
-//     val = queue.popLeft();
+    // Pop one element to empty queue
+    queue.pushRight(1, pool);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Pop element
+    val = queue.popLeft();
 
-//     // Pop three elements one by one to empty queue
-//     queue.pushRight(1);
-//     queue.pushRight(2);
-//     queue.pushRight(3);
+    // Verify expected result
+    EXPECT_EQ(*val, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Pop first element
-//     val = queue.popLeft();
+    // Pop three elements one by one to empty queue
+    queue.pushRight(1, pool);
+    queue.pushRight(2, pool);
+    queue.pushRight(3, pool);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Pop first element
+    val = queue.popLeft();
 
-//     // Pop second element
-//     val = queue.popLeft();
+    // Verify expected result
+    EXPECT_EQ(*val, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 2);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Pop second element
+    val = queue.popLeft();
 
-//     // Pop third element
-//     val = queue.popLeft();
+    // Verify expected result
+    EXPECT_EQ(*val, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 3);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
-// }
+    // Pop third element
+    val = queue.popLeft();
 
-// // Test Pop Right
-// TEST(LocklessQueueTest, HandlesPopRight) {
-//     // Create queue
-//     LocklessQueue<int> queue = LocklessQueue<int>(3);
+    // Verify expected result
+    EXPECT_EQ(*val, 3);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+}
 
-//     // Pop from empty queue
-//     auto val = queue.popRight();
+// Test Pop Right
+TEST(LocklessQueueTest, HandlesPopRight) {
+    // Create queue
+    LocklessQueue<int> queue = LocklessQueue<int>();
 
-//     // Verify expected result
-//     EXPECT_EQ(val, nullopt);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Create memory pool
+    auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-//     // Pop one element to empty queue
-//     queue.pushRight(1);
+    // Pop from empty queue
+    auto val = queue.popRight();
 
-//     // Pop element
-//     val = queue.popRight();
+    // Verify expected result
+    EXPECT_EQ(val, nullopt);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Pop one element to empty queue
+    queue.pushRight(1, pool);
 
-//     // Pop three elements one by one to empty queue
-//     queue.pushRight(1);
-//     queue.pushRight(2);
-//     queue.pushRight(3);
+    // Pop element
+    val = queue.popRight();
 
-//     // Pop first element
-//     val = queue.popRight();
+    // Verify expected result
+    EXPECT_EQ(*val, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 3);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Pop three elements one by one to empty queue
+    queue.pushRight(1, pool);
+    queue.pushRight(2, pool);
+    queue.pushRight(3, pool);
 
-//     // Pop second element
-//     val = queue.popRight();
+    // Pop first element
+    val = queue.popRight();
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 2);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Verify expected result
+    EXPECT_EQ(*val, 3);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Pop third element
-//     val = queue.popRight();
+    // Pop second element
+    val = queue.popRight();
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
-// }
+    // Verify expected result
+    EXPECT_EQ(*val, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-// // Test Remove Node
-// TEST(LocklessQueueTest, HandlesRemoveNode) {
-//     // Create queue
-//     LocklessQueue<int> queue = LocklessQueue<int>(3);
+    // Pop third element
+    val = queue.popRight();
 
-//     // Construct queue
-//     Node<int>* node1 = queue.pushRight(1);
-//     Node<int>* node2 = queue.pushRight(2);
-//     Node<int>* node3 = queue.pushRight(3);
+    // Verify expected result
+    EXPECT_EQ(*val, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+}
 
-//     // Try removing head
-//     auto val = queue.removeNode(queue.head);
+// Test Remove Node
+TEST(LocklessQueueTest, HandlesRemoveNode) {
+    // Create queue
+    LocklessQueue<int> queue = LocklessQueue<int>();
 
-//     // Verify expected result
-//     EXPECT_EQ(val, nullopt);
+    // Create memory pool
+    auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-//     // Try removing tail
-//     val = queue.removeNode(queue.tail);
+    // Construct queue
+    Node<int>* node1 = queue.pushRight(1, pool);
+    Node<int>* node2 = queue.pushRight(2, pool);
+    Node<int>* node3 = queue.pushRight(3, pool);
 
-//     // Verify expected result
-//     EXPECT_EQ(val, nullopt);
+    // Try removing head
+    auto val = queue.removeNode(queue.head);
 
-//     // Try removing nullptr
-//     val = queue.removeNode(nullptr);
+    // Verify expected result
+    EXPECT_EQ(val, nullopt);
 
-//     // Verify expected result
-//     EXPECT_EQ(val, nullopt);
+    // Try removing tail
+    val = queue.removeNode(queue.tail);
 
-//     // Try contention case
-//     Node<int>* node = new Node<int>(nullptr);
-//     val = queue.removeNode(node);
+    // Verify expected result
+    EXPECT_EQ(val, nullopt);
 
-//     // Verify expected result
-//     EXPECT_EQ(val, nullopt);
+    // Try removing nullptr
+    val = queue.removeNode(nullptr);
 
-//     // Clean up memory
-//     delete node;
+    // Verify expected result
+    EXPECT_EQ(val, nullopt);
 
-//     // Try removing middle node
-//     val = queue.removeNode(node2);
+    // Try contention case
+    Node<int>* node = new Node<int>(nullptr, nullptr);
+    val = queue.removeNode(node);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 2);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Verify expected result
+    EXPECT_EQ(val, nullopt);
 
-//     // Add another node to the back
-//     Node<int>* node4 = queue.pushRight(4);
+    // Clean up memory
+    delete node;
 
-//     // Remove last node
-//     val = queue.removeNode(node4);
+    // Try removing middle node
+    val = queue.removeNode(node2);
+
+    // Verify expected result
+    EXPECT_EQ(*val, 2);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+
+    // Add another node to the back
+    Node<int>* node4 = queue.pushRight(4, pool);
+
+    // Remove last node
+    val = queue.removeNode(node4);
     
-//     // Verify expected result
-//     EXPECT_EQ(*val, 4);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Verify expected result
+    EXPECT_EQ(*val, 4);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Remove first node
-//     val = queue.removeNode(node1);
+    // Remove first node
+    val = queue.removeNode(node1);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    // Verify expected result
+    EXPECT_EQ(*val, 1);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Remove final node
-//     val = queue.removeNode(node3);
+    // Remove final node
+    val = queue.removeNode(node3);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 3);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
-// }
+    // Verify expected result
+    EXPECT_EQ(*val, 3);
+    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+}
 
 // // Test Pop Left, Pop Right, and Remove Node
 // TEST(LocklessQueueTest, HandlesRemoveCombination) {

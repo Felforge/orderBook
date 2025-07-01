@@ -6,21 +6,16 @@
 #include "queue.h"
 using namespace std;
 
-// WILL NEED TO TAKE ALL MEMORY POOLS AND TRACK WHERE EACH BLOCK BELONGS
-// Maybe take all pools and put them into an unordered map
-// Pair this with a marker for each block documenting who owns it
-
 // Test Pushing to the Left
 TEST(LocklessQueueTest, HandlesPushLeft) {
     // Create queue
     LocklessQueue<int> queue = LocklessQueue<int>();
 
     // Create memory pool
-    MemoryPool<sizeof(int), 3> pool;
+    auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
     // Push to left on empty queue
-    void* block = pool.allocate();
-    queue.pushLeft(1, &pool);
+    queue.pushLeft(1, pool);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -31,8 +26,7 @@ TEST(LocklessQueueTest, HandlesPushLeft) {
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
     // Push to left again
-    block = pool.allocate();
-    queue.pushLeft(2, &pool);
+    queue.pushLeft(2, pool);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -43,8 +37,7 @@ TEST(LocklessQueueTest, HandlesPushLeft) {
     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
     // Push to left again
-    block = pool.allocate();
-    queue.pushLeft(3, &pool);
+    queue.pushLeft(3, pool);
 
     // Verify expected results
     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);

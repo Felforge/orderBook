@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <thread>
 #include <optional>
+#include <iostream>
 #include "../memoryPool/memoryPool.h"
 
 // Based off of an algorithm developed by Sundell and Tsigas
@@ -467,7 +468,7 @@ class LocklessQueue {
         Node<T>* head;
         Node<T>* tail;
 
-        LocklessQueue() {   
+        LocklessQueue() {
             // Allocate memory for head and tail
             // head and tail will belong to local memory pool
             void* headBlock = pool.allocate();

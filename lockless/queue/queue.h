@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <thread>
 #include <optional>
-#include <iostream>
 #include "../memoryPool/memoryPool.h"
 
 // Based off of an algorithm developed by Sundell and Tsigas

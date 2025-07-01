@@ -6,6 +6,16 @@
 #include "freeList.h"
 #include "../MPSCQueue/MPSCQueue.h"
 
+// Generic Memory Pool Type
+// Needed to deallocate in queue.h
+// Other methods are not needed for this reason
+// Destructor also needed for potential cleanup
+struct GenericMemoryPool {
+    virtual void* allocate() = 0;
+    virtual void deallocate(void* ptr) = 0;
+    virtual ~GenericMemoryPool() = default;
+};
+
 // Get next power of 2 for capacity of remoteFree
 // constexpr instructs the program to evaluate the function at compile time
 constexpr size_t nextPow2(size_t x) {
@@ -15,7 +25,7 @@ constexpr size_t nextPow2(size_t x) {
 // SPSC Memory Pool with remote free support via MPSC queue
 // NumBlocks is the number of objects in the free list
 template<size_t BlockSize, size_t NumBlocks>
-class MemoryPool {
+class MemoryPool : public GenericMemoryPool {
     private:
         // Private memory block structure
         // Next will not be used but it is needed
@@ -73,7 +83,7 @@ class MemoryPool {
         }
 
         // Allocate an object from the pool
-        void* allocate() {
+        void* allocate() override {
             // Reclaim objects returned by remote threads
             drainRemoteFree();
 
@@ -90,7 +100,8 @@ class MemoryPool {
         }
 
         // Deallocate a memory block
-        void deallocate(void* ptr) {
+        // Overrides the placeholder in GenericMmemoryPool
+        void deallocate(void* ptr) override {
             // Convert void pointer back into Block
             Block* block = static_cast<Block*>(ptr);
 

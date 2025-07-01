@@ -54,8 +54,9 @@ class MarkedPtr {
 
 // Node of doubly linked list
 // memoryBlock is for memory pool allocation
-// Custom destructor may possibly be needed but not at the moment
-// It will be needed if there is memory management to be done
+// ownerPool is the owner of memoryBlock
+// the type of ownerPool must match T
+// PoolBlocks is the number of blocks in the owner memory pool
 template <typename T>
 struct Node {
     std::atomic<MarkedPtr<T>> prev;
@@ -68,24 +69,28 @@ struct Node {
     // Track if this is a dummy node or not
     bool isDummy;
 
-    // For memory pool allocation if applicable
+    // For memory pool allocation
     void* memoryBlock;
 
+    // Owner memory pool
+    // Generic reference to MmemoryPool
+    GenericMemoryPool* ownerPool;
+
     // Used if no parameters are provided
-    Node(void* memoryBlock) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
-        data(), refCount(1), isDummy(true), memoryBlock(memoryBlock) {}
+    Node(GenericMemoryPool* ownerPool, void* memoryBlock) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
+        data(), refCount(1), isDummy(true), memoryBlock(memoryBlock), ownerPool(ownerPool) {}
     
     // Used if parameters are provided
-    Node(void* memoryBlock, const T& val) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
-        data(val), refCount(1), isDummy(false), memoryBlock(memoryBlock) {}
+    Node(GenericMemoryPool* ownerPool, void* memoryBlock, const T& val) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
+        data(val), refCount(1), isDummy(false), memoryBlock(memoryBlock), ownerPool(ownerPool) {}
 };
 
 template<typename T>
 class LocklessQueue {
     private:
-        // Node memory pool
+        // Dummy node memory pool
         // Size must be assigned in constructor
-        MemoryPool pool; 
+        MemoryPool<sizeof(Node<T>), 2> pool; 
 
         // Returns a node pointer and increments the reference count
         Node<T>* copy(Node<T>* node) {
@@ -109,11 +114,14 @@ class LocklessQueue {
                 releaseNode(node->next.load().getPtr());
             }
 
+            GenericMemoryPool* ownerPool = node->ownerPool;
+
             // Explicitly call destructor for Node<T>
+            // May not be needed but good to have
             node->~Node<T>();
 
             // Handle memory block
-            pool.deallocate(node->memoryBlock);
+            ownerPool->deallocate(node->memoryBlock);
         }
 
         // Self explanatory
@@ -459,17 +467,15 @@ class LocklessQueue {
         Node<T>* head;
         Node<T>* tail;
 
-        LocklessQueue()
-            // head and tail will belong to local memory pool
-            : pool(sizeof(Node<T>), 2) {
-
+        LocklessQueue() {   
             // Allocate memory for head and tail
+            // head and tail will belong to local memory pool
             void* headBlock = pool.allocate();
             void* tailBlock = pool.allocate();
 
             // Initialize head and tail
-            head = new (headBlock) Node<T>(headBlock);
-            tail = new (tailBlock) Node<T>(tailBlock);
+            head = new (headBlock) Node<T>(&pool, headBlock);
+            tail = new (tailBlock) Node<T>(&pool, tailBlock);
 
             // Connect nodes
             head->next.store(MarkedPtr<T>(tail, false));
@@ -491,10 +497,12 @@ class LocklessQueue {
         }
 
         // Returns a node created with the given data
-        Node<T>* createNode(T data, void* memoryBlock) {
+        Node<T>* createNode(T data, GenericMemoryPool* memoryPool) {
+            // Allocate memory from pool
+            void* memoryBlock = memoryPool->allocate();
 
             // Create node object
-            Node<T>* node = new (memoryBlock) Node<T>(memoryBlock, data);
+            Node<T>* node = new (memoryBlock) Node<T>(memoryPool, memoryBlock, data);
 
             // Return node
             return node;
@@ -503,9 +511,9 @@ class LocklessQueue {
         // Function to push to the left side of the queue
         // Returns a pointer to the node incase it is needed later
         // Creation of a node requires a memory block from an external memory pool
-        Node<T>* pushLeft(T data, void* memoryBlock) {
+        Node<T>* pushLeft(T data, GenericMemoryPool* memoryPool) {
             // Create node object
-            Node<T>* node = createNode(data, memoryBlock);
+            Node<T>* node = createNode(data, memoryPool);
 
             // Increment refCount of head
             Node<T>* prev = copy(head);
@@ -559,9 +567,9 @@ class LocklessQueue {
         // Function to push to the right side of the queue
         // Returns a pointer to the node incase it is needed later
         // Creation of a node requires a memory block from an external memory pool
-        Node<T>* pushRight(T data, void* memoryBlock) {
+        Node<T>* pushRight(T data, GenericMemoryPool* memoryPool) {
             // Create node object
-            Node<T>* node = createNode(data, memoryBlock);
+            Node<T>* node = createNode(data, memoryPool);
 
             // Increment refCount of head
             Node<T>* next = copy(tail);

@@ -3,668 +3,782 @@
 #include <vector>
 #include <optional>
 #include <set>
+#include <unordered_map>
 #include "queue.h"
 using namespace std;
 
 // Test Pushing to the Left
 TEST(LocklessQueueTest, HandlesPushLeft) {
-    // Create queue
-    LocklessQueue<int> queue = LocklessQueue<int>();
-
     // Create memory pool
     auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-    // Push to left on empty queue
-    queue.pushLeft(1, pool);
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
 
-    // Verify expected results
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr(), queue.tail);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Push to left on empty queue
+        queue.pushLeft(1, pool);
 
-    // Push to left again
-    queue.pushLeft(2, pool);
+        // Verify expected results
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr(), queue.tail);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected results
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Push to left again
+        queue.pushLeft(2, pool);
 
-    // Push to left again
-    queue.pushLeft(3, pool);
+        // Verify expected results
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected results
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Push to left again
+        queue.pushLeft(3, pool);
+
+        // Verify expected results
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    }
+
+    // Delete memory pool
+    delete pool;
 }
 
 // Test Pushing to the Right
 TEST(LocklessQueueTest, HandlesPushRight) {
-    // Create queue
-    LocklessQueue<int> queue = LocklessQueue<int>();
-
     // Create memory pool
     auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-    // Push to left on empty queue
-    queue.pushRight(1, pool);
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
 
-    // Verify expected results
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Push to left on empty queue
+        queue.pushRight(1, pool);
 
-    // Push to left again
-    queue.pushRight(2, pool);
+        // Verify expected results
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected results
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Push to left again
+        queue.pushRight(2, pool);
 
-    // Push to left again
-    queue.pushRight(3, pool);
+        // Verify expected results
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected results
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Push to left again
+        queue.pushRight(3, pool);
+
+        // Verify expected results
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    }
+
+    // Delete memory pool
+    delete pool;
 }
 
 // Test Pushing with Left and Right
 TEST(LocklessQueueTest, HandlesPushCombination) {
-    // Create queue
-    LocklessQueue<int> queue = LocklessQueue<int>();
-
     // Create memory pool
     auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-    // Push to left on empty queue
-    queue.pushLeft(1, pool);
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
 
-    // Verify expected results
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Push to left on empty queue
+        queue.pushLeft(1, pool);
 
-    // Push to left again
-    queue.pushRight(2, pool);
+        // Verify expected results
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected results
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Push to left again
+        queue.pushRight(2, pool);
 
-    // Push to left again
-    queue.pushLeft(3, pool);
+        // Verify expected results
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected results
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Push to left again
+        queue.pushLeft(3, pool);
+
+        // Verify expected results
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    }
+
+    // Delete memory pool
+    delete pool;
 }
 
 // Test Pop Left
 TEST(LocklessQueueTest, HandlesPopLeft) {
-    // Create queue
-    LocklessQueue<int> queue = LocklessQueue<int>();
-
     // Create memory pool
     auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-    // Pop from empty queue
-    auto val = queue.popLeft();
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
 
-    // Verify expected result
-    EXPECT_EQ(val, nullopt);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop from empty queue
+        auto val = queue.popLeft();
 
-    // Pop one element to empty queue
-    queue.pushRight(1, pool);
+        // Verify expected result
+        EXPECT_EQ(val, nullopt);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+        EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Pop element
-    val = queue.popLeft();
+        // Pop one element to empty queue
+        queue.pushRight(1, pool);
 
-    // Verify expected result
-    EXPECT_EQ(*val, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop element
+        val = queue.popLeft();
 
-    // Pop three elements one by one to empty queue
-    queue.pushRight(1, pool);
-    queue.pushRight(2, pool);
-    queue.pushRight(3, pool);
+        // Verify expected result
+        EXPECT_EQ(*val, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+        EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Pop first element
-    val = queue.popLeft();
+        // Pop three elements one by one to empty queue
+        queue.pushRight(1, pool);
+        queue.pushRight(2, pool);
+        queue.pushRight(3, pool);
 
-    // Verify expected result
-    EXPECT_EQ(*val, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop first element
+        val = queue.popLeft();
 
-    // Pop second element
-    val = queue.popLeft();
+        // Verify expected result
+        EXPECT_EQ(*val, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected result
-    EXPECT_EQ(*val, 2);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop second element
+        val = queue.popLeft();
 
-    // Pop third element
-    val = queue.popLeft();
+        // Verify expected result
+        EXPECT_EQ(*val, 2);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected result
-    EXPECT_EQ(*val, 3);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop third element
+        val = queue.popLeft();
+
+        // Verify expected result
+        EXPECT_EQ(*val, 3);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+        EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    }
+
+    // Delete memory pool
+    delete pool;
 }
 
 // Test Pop Right
 TEST(LocklessQueueTest, HandlesPopRight) {
-    // Create queue
-    LocklessQueue<int> queue = LocklessQueue<int>();
-
     // Create memory pool
     auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-    // Pop from empty queue
-    auto val = queue.popRight();
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
 
-    // Verify expected result
-    EXPECT_EQ(val, nullopt);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop from empty queue
+        auto val = queue.popRight();
 
-    // Pop one element to empty queue
-    queue.pushRight(1, pool);
+        // Verify expected result
+        EXPECT_EQ(val, nullopt);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+        EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Pop element
-    val = queue.popRight();
+        // Pop one element to empty queue
+        queue.pushRight(1, pool);
 
-    // Verify expected result
-    EXPECT_EQ(*val, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop element
+        val = queue.popRight();
 
-    // Pop three elements one by one to empty queue
-    queue.pushRight(1, pool);
-    queue.pushRight(2, pool);
-    queue.pushRight(3, pool);
+        // Verify expected result
+        EXPECT_EQ(*val, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+        EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Pop first element
-    val = queue.popRight();
+        // Pop three elements one by one to empty queue
+        queue.pushRight(1, pool);
+        queue.pushRight(2, pool);
+        queue.pushRight(3, pool);
 
-    // Verify expected result
-    EXPECT_EQ(*val, 3);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop first element
+        val = queue.popRight();
 
-    // Pop second element
-    val = queue.popRight();
+        // Verify expected result
+        EXPECT_EQ(*val, 3);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected result
-    EXPECT_EQ(*val, 2);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop second element
+        val = queue.popRight();
 
-    // Pop third element
-    val = queue.popRight();
+        // Verify expected result
+        EXPECT_EQ(*val, 2);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected result
-    EXPECT_EQ(*val, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop third element
+        val = queue.popRight();
+
+        // Verify expected result
+        EXPECT_EQ(*val, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+        EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    }
+
+    // Delete memory pool
+    delete pool;
 }
 
 // Test Remove Node
 TEST(LocklessQueueTest, HandlesRemoveNode) {
-    // Create queue
-    LocklessQueue<int> queue = LocklessQueue<int>();
-
     // Create memory pool
     auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-    // Construct queue
-    Node<int>* node1 = queue.pushRight(1, pool);
-    Node<int>* node2 = queue.pushRight(2, pool);
-    Node<int>* node3 = queue.pushRight(3, pool);
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
 
-    // Try removing head
-    auto val = queue.removeNode(queue.head);
+        // Construct queue
+        Node<int>* node1 = queue.pushRight(1, pool);
+        Node<int>* node2 = queue.pushRight(2, pool);
+        Node<int>* node3 = queue.pushRight(3, pool);
 
-    // Verify expected result
-    EXPECT_EQ(val, nullopt);
+        // Try removing head
+        auto val = queue.removeNode(queue.head);
 
-    // Try removing tail
-    val = queue.removeNode(queue.tail);
+        // Verify expected result
+        EXPECT_EQ(val, nullopt);
 
-    // Verify expected result
-    EXPECT_EQ(val, nullopt);
+        // Try removing tail
+        val = queue.removeNode(queue.tail);
 
-    // Try removing nullptr
-    val = queue.removeNode(nullptr);
+        // Verify expected result
+        EXPECT_EQ(val, nullopt);
 
-    // Verify expected result
-    EXPECT_EQ(val, nullopt);
+        // Try removing nullptr
+        val = queue.removeNode(nullptr);
 
-    // Try contention case
-    Node<int>* node = new Node<int>(nullptr, nullptr);
-    val = queue.removeNode(node);
+        // Verify expected result
+        EXPECT_EQ(val, nullopt);
 
-    // Verify expected result
-    EXPECT_EQ(val, nullopt);
+        // Try contention case
+        Node<int>* node = new Node<int>(nullptr, nullptr);
+        val = queue.removeNode(node);
 
-    // Clean up memory
-    delete node;
+        // Verify expected result
+        EXPECT_EQ(val, nullopt);
 
-    // Try removing middle node
-    val = queue.removeNode(node2);
+        // Clean up memory
+        delete node;
 
-    // Verify expected result
-    EXPECT_EQ(*val, 2);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Try removing middle node
+        val = queue.removeNode(node2);
 
-    // Add another node to the back
-    Node<int>* node4 = queue.pushRight(4, pool);
+        // Verify expected result
+        EXPECT_EQ(*val, 2);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Remove last node
-    val = queue.removeNode(node4);
-    
-    // Verify expected result
-    EXPECT_EQ(*val, 4);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Add another node to the back
+        Node<int>* node4 = queue.pushRight(4, pool);
 
-    // Remove first node
-    val = queue.removeNode(node1);
+        // Remove last node
+        val = queue.removeNode(node4);
+        
+        // Verify expected result
+        EXPECT_EQ(*val, 4);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected result
-    EXPECT_EQ(*val, 1);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Remove first node
+        val = queue.removeNode(node1);
 
-    // Remove final node
-    val = queue.removeNode(node3);
+        // Verify expected result
+        EXPECT_EQ(*val, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-    // Verify expected result
-    EXPECT_EQ(*val, 3);
-    EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-    EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-    EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Remove final node
+        val = queue.removeNode(node3);
+
+        // Verify expected result
+        EXPECT_EQ(*val, 3);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+        EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    }
+
+    // Delete memory pool
+    delete pool;
 }
 
-// // Test Pop Left, Pop Right, and Remove Node
-// TEST(LocklessQueueTest, HandlesRemoveCombination) {
-//     // Create queue
-//     LocklessQueue<int> queue = LocklessQueue<int>(4);
+// Test Pop Left, Pop Right, and Remove Node
+TEST(LocklessQueueTest, HandlesRemoveCombination) {
+    // Create memory pool
+    auto* pool = new MemoryPool<sizeof(Node<int>), 4>();
 
-//     // Construct queue
-//     Node<int>* node1 = queue.pushRight(1);
-//     Node<int>* node2 = queue.pushRight(2);
-//     Node<int>* node3 = queue.pushRight(3);
-//     Node<int>* node4 = queue.pushRight(4);
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
 
-//     // Pop Right
-//     auto val = queue.popRight();
+        // Construct queue
+        Node<int>* node1 = queue.pushRight(1, pool);
+        Node<int>* node2 = queue.pushRight(2, pool);
+        Node<int>* node3 = queue.pushRight(3, pool);
+        Node<int>* node4 = queue.pushRight(4, pool);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 4);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop Right
+        auto val = queue.popRight();
 
-//     // Remove node2
-//     val = queue.removeNode(node2);
+        // Verify expected result
+        EXPECT_EQ(*val, 4);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->next.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 2);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Remove node2
+        val = queue.removeNode(node2);
 
-//     // Push 5 to the right
-//     Node<int>* node5 = queue.pushRight(5);
+        // Verify expected result
+        EXPECT_EQ(*val, 2);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 1);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Pop Left
-//     val = queue.popLeft();
+        // Push 5 to the right
+        Node<int>* node5 = queue.pushRight(5, pool);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 5);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 3);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 5);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop Left
+        val = queue.popLeft();
 
-//     // Push 6 to the left
-//     Node<int>* node6 = queue.pushLeft(6);
+        // Verify expected result
+        EXPECT_EQ(*val, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 5);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 3);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 5);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Removde node3
-//     val = queue.removeNode(node3);
+        // Push 6 to the left
+        Node<int>* node6 = queue.pushLeft(6, pool);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 3);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 6);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 5);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 6);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 5);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Removde node3
+        val = queue.removeNode(node3);
 
-//     // Pop Right
-//     val = queue.popRight();
+        // Verify expected result
+        EXPECT_EQ(*val, 3);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 6);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->data, 5);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->prev.load().getPtr()->data, 6);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 5);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 5);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->data, 6);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 6);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+        // Pop Right
+        val = queue.popRight();
 
-//     // Pop Left to empty the queue
-//     val = queue.popLeft();
+        // Verify expected result
+        EXPECT_EQ(*val, 5);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr()->data, 6);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->data, 6);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
 
-//     // Verify expected result
-//     EXPECT_EQ(*val, 6);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
-// }
+        // Pop Left to empty the queue
+        val = queue.popLeft();
 
-// // Test For Correct Ref Counts
-// TEST(LocklessQueueTest, HandlesReferenceCounting) {
-//     // Create queue
-//     LocklessQueue<int> queue = LocklessQueue<int>(3);
+        // Verify expected result
+        EXPECT_EQ(*val, 6);
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+        EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    }
 
-//     // Verify expected state
-//     EXPECT_EQ(queue.head->refCount, 1);
-//     EXPECT_EQ(queue.tail->refCount, 1);
+    // Delete memory pool
+    delete pool;
+}
 
-//     // Push To Left on Empty
-//     queue.pushLeft(1);
+// Test For Correct Ref Counts
+TEST(LocklessQueueTest, HandlesReferenceCounting) {
+    // Create memory pool
+    auto* pool = new MemoryPool<sizeof(Node<int>), 3>();
 
-//     // Verify expected state
-//     EXPECT_EQ(queue.head->refCount, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->refCount, 1);
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
 
-//     // Empty the queue
-//     queue.popLeft();
+        // Verify expected state
+        EXPECT_EQ(queue.head->refCount, 1);
+        EXPECT_EQ(queue.tail->refCount, 1);
 
-//     // Verify expected state
-//     EXPECT_EQ(queue.head->refCount, 1);
-//     EXPECT_EQ(queue.tail->refCount, 1);
+        // Push To Left on Empty
+        queue.pushLeft(1, pool);
 
-//     // Push three nodes to the right
-//     queue.pushRight(1);
-//     Node<int>* node2 = queue.pushRight(2);
-//     Node<int>* node3 = queue.pushRight(3);
+        // Verify expected state
+        EXPECT_EQ(queue.head->refCount, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->refCount, 1);
 
-//     // Verify expected state
-//     EXPECT_EQ(queue.head->refCount, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->refCount, 1);
+        // Empty the queue
+        queue.popLeft();
 
-//     // Remove middle node
-//     queue.removeNode(node2);
+        // Verify expected state
+        EXPECT_EQ(queue.head->refCount, 1);
+        EXPECT_EQ(queue.tail->refCount, 1);
 
-//     // Verify expected state
-//     EXPECT_EQ(queue.head->refCount, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->refCount, 1);
+        // Push three nodes to the right
+        queue.pushRight(1, pool);
+        Node<int>* node2 = queue.pushRight(2, pool);
+        Node<int>* node3 = queue.pushRight(3, pool);
 
-//     // Add back a node to the right
-//     queue.pushRight(4);
+        // Verify expected state
+        EXPECT_EQ(queue.head->refCount, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->refCount, 1);
 
-//     // Verify expected state
-//     EXPECT_EQ(queue.head->refCount, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->refCount, 1);
+        // Remove middle node
+        queue.removeNode(node2);
 
-//     // Pop node from the right
-//     queue.popRight();
+        // Verify expected state
+        EXPECT_EQ(queue.head->refCount, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->refCount, 1);
 
-//     // Verify expected state
-//     EXPECT_EQ(queue.head->refCount, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->refCount, 1);
+        // Add back a node to the right
+        queue.pushRight(4, pool);
 
-//     // Pop node from the left
-//     queue.popLeft();
+        // Verify expected state
+        EXPECT_EQ(queue.head->refCount, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.head->next.load().getPtr()->next.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->refCount, 1);
 
-//     // Verify expected state
-//     EXPECT_EQ(queue.head->refCount, 1);
-//     EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
-//     EXPECT_EQ(queue.tail->refCount, 1);
+        // Pop node from the right
+        queue.popRight();
 
-//     // Remove last node
-//     queue.removeNode(node3);
+        // Verify expected state
+        EXPECT_EQ(queue.head->refCount, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->refCount, 1);
 
-//     // Verify expected state
-//     EXPECT_EQ(queue.head->refCount, 1);
-//     EXPECT_EQ(queue.tail->refCount, 1);
-// }
+        // Pop node from the left
+        queue.popLeft();
 
-// // Test Concurrent Pushing
-// // Testing with 8 threads
-// TEST(LocklessQueueTest, HandlesConcurrentPushing) {
-//     // Reference constant to be used in testing
-//     const int N = 1000;
+        // Verify expected state
+        EXPECT_EQ(queue.head->refCount, 1);
+        EXPECT_EQ(queue.head->next.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->refCount, 2);
+        EXPECT_EQ(queue.tail->refCount, 1);
 
-//     // Queue will have a capacity of 10 times this reference constant
-//     LocklessQueue<int> queue(8*N);
+        // Remove last node
+        queue.removeNode(node3);
 
-//     // Create vector to hold working threads
-//     vector<thread> threads;
+        // Verify expected state
+        EXPECT_EQ(queue.head->refCount, 1);
+        EXPECT_EQ(queue.tail->refCount, 1);
+    }
 
-//     // pushLeft threads
-//     for (int t = 0; t < 4; t++) {
-//         threads.emplace_back([&, t] {
-//             for(int i = 0; i < N; ++i) {
-//                 queue.pushLeft(t * N + i);
-//             }
-//         });
-//     }
+    // Delete memory pool
+    delete pool;
+}
 
-//     // pushRight threads
-//     for (int t = 5; t <= 8; t++) {
-//         threads.emplace_back([&, t] {
-//             for(int i = 0; i < N; ++i) {
-//                 queue.pushRight(t * N + i);
-//             }
-//         });
-//     }
+// Test Concurrent Pushing
+// Testing with 8 threads
+TEST(LocklessQueueTest, HandlesConcurrentPushing) {
+    // Reference constant to be used in testing
+    const int N = 1000;
 
-//     // Wait for threads to finish
-//     for (auto& thread : threads) {
-//         thread.join();
-//     }
+    // Create memory pool dict
+    // Each memory pool will have a capacity of N
+    unordered_map<int, MemoryPool<sizeof(Node<int>), N>*>pools;
 
-//     // Create set to remember all seen elements
-//     // sets guarentee all elements are unique
-//     set<int> seen;
+    // Construct pools
+    for (int i = 0; i < 8; i++) {
+        pools[i] = new MemoryPool<sizeof(Node<int>), N>();
+    }
 
-//     // Pop all elements
-//     for (int i = 0; i < 8*N; ++i) {
-//         // Pop and retrieve value
-//         auto val = queue.popLeft();
+    // Create vector to hold working threads
+    vector<thread> threads;
 
-//         // Make sure val is valid
-//         EXPECT_TRUE(val.has_value());
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
 
-//         // Insert val into set
-//         seen.insert(*val);
-//     }
+        // pushLeft threads
+        for (int t = 0; t < 4; t++) {
+            threads.emplace_back([&, t] {
+                for(int i = 0; i < N; ++i) {
+                    queue.pushLeft(t * N + i, pools[t]);
+                }
+            });
+        }
 
-//     // Verify expected size
-//     EXPECT_EQ(seen.size(), 8*N);
-// }
+        // pushRight threads
+        for (int t = 4; t < 8; t++) {
+            threads.emplace_back([&, t] {
+                for(int i = 0; i < N; ++i) {
+                    queue.pushRight(t * N + i, pools[t]);
+                }
+            });
+        }
 
-// To Remember:
-// Use thread sanitizer
-// Memory pool is the issue, fix it
-// Maybe do thread local pools?
+        // Wait for threads to finish
+        for (auto& thread : threads) {
+            thread.join();
+        }
 
-// // Test Concurrent Removing
-// // Testing with 6 threads
-// TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
-//     // Reference constant to be used in testing
-//     const int N = 1000;
+        // Create set to remember all seen elements
+        // sets guarentee all elements are unique
+        set<int> seen;
 
-//     // Queue will have a capacity of 10 times this reference constant
-//     LocklessQueue<int> queue(6*N);
+        // Pop all elements
+        for (int i = 0; i < 8*N; ++i) {
+            // Pop and retrieve value
+            auto val = queue.popLeft();
 
-//     // Create vector to hold working threads
-//     vector<thread> threads;
+            // Make sure val is valid
+            EXPECT_TRUE(val.has_value());
 
-//     // Create vector to hold nodes to be removed
-//     vector<Node<int>*> nodes;
+            // Insert val into set
+            seen.insert(*val);
+        }
 
-//     // Add all nodes
-//     for (int i = 0; i <= 2; i++) {
-//         for (int j = 1; j <= 2*N; j++) {
-//             Node<int>* node = queue.pushRight(2*i*N + j);
+        // Verify expected size
+        EXPECT_EQ(seen.size(), 8*N);
+    }
 
-//             // Store middle nodes for deletion
-//             if (i == 1) {
-//                 nodes.push_back(node);
-//             }
-//         }
-//     }
+    // Delete Memory Pools
+    for (auto& [k, v]: pools) {
+        delete v;
+    }
+}
 
-//     // Two threads popping from left
-//     for (int t = 0; t < 1; t++) {
-//         threads.emplace_back([&] {
-//             for(int i = 0; i < N; ++i) {
-//                 auto val = queue.popLeft();
+// Test Concurrent Removing
+// Testing with 6 threads
+TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
+    // Reference constant to be used in testing
+    const int N = 1000;
 
-//                 // Make sure return value is valid
-//                 EXPECT_NE(val, nullopt);
-//             }
-//         });
-//     }
+    // Create memory pool dict
+    // Each memory pool will have a capacity of N
+    unordered_map<int, MemoryPool<sizeof(Node<int>), N>*>pools;
 
-//     // // Two threads running removeNode on nodes
-//     // for (int t = 0; t < 2; t++) {
-//     //     threads.emplace_back([&] {
-//     //         for (Node<int>* node: nodes) {
-//     //             auto val = queue.removeNode(node);
+    // Construct pools
+    for (int i = 0; i < 6; i++) {
+        pools[i] = new MemoryPool<sizeof(Node<int>), N>();
+    }
 
-//     //             // Make sure return value is valid
-//     //             EXPECT_NE(val, nullopt);
-//     //         }
-//     //     });
-//     // }
+    // Create vector to hold working threads
+    vector<thread> threads;
 
-//     // Two threads popping from right
-//     for (int t = 0; t < 1; t++) {
-//         threads.emplace_back([&] {
-//             for(int i = 0; i < N; ++i) {
-//                 auto val = queue.popRight();
+    // Create vectora to hold nodes to be removed
+    vector<Node<int>*> nodes2;
+    vector<Node<int>*> nodes3;
 
-//                 // Make sure return value is valid
-//                 EXPECT_NE(val, nullopt);
-//             }
-//         });
-//     }
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
 
-//     // Wait for threads to finish
-//     for (auto& thread : threads) {
-//         thread.join();
-//     }
+        // Add all nodes
+        for (int t = 0; t < 6; t++) {
+            threads.emplace_back([&, t] {
+                for(int i = 0; i < N; ++i) {
+                    Node<int>* node = queue.pushLeft(t * N + i, pools[t]);
 
-//     // Verify that the queue is empty
-//     EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-//     EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
-// }
+                    // Save for removeNode
+                    if (t == 2) {
+                        nodes2.push_back(node);
+                    } else if (t == 3) {
+                        nodes3.push_back(node);
+                    }
+                }
+            });
+        }
+
+        // Wait for threads to finish
+        for (auto& thread : threads) {
+            thread.join();
+        }
+
+        // Clear threads vector
+        threads.clear();
+
+        // Two threads popping from left
+        for (int t = 0; t < 2; t++) {
+            threads.emplace_back([&] {
+                for(int i = 0; i < N; ++i) {
+                    auto val = queue.popLeft();
+
+                    // Make sure return value is valid
+                    EXPECT_NE(val, nullopt);
+                }
+            });
+        }
+
+        // Two threads running removeNode on nodes
+        // They are accessing different vectors
+        threads.emplace_back([&] {
+            for (Node<int>* node: nodes2) {
+                auto val = queue.removeNode(node);
+
+                // Make sure return value is valid
+                EXPECT_NE(val, nullopt);
+            }
+        });
+        threads.emplace_back([&] {
+            for (Node<int>* node: nodes3) {
+                auto val = queue.removeNode(node);
+
+                // Make sure return value is valid
+                EXPECT_NE(val, nullopt);
+            }
+        });
+
+        // Two threads popping from right
+        for (int t = 0; t < 2; t++) {
+            threads.emplace_back([&] {
+                for(int i = 0; i < N; ++i) {
+                    auto val = queue.popRight();
+
+                    // Make sure return value is valid
+                    EXPECT_NE(val, nullopt);
+                }
+            });
+        }
+
+        // Wait for threads to finish
+        for (auto& thread : threads) {
+            thread.join();
+        }
+
+        // Verify that the queue is empty
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+        EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    }
+
+    // Delete Memory Pools
+    for (auto& [k, v]: pools) {
+        delete v;
+    }
+}
 
 // Run all tests
 int main(int argc, char **argv) {

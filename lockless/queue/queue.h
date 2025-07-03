@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <thread>
 #include <optional>
+#include <iostream>
 #include "../memoryPool/memoryPool.h"
 
 // Based off of an algorithm developed by Sundell and Tsigas
@@ -105,6 +106,7 @@ class LocklessQueue {
         // Calls Node destructor and deletes it from memory
         // destrurctor flag should be true if and only if called from the destructor
         void terminateNode(Node<T>* node, bool destructor=false) {
+            // If node is nullptr return
             if (!node) {
                 return;
             }
@@ -319,7 +321,8 @@ class LocklessQueue {
             Node<T>* next = derefD(&node->next);
 
             // Marker of last link
-            bool lastMark = prev->next.load().getMark();
+            // Must be true due to markPrev being called above
+            bool lastMark = true;
 
             while (true) {
                 // if prev and next are equal
@@ -359,7 +362,7 @@ class LocklessQueue {
                     }
 
                     // Update prev2
-                    prev2 = deref(&prev->next);
+                    prev2 = derefD(&prev->prev);
 
                     // Release reference from prev
                     releaseNode(prev);
@@ -374,8 +377,8 @@ class LocklessQueue {
                 // If prev2 is not equal to node
                 // prev2 == node is the expected behavior
                 if (prev2 != node) {
-                    // Update lastMark
-                    lastMark = prev->next.load().getMark();
+                    // Set lastMark to false
+                    lastMark = false;
 
                     // Release reference from prev
                     releaseNode(prev);
@@ -629,7 +632,6 @@ class LocklessQueue {
             Node<T>* node;
 
             while (true) {
-
                 // Retrieve node
                 // Will return nullptr if prev->next is marked
                 node = deref(&prev->next);
@@ -794,6 +796,7 @@ class LocklessQueue {
 
                 // node is already in the process of getting removed
                 if (!prev || !next) {
+                    // Return null
                     return std::nullopt;
                 }
 

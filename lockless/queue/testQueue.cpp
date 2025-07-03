@@ -667,11 +667,14 @@ TEST(LocklessQueueTest, HandlesConcurrentPushing) {
     }
 }
 
+// To remember:
+// removeNode is the problem, fix it
+
 // Test Concurrent Removing
 // Testing with 6 threads
 TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
     // Reference constant to be used in testing
-    const int N = 1000;
+    const int N = 10;
 
     // Create memory pool dict
     // Each memory pool will have a capacity of N
@@ -731,36 +734,36 @@ TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
             });
         }
 
-        // // Two threads running removeNode on nodes
-        // // They are accessing different vectors
-        // threads.emplace_back([&] {
-        //     for (Node<int>* node: nodes2) {
-        //         auto val = queue.removeNode(node);
+        // Two threads running removeNode on nodes
+        // They are accessing different vectors
+        threads.emplace_back([&] {
+            for (Node<int>* node: nodes2) {
+                auto val = queue.removeNode(node);
 
-        //         // Make sure return value is valid
-        //         EXPECT_NE(val, nullopt);
-        //     }
-        // });
-        // threads.emplace_back([&] {
-        //     for (Node<int>* node: nodes3) {
-        //         auto val = queue.removeNode(node);
+                // Make sure return value is valid
+                EXPECT_NE(val, nullopt);
+            }
+        });
+        threads.emplace_back([&] {
+            for (Node<int>* node: nodes3) {
+                auto val = queue.removeNode(node);
 
-        //         // Make sure return value is valid
-        //         EXPECT_NE(val, nullopt);
-        //     }
-        // });
+                // Make sure return value is valid
+                EXPECT_NE(val, nullopt);
+            }
+        });
 
-        // // Two threads popping from right
-        // for (int t = 0; t < 2; t++) {
-        //     threads.emplace_back([&] {
-        //         for(int i = 0; i < N; ++i) {
-        //             auto val = queue.popRight();
+        // Two threads popping from right
+        for (int t = 0; t < 2; t++) {
+            threads.emplace_back([&] {
+                for(int i = 0; i < N; ++i) {
+                    auto val = queue.popRight();
 
-        //             // Make sure return value is valid
-        //             EXPECT_NE(val, nullopt);
-        //         }
-        //     });
-        // }
+                    // Make sure return value is valid
+                    EXPECT_NE(val, nullopt);
+                }
+            });
+        }
 
         // Wait for threads to finish
         for (auto& thread : threads) {

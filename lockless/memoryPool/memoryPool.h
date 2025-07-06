@@ -95,6 +95,9 @@ class MemoryPool : public GenericMemoryPool {
                 throw std::bad_alloc();
             }
 
+            // Zero out the block memory
+            std::memset(block, 0, sizeof(Block));
+
             // Return object
             return block;
         }
@@ -104,6 +107,10 @@ class MemoryPool : public GenericMemoryPool {
         void deallocate(void* ptr) override {
             // Convert void pointer back into Block
             Block* block = static_cast<Block*>(ptr);
+
+            // Poison the block memory
+            // Poison means to fill the block with garbage
+            std::memset(block, 0xAB, sizeof(Block));
 
             if (isOwnerThread()) {
                 // Is owner thread, push to free List

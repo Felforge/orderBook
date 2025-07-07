@@ -326,6 +326,7 @@ class LocklessQueue {
 
             while (true) {
                 // if prev and next are equal
+                // Technically should not be possible but better to be safe
                 if (prev == next) {
                     // Break out of loop
                     break;
@@ -638,6 +639,7 @@ class LocklessQueue {
 
                 // Check if queue is empty
                 if (node == tail) {
+                    // No decrements needed as head and tail refCounts are irrelevant
                     // Return nullptr as the queue is empty
                     return std::nullopt;
                 }
@@ -769,6 +771,7 @@ class LocklessQueue {
         }
 
         // Function to remove a given node
+        // Based off of popRight
         // Returns the data from the node or nothing
         std::optional<T> removeNode(Node<T>* node) {
             // Return nullopt if node is invalid or a dummy node
@@ -783,65 +786,39 @@ class LocklessQueue {
             T data = node->data;
 
             while (true) {
-                // node is already deleted
-                if (!node) {
-                    return std::nullopt;
-                }
-
-                // Get node->prev
-                Node<T>* prev = deref(&node->prev);
-
-                // Get node->next
-                Node<T>* next = deref(&node->next);
-
-                // node is already in the process of getting removed
-                if (!prev || !next) {
-                    // Return null
-                    return std::nullopt;
-                }
-
-                // Get MarkedPtr of node->next  
+                // Retrieve marked pointer to node->next
                 MarkedPtr<T> link = node->next.load();
 
-                // If link is marked
+                // If already logically deleted, help finish and return nullopt
                 if (link.getMark()) {
-                    // Help unlink node from logically delete node->next
+                    // Help deletion along
                     helpDelete(node);
 
-                    // Release reference to prev and next as they will be incremented again next cycle
-                    releaseNode(prev);
-                    releaseNode(next);
+                    // Release node and next
+                    releaseNode(node);
 
-                    // Go into the next loop iteration
-                    continue;
-
-                // Check if node->next is incorrect
-                } else if (node->next.load() != MarkedPtr<T>(next, false)) {
-                    // Call helpInsert to update the prev pointer of next to node
-                    node = helpInsert(node, next);
-
-                    // Release reference to prev and next as they will be incremented again next cycle
-                    releaseNode(prev);
-                    releaseNode(next);
-
-                    // Go into the next loop iteration
-                    continue;
+                    // Return nullopt
+                    return std::nullopt;
                 }
 
-                // Try to atomically update node->next pointer to marked link, if it still points to unmarked link
+                // Try to atomically update node->next pointer to marked pointer to next, if it is still an unmarked pointer to next
                 if (node->next.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
                     // Call helpDelete to help remove the node now that it is marked
                     helpDelete(node);
 
+                    // Retrieve node->prev
+                    Node<T>* prev = derefD(&node->prev);
+
+                    // Retrieve node->next
+                    Node<T>* next = derefD(&node->next);
+
                     // Connect prev and next
+                    // If prev or next are marked helpInsert will deal with it
                     prev = helpInsert(prev, next);
 
                     // Decrement prev and next
                     releaseNode(prev);
                     releaseNode(next);
-
-                    // Initialize data
-                    data = node->data;
 
                     // Break out of loop
                     break;

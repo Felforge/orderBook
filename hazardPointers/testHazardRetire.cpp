@@ -70,7 +70,7 @@ TEST(LocklessMemoryPoolTest, HandlesDelayedReclamation) {
     EXPECT_TRUE(isHazard(&val));
 
     // Clear protection from val
-    clearHazardPointer();
+    removeHazardPointer(&val);
 
     // Check expected state
     EXPECT_EQ(val, 1);

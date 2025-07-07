@@ -8,6 +8,8 @@
 #include <optional>
 #include <iostream>
 #include "../memoryPool/memoryPool.h"
+#include "../../hazardPointers/hazardRetire.h"
+#include "../../hazardPointers/hazardPointers.h"
 
 // Based off of an algorithm developed by Sundell and Tsigas
 

@@ -16,14 +16,19 @@ TEST(LocklessMemoryPoolTest, HandlesSetAndClear) {
     EXPECT_TRUE(isHazard(&val));
 
     // Remove protection from val
-    EXPECT_NO_THROW(clearHazardPointer());
+    EXPECT_NO_THROW(removeHazardPointer(&val));
 
     // Verify expected result
     EXPECT_FALSE(isHazard(&val));
+
+    // Clear hazard pointer maps
+    for (auto &hazard: globalHazardPointers) {
+        hazard.ptrs.clear();
+    }
 }
 
-// Test Swapping Hazard Pointer
-TEST(LocklessMemoryPoolTest, HandlesSwappingHazard) {
+// Test Multiple Hazard Pointers
+TEST(LocklessMemoryPoolTest, HandlesMultipleHazards) {
     // Declare values to be tested
     int val1 = 1;
     int val2 = 2;
@@ -35,12 +40,17 @@ TEST(LocklessMemoryPoolTest, HandlesSwappingHazard) {
     EXPECT_TRUE(isHazard(&val1));
     EXPECT_FALSE(isHazard(&val2));
 
-    // Swap hazard pointer to other value
+    // Swap hazard pointer on other value
     EXPECT_NO_THROW(setHazardPointer(&val2));
 
     // Verify expected result
-    EXPECT_FALSE(isHazard(&val1));
+    EXPECT_TRUE(isHazard(&val1));
     EXPECT_TRUE(isHazard(&val2));
+
+    // Clear hazard pointer maps
+    for (auto &hazard: globalHazardPointers) {
+        hazard.ptrs.clear();
+    }
 }
 
 // Test hazard pointer sharing between threads
@@ -67,7 +77,7 @@ TEST(LocklessMemoryPoolTest, HandlesSharedHazard) {
         EXPECT_TRUE(isHazard(&val));
 
         // Clear hazard pointer from this thread
-        clearHazardPointer();
+        removeHazardPointer(&val);
 
         // Verify expected result
         EXPECT_TRUE(isHazard(&val));
@@ -75,10 +85,15 @@ TEST(LocklessMemoryPoolTest, HandlesSharedHazard) {
     remote.join();
 
     // Clear hazard pointer from host
-    clearHazardPointer();
+    removeHazardPointer(&val);
 
     // Verify expected result
     EXPECT_FALSE(isHazard(&val));
+
+    // Clear hazard pointer maps
+    for (auto &hazard: globalHazardPointers) {
+        hazard.ptrs.clear();
+    }
 }
 
 // Test seperate thread hazards
@@ -120,10 +135,17 @@ TEST(LocklessMemoryPoolTest, HandlesSeperateHazard) {
         }
 
         // Verify expected result
-        EXPECT_FALSE(isHazard(&val1));
+        EXPECT_TRUE(isHazard(&val1));
         EXPECT_TRUE(isHazard(&val2));
 
-        // Swap thread to val1
+        // Remove protection from val2
+        removeHazardPointer(&val2);
+
+        // Verify expected result
+        EXPECT_TRUE(isHazard(&val1));
+        EXPECT_TRUE(isHazard(&val2));
+
+        // Protect val1 on thread
         setHazardPointer(&val1);
 
         // Verify expected result
@@ -143,10 +165,10 @@ TEST(LocklessMemoryPoolTest, HandlesSeperateHazard) {
         EXPECT_FALSE(isHazard(&val2));
 
         // Clear external thread protection
-        clearHazardPointer();
+        removeHazardPointer(&val1);
 
         // Verify expected result
-        EXPECT_FALSE(isHazard(&val1));
+        EXPECT_TRUE(isHazard(&val1));
         EXPECT_FALSE(isHazard(&val2));
 
         // Swap to host
@@ -162,11 +184,11 @@ TEST(LocklessMemoryPoolTest, HandlesSeperateHazard) {
     EXPECT_TRUE(isHazard(&val1));
     EXPECT_TRUE(isHazard(&val2));
 
-    // Swap host protection
+    // Host also protects val2
     setHazardPointer(&val2);
 
     // Verify expected result
-    EXPECT_FALSE(isHazard(&val1));
+    EXPECT_TRUE(isHazard(&val1));
     EXPECT_TRUE(isHazard(&val2));
 
     // Swap to thread
@@ -178,7 +200,7 @@ TEST(LocklessMemoryPoolTest, HandlesSeperateHazard) {
     }
 
     // Clear host protection
-    clearHazardPointer();
+    removeHazardPointer(&val2);
 
     // Verify expected result
     EXPECT_TRUE(isHazard(&val1));
@@ -196,8 +218,20 @@ TEST(LocklessMemoryPoolTest, HandlesSeperateHazard) {
     remote.join();
 
     // Verify expected result
+    EXPECT_TRUE(isHazard(&val1));
+    EXPECT_FALSE(isHazard(&val2));
+
+    // Remove hazard pointer from val1
+    removeHazardPointer(&val1);
+
+    // Verify expected result
     EXPECT_FALSE(isHazard(&val1));
     EXPECT_FALSE(isHazard(&val2));
+
+    // Clear hazard pointer maps
+    for (auto &hazard: globalHazardPointers) {
+        hazard.ptrs.clear();
+    }
 }
 
 // Run all tests

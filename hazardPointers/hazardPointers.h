@@ -5,6 +5,7 @@
 #include <thread>
 #include <cstddef>
 #include <cassert>
+#include <unordered_set>
 
 // Maximum number of threads that can be supported for hazard pointers
 // Would need to be higher for a GPU implementation but is fine for now
@@ -12,8 +13,9 @@ constexpr size_t MAX_HAZARD_POINTERS = 128;
 
 // Struct representing a hazard pointer slot for a thread
 struct HazardPointer {
-    // ptr is an atomic wrapper of the pointer the thread is currently protecting
-    std::atomic<void*> ptr;
+    // ptrs is a hasmap of atomic wrapper of pointers the thread is currently protecting
+    // It is guarenteed that a thread will only ever write to itself
+    std::unordered_set<void*> ptrs;
 };
 
 // Global array of hazard pointers, one slot per thread
@@ -38,12 +40,13 @@ thread_local size_t hazardSlot = []{
 
 // Set the current thread's hazard pointer to a given pointer
 void setHazardPointer(void* ptr) {
-    globalHazardPointers[hazardSlot].ptr.store(ptr, std::memory_order_release);
+    globalHazardPointers[hazardSlot].ptrs.insert(ptr);
 }
 
-// Clear the current thread's hazard pointer
-void clearHazardPointer() {
-    globalHazardPointers[hazardSlot].ptr.store(nullptr, std::memory_order_release);
+// Remove a given hazard pointer
+void removeHazardPointer(void* ptr) {
+    // Nothing will happen if the key does not exist
+    globalHazardPointers[hazardSlot].ptrs.erase(ptr);
 }
 
 // Check if any thread is currently protecting the given pointer
@@ -51,9 +54,7 @@ void clearHazardPointer() {
 bool isHazard(void* ptr) {
     for (size_t i = 0; i < MAX_HAZARD_POINTERS; i++) {
         // If it is being protected return true
-        // Won't be enough threads for the O(n) time to matter
-        // Can probably be switched later if needed
-        if (globalHazardPointers[i].ptr.load(std::memory_order_acquire) == ptr) {
+        if (globalHazardPointers[i].ptrs.contains(ptr)) {
             return true;
         }
     }

@@ -10,8 +10,7 @@
 thread_local std::vector<void*> retireList;
 
 // Free nodes from retireList if no longer protected
-template<typename Node>
-void updateRetireList(std::function<void(Node*)> deletionFunc) {
+void updateRetireList(std::function<void(void*)> deletionFunc) {
     // surivors will hold still hazardous nodes
     std::vector<void*> survivors;
 
@@ -22,7 +21,7 @@ void updateRetireList(std::function<void(Node*)> deletionFunc) {
             survivors.push_back(ptr);
         } else {
             // Safe to free node
-            deletionFunc(static_cast<Node*>(ptr));
+            deletionFunc(ptr);
         }
     }
 
@@ -31,17 +30,16 @@ void updateRetireList(std::function<void(Node*)> deletionFunc) {
 }
 
 // Retire a given node for later deletion
-// deletionFunc is a function which destroys the node when safe
-template<typename Node>
-void retireNode(Node* node, std::function<void(Node*)> deletionFunc) {
-    // Add the node to this thread's retire list
-    retireList.push_back(node);
+// deletionFunc is a function which destroys the object when safe
+void retireObj(void* obj, std::function<void(void*)> deletionFunc) {
+    // Add the object to this thread's retire list
+    retireList.push_back(obj);
 
     // If the retire list has grown large enough, attempt to reclaim nodes
     // This threshold can be tuned for performance/memory tradeoff
     // Potentially find a way to eliminate this boundary later
     if (retireList.size() >= 64) {
-        updateRetireList<Node>(deletionFunc);
+        updateRetireList(deletionFunc);
     }
 }
 

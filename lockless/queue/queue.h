@@ -95,13 +95,15 @@ class LocklessQueue {
         // Size must be assigned in constructor
         MemoryPool<sizeof(Node<T>), 2> pool; 
 
-        // Returns a node pointer and increments the reference count
+        // Copy sets a hazard pointer and returns a node pointer
         Node<T>* copy(Node<T>* node) {
             // If node is valid and not a dummy node
             if (node && !node->isDummy) {
-                // Increment node refCount
-                node->refCount.fetch_add(1, std::memory_order_relaxed);
+                // Set hazard pointer
+                setHazardPointer(node);
             }
+
+            // Return node
             return node;
         }
 
@@ -136,19 +138,21 @@ class LocklessQueue {
                 return;
             }
 
-            // Subtracts 1 from refCount atomically
-            // If refCount is one the node may be terminated as refCount will drop to 0
-            if (node->refCount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-                terminateNode(node);
+            // Release protection of node
+            removeHazardPointer(node);
+
+            // If node is no longer protected retire it
+            if (!isHazard(node)) {
+                retireObj(node, staticTerminateNode);
             }
         }
 
-        // Increments the node's reference count so that the node won't be deleted while being used
+        // Adds node into a hazard pointer for the given thread
         // Returns nullptr if mark is set and returns node pointer otherwise
         Node<T>* deref(std::atomic<MarkedPtr<T>>* ptr) {
             // Load MarpedPtr object from atomic
             MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
-            
+
             // Return nullptr if mark is set or ptr is nullptr
             if (mPtr.getMark()) {
                 return nullptr;
@@ -163,8 +167,11 @@ class LocklessQueue {
 
         // Like deref but a pointer is always returned
         Node<T>* derefD(std::atomic<MarkedPtr<T>>* ptr) {
-            // Load node from atomic MarkedPtr
-            Node<T>* node = ptr->load(std::memory_order_acquire).getPtr();
+            // Load MarpedPtr object from atomic
+            MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
+
+            // Load node from MarkedPtr
+            Node<T>* node = mPtr.getPtr();
 
             // If node is invalid copy handles it
             return copy(node);

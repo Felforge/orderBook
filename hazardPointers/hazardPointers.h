@@ -7,6 +7,11 @@
 #include <cassert>
 #include <vector>
 
+// Tomorrow:
+// Implement array as ptrs in HazardPointer struct
+// Make sure heavy concurrency test passes
+// Create heavy concurrency test for all other lockless objects
+
 // Maximum number of threads that can be supported for hazard pointers
 // Would need to be higher for a GPU implementation but is fine for now
 constexpr size_t MAX_HAZARD_POINTERS = 128;

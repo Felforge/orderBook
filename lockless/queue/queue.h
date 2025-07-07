@@ -326,6 +326,7 @@ class LocklessQueue {
 
             while (true) {
                 // if prev and next are equal
+                // Technically should not be possible but better to be safe
                 if (prev == next) {
                     // Break out of loop
                     break;
@@ -638,6 +639,7 @@ class LocklessQueue {
 
                 // Check if queue is empty
                 if (node == tail) {
+                    // No decrements needed as head and tail refCounts are irrelevant
                     // Return nullptr as the queue is empty
                     return std::nullopt;
                 }

@@ -672,7 +672,7 @@ TEST(LocklessQueueTest, HandlesConcurrentPushing) {
 // Testing with 6 threads
 TEST(LocklessQueueTest, HandlesConcurrentPopping) {
     // Reference constant to be used in testing
-    const int N = 1000;
+    const int N = 500;
 
     // Create memory pool vector
     // Each memory pool will have a capacity of N

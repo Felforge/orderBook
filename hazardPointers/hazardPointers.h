@@ -7,20 +7,18 @@
 #include <cassert>
 #include <vector>
 
-// Tomorrow:
-// Implement array as ptrs in HazardPointer struct
-// Make sure heavy concurrency test passes
-// Create heavy concurrency test for all other lockless objects
-
 // Maximum number of threads that can be supported for hazard pointers
 // Would need to be higher for a GPU implementation but is fine for now
 constexpr size_t MAX_HAZARD_POINTERS = 128;
 
-// Struct representing a hazard pointer slot for a thread
+// Struct representing two hazard pointer slot for a thread
 struct HazardPointer {
-    // ptrs is a vector of atomic wrapper of pointers the thread is currently protecting
-    // It is guarenteed that a thread will only ever write to itself
-    std::atomic<void*> ptrs;
+    // Two atomic hazard pointer slots
+    std::atomic<void*> ptr1;
+    std::atomic<void*> ptr2;
+
+    // Set both slots to nullptr on construction
+    HazardPointer() : ptr1(nullptr), ptr2(nullptr) {}
 };
 
 // Global array of hazard pointers, one slot per thread
@@ -45,39 +43,37 @@ thread_local size_t hazardSlot = []{
 
 // Set the current thread's hazard pointer to a given pointer
 void setHazardPointer(void* ptr) {
-    std::atomic<void*> aPtr(ptr);
-    globalHazardPointers[hazardSlot].ptrs.push_back(std::move(aPtr));
+    // Check if ptr1 is available
+    if (globalHazardPointers[hazardSlot].ptr1.load()) {
+        // Not available, use ptr2
+        globalHazardPointers[hazardSlot].ptr2.store(ptr);
+    } else {
+        // Is available, use it
+        globalHazardPointers[hazardSlot].ptr1.store(ptr);
+    }
 }
 
 // Remove a given hazard pointer
 // Nothing will happen if the pointer is not protected
-// Time is O(n) but there shouldn't be many protections at a time
 void removeHazardPointer(void* ptr) {
-    // surivors will hold still hazardous nodes
-    std::vector<std::atomic<void*>> survivors;
-
-    for (auto &p : globalHazardPointers[hazardSlot].ptrs) {
-        // Only reclaim the node if no thread is currently protecting it with a hazard pointer
-        if (p.load() == ptr) {
-            // Still in use, keep it for later checking
-            survivors.push_back(ptr);
-        }
+    if (globalHazardPointers[hazardSlot].ptr1.load() == ptr) {
+        // Matches ptr1, clear it
+        globalHazardPointers[hazardSlot].ptr1.store(nullptr);
+    } else if (globalHazardPointers[hazardSlot].ptr2.load() == ptr) {
+        // Matches ptr2, clear it
+        globalHazardPointers[hazardSlot].ptr2.store(nullptr);
     }
-
-    // Set retireList to survivors
-    globalHazardPointers[hazardSlot].ptrs = std::move(survivors);
+    // else do nothing
 }
 
 // Check if any thread is currently protecting the given pointer
 // Used to determine if a pointer is "safe" to reclaim/free
-// Time is O(n^2) but there shouldn't be many protections at a time
+// Time is O(n) but there shouldn't be many protections at a time
 bool isHazard(void* ptr) {
     for (size_t i = 0; i < MAX_HAZARD_POINTERS; i++) {
-        for (auto &p: globalHazardPointers[i].ptrs) {
-            // If it is being protected return true
-            if (p.load() == ptr) {
-                return true;
-            }
+        // Check both slots, if it is being protected return true
+        if (globalHazardPointers[i].ptr1 == ptr || globalHazardPointers[i].ptr2 == ptr) {
+            return true;
         }
     }
 

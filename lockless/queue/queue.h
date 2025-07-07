@@ -11,6 +11,11 @@
 #include "../../hazardPointers/hazardRetire.h"
 #include "../../hazardPointers/hazardPointers.h"
 
+// Tomorrow:
+// Create heavy concurrency test for all other lockless objects
+// Implement hazard pointers fully into lockless queue
+// Add soak (long-duration high-concurrency test) to the lockless queue once it passes everything
+
 // Based off of an algorithm developed by Sundell and Tsigas
 
 // Predeclare for access below

@@ -16,7 +16,7 @@ struct Node {
 int NUM_THREADS = thread::hardware_concurrency();
 
 // Number of iterations each thread will perform (creating and retiring nodes)
-constexpr int ITERATIONS_PER_THREAD = 5000;
+constexpr int ITERATIONS_PER_THREAD = 500000;
 
 // Global counters for allocations and deallocations, for leak detection
 std::atomic<int> totalAllocated{0};

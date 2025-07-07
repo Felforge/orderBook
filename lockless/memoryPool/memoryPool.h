@@ -1,5 +1,5 @@
-#ifndef LOCKLESSMEMORYPOOL_H
-#define LOCKLESSMEMORYPOOL_H
+#ifndef LOCKLESS_MEMORY_POOL_H
+#define LOCKLESS_MEMORY_POOL_H
 
 #include <thread>
 #include <bit>

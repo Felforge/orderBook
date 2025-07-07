@@ -1,5 +1,5 @@
-#ifndef MPSCQUEUE_H
-#define MPSCQUEUE_H
+#ifndef MPSC_QUEUE_H
+#define MPSC_QUEUE_H
 
 #include <atomic>
 #include <cstddef>

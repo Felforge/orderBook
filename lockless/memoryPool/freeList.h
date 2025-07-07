@@ -1,5 +1,5 @@
-#ifndef SPSCFREELIST_H
-#define SPSCFREELIST_H
+#ifndef SPSC_FREELIST_H
+#define SPSC_FREELIST_H
 
 #include <stdexcept>
 

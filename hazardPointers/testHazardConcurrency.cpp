@@ -6,6 +6,11 @@
 #include "hazardRetire.h"
 using namespace std;
 
+// Test Status
+// Normal: PASSED
+// ASAN: PASSED
+// TSAN: PASSED
+
 // Simple Node structure for demonstration in the test
 struct Node {
     int value;
@@ -16,7 +21,7 @@ struct Node {
 int NUM_THREADS = thread::hardware_concurrency();
 
 // Number of iterations each thread will perform (creating and retiring nodes)
-constexpr int ITERATIONS_PER_THREAD = 500000;
+constexpr int ITERATIONS_PER_THREAD = 1000000;
 
 // Global counters for allocations and deallocations, for leak detection
 std::atomic<int> totalAllocated{0};

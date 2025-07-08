@@ -4,6 +4,11 @@
 #include "hazardPointers.h"
 using namespace std;
 
+// Test Status
+// Normal: PASSED
+// ASAN: PASSED
+// TSAN: PASSED
+
 // Test Setting and Clearing a Hazard Pointer on a single thread
 TEST(LocklessMemoryPoolTest, HandlesSetAndClear) {
     // Declare a value to be tested
@@ -21,9 +26,10 @@ TEST(LocklessMemoryPoolTest, HandlesSetAndClear) {
     // Verify expected result
     EXPECT_FALSE(isHazard(&val));
 
-    // Clear hazard pointer maps
+    // Clear hazard pointers
     for (auto &hazard: globalHazardPointers) {
-        hazard.ptrs.clear();
+        hazard.ptr1.store(nullptr);
+        hazard.ptr2.store(nullptr);
     }
 }
 
@@ -47,9 +53,10 @@ TEST(LocklessMemoryPoolTest, HandlesMultipleHazards) {
     EXPECT_TRUE(isHazard(&val1));
     EXPECT_TRUE(isHazard(&val2));
 
-    // Clear hazard pointer maps
+    // Clear hazard pointers
     for (auto &hazard: globalHazardPointers) {
-        hazard.ptrs.clear();
+        hazard.ptr1.store(nullptr);
+        hazard.ptr2.store(nullptr);
     }
 }
 
@@ -90,9 +97,10 @@ TEST(LocklessMemoryPoolTest, HandlesSharedHazard) {
     // Verify expected result
     EXPECT_FALSE(isHazard(&val));
 
-    // Clear hazard pointer maps
+    // Clear hazard pointers
     for (auto &hazard: globalHazardPointers) {
-        hazard.ptrs.clear();
+        hazard.ptr1.store(nullptr);
+        hazard.ptr2.store(nullptr);
     }
 }
 
@@ -228,9 +236,10 @@ TEST(LocklessMemoryPoolTest, HandlesSeperateHazard) {
     EXPECT_FALSE(isHazard(&val1));
     EXPECT_FALSE(isHazard(&val2));
 
-    // Clear hazard pointer maps
+    // Clear hazard pointers
     for (auto &hazard: globalHazardPointers) {
-        hazard.ptrs.clear();
+        hazard.ptr1.store(nullptr);
+        hazard.ptr2.store(nullptr);
     }
 }
 

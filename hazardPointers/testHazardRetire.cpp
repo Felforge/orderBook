@@ -4,6 +4,11 @@
 #include "hazardRetire.h"
 using namespace std;
 
+// Test Status
+// Normal: PASSED
+// ASAN: PASSED
+// TSAN: PASSED
+
 // Deletion function
 // Just setting the memory to a distinct junk value
 // Does not need to be deleted as it is a local variable

@@ -1,7 +1,10 @@
-g++ -std=c++17 testMPSCQueue.cpp -lgtest -o testMPSCQueue.exe
+g++ -std=c++20 testMPSCQueue.cpp -lgtest -o testMPSCQueue.exe
+g++ -std=c++20 testMPSCConcurrency.cpp -lgtest -o testMPSCConcurrency.exe
 
 For Debugging Single Threaded:
-g++ -std=c++17 -fsanitize=address testMPSCQueue.cpp -lgtest -o testMPSCQueue.exe
+g++ -std=c++20 -fsanitize=address testMPSCQueue.cpp -lgtest -o testMPSCQueue.exe
+g++ -std=c++20 -fsanitize=address testMPSCConcurrency.cpp -lgtest -o testMPSCConcurrency.exe
 
 For Debugging Concurrency:
-g++ -std=c++17 -fsanitize=thread testMPSCQueue.cpp -lgtest -o testMPSCQueue.exe
+g++ -std=c++20 -fsanitize=thread testMPSCQueue.cpp -lgtest -o testMPSCQueue.exe
+g++ -std=c++20 -fsanitize=thread testMPSCConcurrency.cpp -lgtest -o testMPSCConcurrency.exe

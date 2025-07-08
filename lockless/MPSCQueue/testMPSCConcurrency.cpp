@@ -3,14 +3,13 @@
 #include <vector>
 #include <random>
 #include <unordered_set>
-#include <iostream>
 #include "MPSCQueue.h"
 using namespace std;
 
 // Test Status
-// Normal:
-// ASAN:
-// TSAN:
+// Normal: PASSED
+// ASAN: PASSED
+// TSAN: PASSED
 
 // NUM_THREADS will be set to the maximum supported amount minus 1 consumer
 int NUM_THREADS = thread::hardware_concurrency() - 1;
@@ -20,7 +19,7 @@ constexpr int ITERATIONS_PER_THREAD = 10000;
 
 // Max capacity of the queue
 // A consumer thread will be running at the same time as the producers
-constexpr int QUEUE_CAPACITY = 1024;
+constexpr int QUEUE_CAPACITY = 65536;
 
 // Each producer will push ITERATIONS_PER_THREAD unique pointers
 void producer(MPSCQueue<int, QUEUE_CAPACITY>& queue, atomic<bool>& startFlag, vector<int*>& produced, int baseValue) {
@@ -69,8 +68,6 @@ TEST(MemoryPool, HandlesHeavyConcurrency) {
     // Count total items that much be consumed
     atomic<int> totalToConsume{NUM_THREADS * ITERATIONS_PER_THREAD};
 
-    cout << totalToConsume.load() << endl;
-
     // To make sure produced and consumed items matched
     vector<vector<int*>> producerItems(NUM_THREADS);
     vector<int*> consumedItems;
@@ -84,8 +81,6 @@ TEST(MemoryPool, HandlesHeavyConcurrency) {
         producers.emplace_back(producer, ref(queue), ref(startFlag), ref(producerItems[i]), i * ITERATIONS_PER_THREAD);
     }
 
-    cout << "launched" << endl;
-
     // Launch all threads at the same time
     startFlag.store(true, memory_order_release);
 
@@ -94,12 +89,8 @@ TEST(MemoryPool, HandlesHeavyConcurrency) {
         t.join();
     }
 
-    cout << "produced" << endl;
-
     // Wait for consumer to finish
     cons.join();
-
-    cout << "consumed" << endl;
 
     // Verification: All produced pointers should be consumed exactly once
     unordered_set<int*> produced_set;

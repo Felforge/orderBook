@@ -2,6 +2,10 @@
 #include "freeList.h"
 using namespace std;
 
+// Test Status
+// Normal: PASSED
+// ASAN: PASSED
+
 struct testStruct {
     int val;
     testStruct* next;

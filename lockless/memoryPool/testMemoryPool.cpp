@@ -4,6 +4,11 @@
 #include "memoryPool.h"
 using namespace std;
 
+// Test Status
+// Normal: PASSED
+// ASAN: PASSED
+// TSAN: PASSED
+
 struct testStruct {
     int val;
     testStruct* next;

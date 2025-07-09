@@ -4,11 +4,11 @@
 
 | **Num of Orders** | **Total Runtime (µs)** | **Latency Per Order (µs/Order)** | **Throughput (Orders/Second)** |
 | :-----------: |  :-----------: |  :-----------: |  :-----------: |
-| 10 | 11 | 1.100000 | 909090.909091 |
-| 100 | 88 | 0.880000 | 1136363.636364 |
-| 1000 | 6554 | 6.554000 | 152578.577968 |
-| 10000 | 611038 | 61.103800 | 16365.594284 |
-| 100000 | 61548228 | 615.482280 | 1624.742145 |
+| 10 | 23 | 2.300000 | 434782.608696 |
+| 100 | 523 | 5.230000 | 191204.588910 |
+| 1000 | 43682 | 43.682000 | 22892.724692 |
+| 10000 | 1965136 | 196.513600 | 5088.706329 |
+| 100000 | 198758234 | 1987.582340 | 503.123810 |
 
 Clearly the naive linked-list implementation becomes extremely inefficient at adding orders as the order count increases
 
@@ -16,11 +16,11 @@ Clearly the naive linked-list implementation becomes extremely inefficient at ad
 
 | **Num of Orders** | **Total Runtime (µs)** | **Latency Per Order (µs/Order)** | **Throughput (Orders/Second)** |
 | :-----------: |  :-----------: |  :-----------: |  :-----------: |
-| 10 | 3 | 0.300000 | 3333333.333333 |
-| 100 | 9 | 0.090000 | 11111111.111111 |
-| 1000 | 76 | 0.076000 | 13157894.736842 |
-| 10000 | 739 | 0.073900 | 13531799.729364 |
-| 100000 | 7780 | 0.077800 | 12853470.437018 |
+| 10 | 2 | 0.200000 | 5000000.000000 |
+| 100 | 14 | 0.140000 | 7142857.142857 |
+| 1000 | 170 | 0.170000 | 5882352.941176 |
+| 10000 | 1961 | 0.196100 | 5099439.061703 |
+| 100000 | 14875 | 0.148750 | 6722689.075630 |
 
 Latency and throughput are fairly consistent when removing from the head
 
@@ -28,11 +28,11 @@ Latency and throughput are fairly consistent when removing from the head
 
 | **Num of Orders** | **Total Runtime (µs)** | **Latency Per Order (µs/Order)** | **Throughput (Orders/Second)** |
 | :-----------: |  :-----------: |  :-----------: |  :-----------: |
-| 10 | 2783 | 278.300000 | 3593.244700 |
-| 100 | 25410 | 254.100000 | 3935.458481 |
-| 1000 | 254841 | 254.841000 | 3924.015366 |
-| 10000 | 2389253 | 238.925300 | 4185.408577 |
-| 100000 | 12017179 | 120.171790 | 8321.420526 |
+| 10 | 1839 | 183.900000 | 5437.737901 |
+| 100 | 17988 | 179.880000 | 5559.261730 |
+| 1000 | 192130 | 192.130000 | 5204.809244 |
+| 10000 | 1729813 | 172.981300 | 5780.971700 |
+| 100000 | 9101685 | 91.016850 | 10986.976587 |
 
 Latency gets continuously lower as the linked-list shortens so the average for 100,000 is much lower
 
@@ -41,9 +41,9 @@ Latency gets continuously lower as the linked-list shortens so the average for 1
 | **Num of Orders** | **Total Runtime (µs)** | **Latency Per Order (µs/Order)** | **Throughput (Orders/Second)** |
 | :-----------: |  :-----------: |  :-----------: |  :-----------: |
 | 10 | 4 | 0.400000 | 2500000.000000 |
-| 100 | 17 | 0.170000 | 5882352.941176 |
-| 1000 | 154 | 0.154000 | 6493506.493506 |
-| 10000 | 1526 | 0.152600 | 6553079.947575 |
-| 100000 | 16379 | 0.163790 | 6105378.838757 |
+| 100 | 31 | 0.310000 | 3225806.451613 |
+| 1000 | 348 | 0.348000 | 2873563.218391 |
+| 10000 | 3348 | 0.334800 | 2986857.825568 |
+| 100000 | 31475 | 0.314750 | 3177124.702145 |
 
 Latency and throughput are fairly consistent despite the number of orders as the top orders are easily accessible for matching

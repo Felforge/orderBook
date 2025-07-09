@@ -4,6 +4,10 @@
 #include "memoryPool.h"
 using namespace std;
 
+// Test Status
+// Normal: PASSED
+// ASAN: PASSED
+
 string captureOutput(function<void()> func) {
     stringstream buffer;
     streambuf* old = cout.rdbuf(buffer.rdbuf());
@@ -88,7 +92,6 @@ TEST(LocklessMemoryPoolTest, HandlesFullReuse) {
         pool.deallocate(block);
     }
 }
-
 
 // Run all tests
 int main(int argc, char **argv) {

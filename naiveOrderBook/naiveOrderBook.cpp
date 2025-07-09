@@ -55,35 +55,23 @@ OrderBook::OrderBook() {
 OrderBook::~OrderBook() {
     // Delete order lists and orders allocated using new
     OrderList* currentLayer = buyOrderList;
-    while (currentLayer && currentLayer->next) {
-        currentLayer = currentLayer->next;
+    while (currentLayer) {
+        OrderList* next = currentLayer->next;
         if (currentLayer->order) {
             delete currentLayer->order;
         }
         delete currentLayer;
+        currentLayer = next;
     }
 
     currentLayer = sellOrderList;
-    while (currentLayer && currentLayer->next) {
-        currentLayer = currentLayer->next;
+    while (currentLayer) {
+        OrderList* next = currentLayer->next;
         if (currentLayer->order) {
             delete currentLayer->order;
         }
         delete currentLayer;
-    }
-
-    if (buyOrderList) {
-        if (buyOrderList->order) {
-            delete buyOrderList->order;
-        }
-        delete buyOrderList;
-    }
-
-    if (sellOrderList) {
-        if (sellOrderList->order) {
-            delete sellOrderList->order;
-        }
-        delete sellOrderList;
+        currentLayer = next;
     }
 }
 

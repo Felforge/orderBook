@@ -3,6 +3,10 @@
 #include <string>
 #include "cpuOrderBook.h"
 
+// Test Status
+// Normal: PASSED
+// ASAN: PASSED
+
 std::string captureOutput(std::function<void()> func) {
     std::stringstream buffer;
     std::streambuf* old = std::cout.rdbuf(buffer.rdbuf());

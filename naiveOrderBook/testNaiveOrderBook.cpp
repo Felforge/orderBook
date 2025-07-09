@@ -3,6 +3,10 @@
 #include <string>
 #include "naiveOrderBook.h"
 
+// Test Status
+// Normal: PASSED
+// ASAN: PASSED
+
 std::string captureOutput(std::function<void()> func) {
     std::stringstream buffer;
     std::streambuf* old = std::cout.rdbuf(buffer.rdbuf());
@@ -309,7 +313,8 @@ TEST(OrderBookTest, HandlesMultipleOrderMatch) {
     delete expected;
 }
 
+// Run all tests
 int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }

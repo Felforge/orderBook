@@ -14,6 +14,7 @@ void updateRetireList(std::function<void(void*)> deletionFunc) {
     // surivors will hold still hazardous nodes
     std::vector<void*> survivors;
 
+    // iterate through all nodes
     for (void* ptr : retireList) {
         // Only reclaim the node if no thread is currently protecting it with a hazard pointer
         if (isHazard(ptr)) {

@@ -13,12 +13,14 @@ constexpr size_t MAX_HAZARD_POINTERS = 128;
 
 // Struct representing two hazard pointer slot for a thread
 struct HazardPointer {
-    // Two atomic hazard pointer slots
+    // Four atomic hazard pointer slots
     std::atomic<void*> ptr1;
     std::atomic<void*> ptr2;
+    std::atomic<void*> ptr3;
+    std::atomic<void*> ptr4;
 
     // Set both slots to nullptr on construction
-    HazardPointer() : ptr1(nullptr), ptr2(nullptr) {}
+    HazardPointer() : ptr1(nullptr), ptr2(nullptr), ptr3(nullptr), ptr4(nullptr) {}
 };
 
 // Global array of hazard pointers, one slot per thread
@@ -44,13 +46,25 @@ thread_local size_t hazardSlot = []{
 // Set the current thread's hazard pointer to a given pointer
 void setHazardPointer(void* ptr) {
     // Check if ptr1 is available
-    if (globalHazardPointers[hazardSlot].ptr1.load()) {
-        // Not available, use ptr2
-        globalHazardPointers[hazardSlot].ptr2.store(ptr);
-    } else {
+    if (!globalHazardPointers[hazardSlot].ptr1.load()) {
         // Is available, use it
         globalHazardPointers[hazardSlot].ptr1.store(ptr);
-    }
+
+    // Check if pt2 is available
+    } else if (!globalHazardPointers[hazardSlot].ptr2.load()) {
+        // Is available, use it
+        globalHazardPointers[hazardSlot].ptr2.store(ptr);
+
+    // Check if ptr3 is available
+    } else if (!globalHazardPointers[hazardSlot].ptr3.load()) {
+        // Is available, use it
+        globalHazardPointers[hazardSlot].ptr3.store(ptr);
+
+    // Check if ptr4 is available
+    } else if (!globalHazardPointers[hazardSlot].ptr4.load()) {
+        // Is available, use it
+        globalHazardPointers[hazardSlot].ptr4.store(ptr);
+    } 
 }
 
 // Remove a given hazard pointer
@@ -62,6 +76,12 @@ void removeHazardPointer(void* ptr) {
     } else if (globalHazardPointers[hazardSlot].ptr2.load() == ptr) {
         // Matches ptr2, clear it
         globalHazardPointers[hazardSlot].ptr2.store(nullptr);
+    } else if (globalHazardPointers[hazardSlot].ptr3.load() == ptr) {
+        // Matches ptr2, clear it
+        globalHazardPointers[hazardSlot].ptr4.store(nullptr);
+    } else if (globalHazardPointers[hazardSlot].ptr4.load() == ptr) {
+        // Matches ptr2, clear it
+        globalHazardPointers[hazardSlot].ptr4.store(nullptr);
     }
     // else do nothing
 }

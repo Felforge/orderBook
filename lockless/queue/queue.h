@@ -8,11 +8,10 @@
 #include <optional>
 #include <iostream>
 #include "../memoryPool/memoryPool.h"
-#include "../../hazardPointers/hazardRetire.h"
-#include "../../hazardPointers/hazardPointers.h"
+#include "../hazardPointers/hazardRetire.h"
+#include "../hazardPointers/hazardPointers.h"
 
 // Tomorrow:
-// Create heavy concurrency test for all other lockless objects
 // Implement hazard pointers fully into lockless queue
 // Add soak (long-duration high-concurrency test) to the lockless queue once it passes everything
 
@@ -71,11 +70,11 @@ struct Node {
     std::atomic<MarkedPtr<T>> next;
     T data;
 
-    // Number of threads that are currently holding a reference to this node
-    std::atomic<size_t> refCount;
-
     // Track if this is a dummy node or not
     bool isDummy;
+
+    // Track if a node is retired
+    std::atomic<bool> isRetired;
 
     // For memory pool allocation
     void* memoryBlock;
@@ -86,12 +85,61 @@ struct Node {
 
     // Used if no parameters are provided
     Node(GenericMemoryPool* ownerPool, void* memoryBlock) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
-        data(), refCount(1), isDummy(true), memoryBlock(memoryBlock), ownerPool(ownerPool) {}
+        data(), isDummy(true), isRetired(false), memoryBlock(memoryBlock), ownerPool(ownerPool) {}
     
     // Used if parameters are provided
     Node(GenericMemoryPool* ownerPool, void* memoryBlock, const T& val) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
-        data(val), refCount(1), isDummy(false), memoryBlock(memoryBlock), ownerPool(ownerPool) {}
+        data(val), isDummy(false), isRetired(false), memoryBlock(memoryBlock), ownerPool(ownerPool) {}
 };
+
+// Predeclare LocklessQueue
+template<typename T>
+class LocklessQueue;
+
+// Free nodes from retireList if no longer protected
+// Queue-specific version of updateRetireList from hazardRetire.h
+template<typename T>
+void updateRetireListQueue(LocklessQueue<T>& queue) {
+    // surivors will hold still hazardous nodes
+    std::vector<void*> survivors;
+
+    // iterate through all nodes
+    for (void* ptr : retireList) {
+        // Only reclaim the node if no thread is currently protecting it with a hazard pointer
+        if (isHazard(ptr)) {
+            // Still in use, keep it for later checking
+            survivors.push_back(ptr);
+        } else {
+            // Safe to free node
+            queue.terminateNode(static_cast<Node<T>*>(ptr));
+        }
+    }
+
+    // Set retireList to survivors
+    retireList = std::move(survivors);
+}
+
+// Retire a given node for later deletion
+// Queue-specific version of retireObj from hazardRetire.h
+template<typename T>
+void retireQueueNode(Node<T>* node, LocklessQueue<T>& queue) {
+    // Return if node is already retired or is a dummy node
+    // If node->isRetired is false exchange it for true
+    if (node->isDummy || node->isRetired.exchange(true)) {
+        return;
+    }
+
+    // Add the node to this thread's retire list
+    retireList.push_back(static_cast<void*>(node));
+
+    // If the retire list has grown large enough, attempt to reclaim nodes
+    // This threshold can be tuned for performance/memory tradeoff
+    // Potentially find a way to eliminate this boundary later
+    if (retireList.size() >= 64) {
+        // Clear retire list if applicable
+        updateRetireListQueue<T>(queue);
+    }
+}
 
 template<typename T>
 class LocklessQueue {
@@ -112,29 +160,6 @@ class LocklessQueue {
             return node;
         }
 
-        // Calls Node destructor and deletes it from memory
-        // destrurctor flag should be true if and only if called from the destructor
-        void terminateNode(Node<T>* node, bool destructor=false) {
-            // If node is nullptr return
-            if (!node) {
-                return;
-            }
-
-            if (!destructor) {
-                releaseNode(node->prev.load().getPtr());
-                releaseNode(node->next.load().getPtr());
-            }
-
-            GenericMemoryPool* ownerPool = node->ownerPool;
-
-            // Explicitly call destructor for Node<T>
-            // May not be needed but good to have
-            node->~Node<T>();
-
-            // Handle memory block
-            ownerPool->deallocate(node->memoryBlock);
-        }
-
         // Self explanatory
         void releaseNode(Node<T>* node) {
             // Return if node is invalid or is a dummy node
@@ -143,12 +168,12 @@ class LocklessQueue {
                 return;
             }
 
-            // Release protection of node
-            removeHazardPointer(node);
-
             // If node is no longer protected retire it
             if (!isHazard(node)) {
-                retireObj(node, staticTerminateNode);
+                retireQueueNode<T>(node, *this);
+            } else {
+                // Release protection of node
+                removeHazardPointer(node);
             }
         }
 
@@ -214,7 +239,7 @@ class LocklessQueue {
                     // Increase refCount of node
                     copy(node);
 
-                    // Decrement link refCount
+                    // Release next->prev
                     releaseNode(link.getPtr());
 
                     // Helps complete incomplete right side of insertion
@@ -516,14 +541,53 @@ class LocklessQueue {
 
         // Returns a node created with the given data
         Node<T>* createNode(T data, GenericMemoryPool* memoryPool) {
-            // Allocate memory from pool
-            void* memoryBlock = memoryPool->allocate();
+            // Try to allocate memory block
+            void* memoryBlock;
+            try {
+                // Allocate memory from the pool
+                memoryBlock = memoryPool->allocate();
+
+            // Catch bad alloc
+            } catch (std::bad_alloc&) {
+                // Attempt to clear retireList to free memory
+                updateRetireListQueue<T>(*this);
+                
+                // Try to allocate from the pool again
+                // Bad alloc will be thrown again if nothing was cleared
+                memoryBlock = memoryPool->allocate();
+            }
 
             // Create node object
             Node<T>* node = new (memoryBlock) Node<T>(memoryPool, memoryBlock, data);
 
             // Return node
             return node;
+        }
+
+        // Calls Node destructor and deletes it from memory
+        // bool destructor should be set to true in the destructor
+        // Needs to be public to retire list nodes
+        void terminateNode(Node<T>* node, bool destructor = false) {
+            // If node is nullptr return
+            if (!node) {
+                return;
+            }
+
+            // // Don't release in the destructor as everything is being deleted
+            // if (!destructor) {
+            //     releaseNode(node->prev.load().getPtr());
+            //     releaseNode(node->next.load().getPtr());
+            // }
+
+            // Retrieve memory pool
+            GenericMemoryPool* ownerPool = node->ownerPool;
+
+            // Explicitly call destructor for Node<T>
+            // May not be needed but good to have
+            node->~Node<T>();
+
+            // Handle memory block
+            ownerPool->deallocate(node->memoryBlock);
         }
 
         // Function to push to the left side of the queue
@@ -533,7 +597,7 @@ class LocklessQueue {
             // Create node object
             Node<T>* node = createNode(data, memoryPool);
 
-            // Increment refCount of head
+            // Copy head
             Node<T>* prev = copy(head);
 
             // Gets pointer to current prev->next
@@ -564,9 +628,6 @@ class LocklessQueue {
 
                 // Try to atomically update prev->next pointer to next, if it still points to unmarked next
                 if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(node, false))) {
-                    // Increment node refCount
-                    copy(node);
-
                     // Break out of loop
                     break;
                 }
@@ -586,9 +647,6 @@ class LocklessQueue {
         // Returns a pointer to the node incase it is needed later
         // Creation of a node requires a memory block from an external memory pool
         Node<T>* pushRight(T data, GenericMemoryPool* memoryPool) {
-            // Create node object
-            Node<T>* node = createNode(data, memoryPool);
-
             // Increment refCount of head
             Node<T>* next = copy(tail);
 
@@ -596,6 +654,9 @@ class LocklessQueue {
             // node will take it's place
             // Will be nullptr if prev->next is marked
             Node<T>* prev = deref(&next->prev);
+
+            // Create node object
+            Node<T>* node = createNode(data, memoryPool);
 
             while (true) {
                 // if prev->next does not equal unmarked next
@@ -616,9 +677,6 @@ class LocklessQueue {
 
                 // Try to atomically update prev->next pointer to next, if it still points to unmarked next
                 if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(node, false))) {
-                    // Increment node refCount
-                    copy(node); 
-
                     // Break out of loop
                     break;
                 }
@@ -793,7 +851,7 @@ class LocklessQueue {
                 return std::nullopt;
             }
 
-            // increment node's refCount
+            // Protect node
             copy(node);
 
             // To be returned

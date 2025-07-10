@@ -721,7 +721,7 @@ TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
     vector<thread> threads;
 
     // Create vectors to hold nodes
-    vector<vector<Node<int>*>> nodeVecs;
+    vector<vector<Node<int>*>> nodeVecs(6);
 
     // Partition to allow the queue to destruct
     // MemoryPool must be deleted after the queue

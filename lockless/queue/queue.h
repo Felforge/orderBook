@@ -749,7 +749,11 @@ class LocklessQueue {
 
                 // if prev->next does not equal unmarked next
                 if (prev->next.load() != MarkedPtr<T>(next, false)) {
-                    prev = helpInsert(prev, next);
+                    // Release current prev
+                    releaseNode(prev);
+                    
+                    // Redeclare it from next->prev
+                    prev = deref(&next->prev);
 
                     // Go into the next loop iteration
                     continue;

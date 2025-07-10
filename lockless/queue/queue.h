@@ -230,6 +230,11 @@ class LocklessQueue {
         // Atomically sets deletion marker on prev pointer
         // Tells other threads not to use this connection
         void markPrev(Node<T>* node) {
+            // Safety check: return if node is invalid
+            if (!node) {
+                return;
+            }
+
             while (true) {
                 // Retrieve marked pointer from node
                 MarkedPtr<T> link = node->prev.load();
@@ -284,6 +289,14 @@ class LocklessQueue {
 
         // Helps complete insert operation that was interrupted
         Node<T>* helpInsert(Node<T>* prev, Node<T>* node) {
+            // Safety checks: return appropriate values if inputs are invalid
+            if (!prev) {
+                return node;
+            }
+            if (!node) {
+                return prev;
+            }
+
             // Set mark of last connection
             bool lastMark = true;
 
@@ -310,6 +323,11 @@ class LocklessQueue {
 
                     // Update prev to prev2
                     prev = prev2;
+
+                    // Safety check after assignment
+                    if (!prev) {
+                        return node;
+                    }
 
                     // Go into the next loop iteration
                     continue;
@@ -372,12 +390,24 @@ class LocklessQueue {
 
         // Help complete a delete operation that may have been interrupted
         void helpDelete(Node<T>* node) {
+            // Safety check: return if node is invalid
+            if (!node) {
+                return;
+            }
+
             // Mark node's prev connection
             markPrev(node);
 
             // Retrieve prev and next and increment refCount
             Node<T>* prev = derefD(&node->prev);
             Node<T>* next = derefD(&node->next);
+
+            // Safety checks: if prev or next are null, return
+            if (!prev || !next) {
+                releaseNode(prev);
+                releaseNode(next);
+                return;
+            }
 
             // Marker of last link
             // Must be true due to markPrev being called above
@@ -388,6 +418,11 @@ class LocklessQueue {
                 // Technically should not be possible but better to be safe
                 if (prev == next) {
                     // Break out of loop
+                    break;
+                }
+
+                // Safety check: if next is null, break
+                if (!next) {
                     break;
                 }
 
@@ -402,8 +437,18 @@ class LocklessQueue {
                     // Set next to next2
                     next = next2;
 
+                    // Safety check after assignment
+                    if (!next) {
+                        break;
+                    }
+
                     // Go into the next loop iteration
                     continue;
+                }
+
+                // Safety check: if prev is null, break
+                if (!prev) {
+                    break;
                 }
 
                 // Retrieve prev->next
@@ -429,6 +474,11 @@ class LocklessQueue {
 
                     // Update prev to prev2
                     prev = prev2;
+
+                    // Safety check after assignment
+                    if (!prev) {
+                        break;
+                    }
 
                     // Go into the next loop iteration
                     continue;
@@ -456,6 +506,11 @@ class LocklessQueue {
 
                 // Created expected value
                 MarkedPtr<T> expected(node, false);
+
+                // Safety check: ensure prev and next are still valid
+                if (!prev || !next) {
+                    break;
+                }
 
                 // Try to atomically update prev's next pointer to next, if it still points to node
                 if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(next, false))) {

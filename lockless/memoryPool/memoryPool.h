@@ -3,6 +3,7 @@
 
 #include <thread>
 #include <bit>
+#include <cstring>
 #include "freeList.h"
 #include "../MPSCQueue/MPSCQueue.h"
 

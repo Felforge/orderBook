@@ -77,10 +77,10 @@ void removeHazardPointer(void* ptr) {
         // Matches ptr2, clear it
         globalHazardPointers[hazardSlot].ptr2.store(nullptr);
     } else if (globalHazardPointers[hazardSlot].ptr3.load() == ptr) {
-        // Matches ptr2, clear it
-        globalHazardPointers[hazardSlot].ptr4.store(nullptr);
+        // Matches ptr3, clear it
+        globalHazardPointers[hazardSlot].ptr3.store(nullptr);
     } else if (globalHazardPointers[hazardSlot].ptr4.load() == ptr) {
-        // Matches ptr2, clear it
+        // Matches ptr4, clear it
         globalHazardPointers[hazardSlot].ptr4.store(nullptr);
     }
     // else do nothing
@@ -91,8 +91,9 @@ void removeHazardPointer(void* ptr) {
 // Time is O(n) but there shouldn't be many protections at a time
 bool isHazard(void* ptr) {
     for (size_t i = 0; i < MAX_HAZARD_POINTERS; i++) {
-        // Check both slots, if it is being protected return true
-        if (globalHazardPointers[i].ptr1 == ptr || globalHazardPointers[i].ptr2 == ptr) {
+        // Check all four slots, if it is being protected return true
+        if (globalHazardPointers[i].ptr1 == ptr || globalHazardPointers[i].ptr2 == ptr ||
+            globalHazardPointers[i].ptr3 == ptr || globalHazardPointers[i].ptr4 == ptr) {
             return true;
         }
     }

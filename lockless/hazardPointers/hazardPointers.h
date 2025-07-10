@@ -45,12 +45,17 @@ thread_local size_t hazardSlot = []{
 
 // Set the current thread's hazard pointer to a given pointer
 void setHazardPointer(void* ptr) {
+    // Skip if pointer is null
+    if (!ptr) {
+        return;
+    }
+
     // Check if ptr1 is available
     if (!globalHazardPointers[hazardSlot].ptr1.load()) {
         // Is available, use it
         globalHazardPointers[hazardSlot].ptr1.store(ptr);
 
-    // Check if pt2 is available
+    // Check if ptr2 is available
     } else if (!globalHazardPointers[hazardSlot].ptr2.load()) {
         // Is available, use it
         globalHazardPointers[hazardSlot].ptr2.store(ptr);
@@ -64,7 +69,11 @@ void setHazardPointer(void* ptr) {
     } else if (!globalHazardPointers[hazardSlot].ptr4.load()) {
         // Is available, use it
         globalHazardPointers[hazardSlot].ptr4.store(ptr);
-    } 
+    } else {
+        // All slots full - replace the oldest (ptr1)
+        // This is a simple eviction policy
+        globalHazardPointers[hazardSlot].ptr1.store(ptr);
+    }
 }
 
 // Remove a given hazard pointer

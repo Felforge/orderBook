@@ -264,8 +264,8 @@ class LocklessQueue {
 
         // Helps complete insert operation that was interrupted
         Node<T>* helpInsert(Node<T>* prev, Node<T>* node) {
-            // Get mark of last connection
-            bool lastMark = prev->next.load().getMark();
+            // Set mark of last connection
+            bool lastMark = true;
 
             while (true) {
                 // Retrieves safe to use copy of prev->next
@@ -572,12 +572,6 @@ class LocklessQueue {
             if (!node) {
                 return;
             }
-
-            // // Don't release in the destructor as everything is being deleted
-            // if (!destructor) {
-            //     releaseNode(node->prev.load().getPtr());
-            //     releaseNode(node->next.load().getPtr());
-            // }
 
             // Retrieve memory pool
             GenericMemoryPool* ownerPool = node->ownerPool;

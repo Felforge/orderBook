@@ -865,8 +865,8 @@ class LocklessQueue {
                 // Try to get the next node from current position
                 Node<T>* next = deref(&prev->next);
                 
-                // If next is tail, queue is truly empty
-                if (next == tail) {
+                // If next is null or tail, queue is empty
+                if (!next || next == tail) {
                     return std::nullopt;
                 }
                 
@@ -911,6 +911,9 @@ class LocklessQueue {
                     // Release the deleted node
                     releaseNode(next);
                     
+                    // Release prev reference
+                    releaseNode(prev);
+                    
                     return data;
                 }
                 
@@ -930,8 +933,9 @@ class LocklessQueue {
                 // Get the previous node from current position
                 Node<T>* prev = deref(&next->prev);
                 
-                // If we've reached the head, queue is truly empty
-                if (prev == head) {
+                // If prev is null or we've reached the head, queue is truly empty
+                if (!prev || prev == head) {
+                    releaseNode(next);
                     return std::nullopt;
                 }
                 
@@ -968,19 +972,18 @@ class LocklessQueue {
                     // Get the node before the one we're deleting
                     Node<T>* beforePrev = derefD(&prev->prev);
                     
-                    // Connect beforePrev to curr, bypassing the deleted node
+                    // Connect beforePrev to next, bypassing the deleted node
                     if (beforePrev) {
                         helpInsert(beforePrev, next);
                         releaseNode(beforePrev);
                     }
                     
-                    releaseNode(next);
-                    
                     // Clean up cross references
                     removeCrossReference(prev);
                     
-                    // Release the deleted node
+                    // Release references
                     releaseNode(prev);
+                    releaseNode(next);
                     
                     return data;
                 }
@@ -1012,51 +1015,28 @@ class LocklessQueue {
 
                 // If already logically deleted, help finish and return nullopt
                 if (link.getMark()) {
-                    // Help deletion along
                     helpDelete(node);
-
-                    // Release node and next
                     releaseNode(node);
-
-                    // Return nullopt
                     return std::nullopt;
                 }
 
-                // Try to atomically update node->next pointer to marked pointer to next, if it is still an unmarked pointer to next
+                // Try to mark the node for deletion
                 if (node->next.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
-                    // Call helpDelete to help remove the node now that it is marked
+                    // Successfully marked node for deletion
                     helpDelete(node);
-
-                    // Retrieve node->prev
-                    Node<T>* prev = derefD(&node->prev);
-
-                    // Retrieve node->next
-                    Node<T>* next = derefD(&node->next);
-
-                    // Connect prev and next
-                    // If prev or next are marked helpInsert will deal with it
-                    prev = helpInsert(prev, next);
-
-                    // Decrement prev and next
-                    releaseNode(prev);
-                    releaseNode(next);
-
-                    // Break out of loop
-                    break;
+                    
+                    // Clean up cross references
+                    removeCrossReference(node);
+                    
+                    // Release node reference
+                    releaseNode(node);
+                    
+                    return data;
                 }
                 
-                // Yield the thread before going to next loop iteration
+                // CAS failed, yield and retry
                 std::this_thread::yield();
             }
-
-            // Break possible cyclic references that include node
-            removeCrossReference(node);
-
-            // Fully decrement node for deletion
-            releaseNode(node);
-
-            // Return data
-            return data;
         }
 };
 

@@ -600,7 +600,7 @@ TEST(LocklessQueueTest, HandlesConcurrentPushing) {
 // Testing with 6 threads
 TEST(LocklessQueueTest, HandlesConcurrentPopping) {
     // Reference constant to be used in testing
-    const int N = 500;
+    const int N = 1000;
 
     // Create memory pool vector
     // Each memory pool will have a capacity of N
@@ -637,14 +637,24 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
         // Clear threads vector
         threads.clear();
 
+        // Use atomic counter to track successful pops
+        atomic<int> successfulPops{0};
+        atomic<bool> queueExhausted{false};
+
         // Three threads popping from left
         for (int t = 0; t < 3; t++) {
             threads.emplace_back([&] {
                 for(int i = 0; i < N; i++) {
                     auto val = queue.popLeft();
 
-                    // Make sure return value is valid
-                    EXPECT_NE(val, nullopt);
+                    // Make sure pop was valid
+                    if (val.has_value()) {
+                        successfulPops.fetch_add(1);
+                    } else {
+                        // Queue is empty, stop trying
+                        queueExhausted.store(true);
+                        break;
+                    }
                 }
             });
         }
@@ -655,8 +665,14 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
                 for(int i = 0; i < N; i++) {
                     auto val = queue.popRight();
 
-                    // Make sure return value is valid
-                    EXPECT_NE(val, nullopt);
+                    // Make sure pop was valid
+                    if (val.has_value()) {
+                        successfulPops.fetch_add(1);
+                    } else {
+                        // Queue is empty, stop trying
+                        queueExhausted.store(true);
+                        break;
+                    }
                 }
             });
         }
@@ -665,6 +681,10 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
         for (auto& thread : threads) {
             thread.join();
         }
+
+        // Verify that we popped all inserted elements
+        EXPECT_EQ(successfulPops.load(), 6 * N);
+        EXPECT_FALSE(queueExhausted.load());
 
         // Verify that the queue is empty
         EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -675,9 +695,11 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
 
     // Delete Memory Pools
     for (auto pool: pools) {
-        pool->~MemoryPool();
         delete pool;
     }
+
+    // Clear retire list
+    retireList.clear();
 }
 
 // Test Concurrent Removing
@@ -709,32 +731,32 @@ TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
 
         // Add all nodes
         for (int t = 0; t < 6; t++) {
-            threads.emplace_back([&, t] {
-                for(int i = 0; i < N; i++) {
-                    Node<int>* node = queue.pushLeft(t * N + i, pools[t]);
+            // Pre-allocate to avoid reallocations
+            nodeVecs[t].reserve(N);
 
-                    // Store node pointer
-                    nodeVecs[t].push_back(node);
-                }
-            });
+            for(int i = 0; i < N; i++) {
+                Node<int>* node = queue.pushLeft(t * N + i, pools[t]);
+                nodeVecs[t].push_back(node);
+            }
         }
 
-        // Wait for threads to finish
-        for (auto& thread : threads) {
-            thread.join();
-        }
-
-        // Clear threads vector
-        threads.clear();
+        // Use atomic counter to track successful removals
+        atomic<int> successfulRemovals{0};
 
         // Six threads removing their assigned nodes
         for (int t = 0; t < 6; t++) {
             threads.emplace_back([&, t] {
                 for(int i = 0; i < N; i++) {
-                    auto val = queue.removeNode(nodeVecs[t][i]);
+                    Node<int>* nodeToRemove = nodeVecs[t][i];
+                    auto val = queue.removeNode(nodeToRemove);
 
-                    // Make sure return value is valid
-                    EXPECT_NE(val, nullopt);
+                    // Make sure removal is valid
+                    if (val.has_value()) {
+                        successfulRemovals.fetch_add(1);
+
+                        // Verify the removed value is correct
+                        EXPECT_EQ(*val, t * N + i);
+                    }
                 }
             });
         }
@@ -743,6 +765,9 @@ TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
         for (auto& thread : threads) {
             thread.join();
         }
+
+        // Verify that we removed all inserted elements
+        EXPECT_EQ(successfulRemovals.load(), 6 * N);
 
         // Verify that the queue is empty
         EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
@@ -755,6 +780,9 @@ TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
     for (auto pool: pools) {
         delete pool;
     }
+
+    // Clear retire list
+    retireList.clear();
 }
 
 // Run all tests

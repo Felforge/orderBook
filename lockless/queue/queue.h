@@ -1003,40 +1003,28 @@ class LocklessQueue {
                 return std::nullopt;
             }
 
-            // Protect node
-            copy(node);
-
-            // To be returned
-            T data = node->data;
-
-            while (true) {
-                // Retrieve marked pointer to node->next
-                MarkedPtr<T> link = node->next.load();
-
-                // If already logically deleted, help finish and return nullopt
-                if (link.getMark()) {
-                    helpDelete(node);
-                    releaseNode(node);
-                    return std::nullopt;
-                }
-
-                // Try to mark the node for deletion
-                if (node->next.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
-                    // Successfully marked node for deletion
-                    helpDelete(node);
-                    
-                    // Clean up cross references
-                    removeCrossReference(node);
-                    
-                    // Release node reference
-                    releaseNode(node);
-                    
-                    return data;
-                }
-                
-                // CAS failed, yield and retry
-                std::this_thread::yield();
+            // Check if already marked for deletion
+            MarkedPtr<T> nextLink = node->next.load();
+            if (nextLink.getMark()) {
+                return std::nullopt;
             }
+
+            // Try to mark the node for deletion
+            if (node->next.compare_exchange_weak(nextLink, MarkedPtr<T>(nextLink.getPtr(), true))) {
+                // Successfully marked node for deletion
+                T data = node->data;
+                
+                // Help complete the deletion
+                helpDelete(node);
+                
+                // Clean up cross references
+                removeCrossReference(node);
+                
+                return data;
+            }
+            
+            // Failed to mark for deletion
+            return std::nullopt;
         }
 };
 

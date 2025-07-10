@@ -195,8 +195,7 @@ class LocklessQueue {
                 return nullptr;
             }
 
-            // Limit retries to prevent infinite loops
-            for (int retries = 0; retries < 100; retries++) {
+            while (true) {
                 // Load MarkedPtr object from atomic
                 MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
 
@@ -255,8 +254,7 @@ class LocklessQueue {
                 return nullptr;
             }
 
-            // Limit retries to prevent infinite loops
-            for (int retries = 0; retries < 100; retries++) {
+            while (true) {
                 // Load MarkedPtr object from atomic
                 MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
 
@@ -860,167 +858,136 @@ class LocklessQueue {
         // Function to pop from the left side of the queue
         // Returns the data from the node or nothing
         std::optional<T> popLeft() {
+            // Start traversal from head
+            Node<T>* prev = copy(head);
+            
             while (true) {
-                // Start from head and traverse to find a poppable node
-                Node<T>* curr = copy(head);
+                // Try to get the next node from current position
+                Node<T>* next = deref(&prev->next);
                 
-                while (true) {
-                    // Get the next node from current position
-                    Node<T>* next = deref(&curr->next);
+                // If next is tail, queue is truly empty
+                if (next == tail) {
+                    return std::nullopt;
+                }
+                
+                // Check if next node is marked for deletion
+                MarkedPtr<T> nextLink = next->next.load();
+                if (nextLink.getMark()) {
+                    // Node is being deleted, help complete deletion
+                    helpDelete(next);
                     
-                    // If we can't get next, help repair and retry from head
-                    if (!next) {
-                        releaseNode(curr);
-                        std::this_thread::yield();
-                        break; // Break inner loop, restart from head
+                    // Try to repair connection and continue traversal
+                    Node<T>* afterNext = derefD(&next->next);
+                    if (afterNext) {
+                        helpInsert(prev, afterNext);
+                        releaseNode(afterNext);
                     }
                     
-                    // If we've reached the tail, queue is truly empty
-                    if (next == tail) {
-                        releaseNode(curr);
-                        releaseNode(next);
-                        return std::nullopt;
-                    }
-                    
-                    // Check if this node is already marked for deletion
-                    MarkedPtr<T> nextLink = next->next.load();
-                    if (nextLink.getMark()) {
-                        // Help complete the deletion of this marked node
-                        helpDelete(next);
-                        releaseNode(next);
-                        // Continue with current position, don't advance
-                        std::this_thread::yield();
-                        continue;
-                    }
-                    
-                    // Check if the structure is consistent
-                    if (curr->next.load().getPtr() != next || curr->next.load().getMark()) {
-                        // Structure changed while we were working, restart
-                        releaseNode(curr);
-                        releaseNode(next);
-                        std::this_thread::yield();
-                        break; // Break inner loop, restart from head
-                    }
-                    
-                    // Try to mark this node for deletion (this is our pop operation)
-                    MarkedPtr<T> expected(nextLink.getPtr(), false);
-                    if (next->next.compare_exchange_weak(expected, MarkedPtr<T>(nextLink.getPtr(), true))) {
-                        // Successfully marked the node for deletion
-                        T data = next->data;
-                        
-                        // Help complete the deletion
-                        helpDelete(next);
-                        
-                        // Get the node after the one we're deleting
-                        Node<T>* afterNext = derefD(&next->next);
-                        
-                        // Connect curr to afterNext, bypassing the deleted node
-                        if (afterNext) {
-                            helpInsert(curr, afterNext);
-                            releaseNode(afterNext);
-                        }
-                        
-                        releaseNode(curr);
-                        
-                        // Clean up cross references
-                        removeCrossReference(next);
-                        
-                        // Release the deleted node
-                        releaseNode(next);
-                        
-                        return data;
-                    }
-                    
-                    // CAS failed, the node changed while we were working
-                    releaseNode(curr);
                     releaseNode(next);
                     std::this_thread::yield();
-                    break; // Break inner loop, restart from head
+
+                    // Continue into next loop iteration
+                    continue;
                 }
+                
+                // Try to mark next node for deletion (our pop operation)
+                if (next->next.compare_exchange_weak(nextLink, MarkedPtr<T>(nextLink.getPtr(), true))) {
+                    // Successfully marked node for deletion
+                    T data = next->data;
+                    
+                    // Help complete the deletion process
+                    helpDelete(next);
+                    
+                    // Connect prev to the node after next
+                    Node<T>* afterNext = derefD(&next->next);
+                    if (afterNext) {
+                        helpInsert(prev, afterNext);
+                        releaseNode(afterNext);
+                    }
+                    
+                    // Clean up cross references
+                    removeCrossReference(next);
+                    
+                    // Release the deleted node
+                    releaseNode(next);
+                    
+                    return data;
+                }
+                
+                // CAS failed, the node changed while we were working
+                // Continue from current position without restarting
+                releaseNode(next);
+                std::this_thread::yield();
             }
         }
 
         // Function to pop from the right side of the queue
         // Returns the data from the node or nothing
         std::optional<T> popRight() {
+            Node<T>* next = copy(tail);
+            
             while (true) {
-                // Start from tail and traverse backward to find a poppable node
-                Node<T>* curr = copy(tail);
+                // Get the previous node from current position
+                Node<T>* prev = deref(&next->prev);
                 
-                while (true) {
-                    // Get the previous node from current position
-                    Node<T>* prev = deref(&curr->prev);
-                    
-                    // If we can't get prev, help repair and retry from tail
-                    if (!prev) {
-                        releaseNode(curr);
-                        std::this_thread::yield();
-                        break; // Break inner loop, restart from tail
-                    }
-                    
-                    // If we've reached the head, queue is truly empty
-                    if (prev == head) {
-                        releaseNode(curr);
-                        releaseNode(prev);
-                        return std::nullopt;
-                    }
-                    
-                    // Check if this node is already marked for deletion
-                    MarkedPtr<T> prevNext = prev->next.load();
-                    if (prevNext.getMark()) {
-                        // Help complete the deletion of this marked node
-                        helpDelete(prev);
-                        releaseNode(prev);
-                        // Continue with current position, don't move backward
-                        std::this_thread::yield();
-                        continue;
-                    }
-                    
-                    // Check if the structure is consistent (prev should point to curr)
-                    if (prevNext.getPtr() != curr) {
-                        // Structure is inconsistent, help repair it
-                        helpInsert(prev, curr);
-                        releaseNode(curr);
-                        releaseNode(prev);
-                        std::this_thread::yield();
-                        break; // Break inner loop, restart from tail
-                    }
-                    
-                    // Try to mark this node for deletion (this is our pop operation)
-                    MarkedPtr<T> expected(curr, false);
-                    if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(curr, true))) {
-                        // Successfully marked the node for deletion
-                        T data = prev->data;
-                        
-                        // Help complete the deletion
-                        helpDelete(prev);
-                        
-                        // Get the node before the one we're deleting
-                        Node<T>* beforePrev = derefD(&prev->prev);
-                        
-                        // Connect beforePrev to curr, bypassing the deleted node
-                        if (beforePrev) {
-                            helpInsert(beforePrev, curr);
-                            releaseNode(beforePrev);
-                        }
-                        
-                        releaseNode(curr);
-                        
-                        // Clean up cross references
-                        removeCrossReference(prev);
-                        
-                        // Release the deleted node
-                        releaseNode(prev);
-                        
-                        return data;
-                    }
-                    
-                    // CAS failed, the node changed while we were working
-                    releaseNode(curr);
-                    releaseNode(prev);
-                    std::this_thread::yield();
-                    break; // Break inner loop, restart from tail
+                // If we've reached the head, queue is truly empty
+                if (prev == head) {
+                    return std::nullopt;
                 }
+                
+                // Check if this node is already marked for deletion
+                MarkedPtr<T> prevNext = prev->next.load();
+                if (prevNext.getMark()) {
+                    // Help complete the deletion of this marked node
+                    helpDelete(prev);
+                    releaseNode(prev);
+
+                    // Go into next loop iteration
+                    continue;
+                }
+                
+                // Check if the structure is consistent
+                if (prevNext.getPtr() != next) {
+                    // Structure is inconsistent, help repair it
+                    helpInsert(prev, next);
+                    releaseNode(prev);
+
+                    // Go into next loop iteration
+                    continue;
+                }
+                
+                // Try to mark this node for deletion (this is our pop operation)
+                MarkedPtr<T> expected(next, false);
+                if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(next, true))) {
+                    // Successfully marked the node for deletion
+                    T data = prev->data;
+                    
+                    // Help complete the deletion
+                    helpDelete(prev);
+                    
+                    // Get the node before the one we're deleting
+                    Node<T>* beforePrev = derefD(&prev->prev);
+                    
+                    // Connect beforePrev to curr, bypassing the deleted node
+                    if (beforePrev) {
+                        helpInsert(beforePrev, next);
+                        releaseNode(beforePrev);
+                    }
+                    
+                    releaseNode(next);
+                    
+                    // Clean up cross references
+                    removeCrossReference(prev);
+                    
+                    // Release the deleted node
+                    releaseNode(prev);
+                    
+                    return data;
+                }
+                
+                // CAS failed, the node changed while we were working
+                releaseNode(prev);
+                std::this_thread::yield();
             }
         }
 

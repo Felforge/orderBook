@@ -150,8 +150,13 @@ class LocklessQueue {
 
         // Copy sets a hazard pointer and returns a node pointer
         Node<T>* copy(Node<T>* node) {
+            // If node is null or retired, return nullptr for safety
+            if (!node || node->isRetired.load()) {
+                return nullptr;
+            }
+
             // If node is valid and not a dummy node
-            if (node && !node->isDummy) {
+            if (!node->isDummy) {
                 // Set hazard pointer
                 setHazardPointer(node);
             }
@@ -168,6 +173,11 @@ class LocklessQueue {
                 return;
             }
 
+            // Additional safety check: don't release already retired nodes
+            if (node->isRetired.load()) {
+                return;
+            }
+
             // If node is no longer protected retire it
             if (!isHazard(node)) {
                 retireQueueNode<T>(node, *this);
@@ -180,10 +190,15 @@ class LocklessQueue {
         // Adds node into a hazard pointer for the given thread
         // Returns nullptr if mark is set and returns node pointer otherwise
         Node<T>* deref(std::atomic<MarkedPtr<T>>* ptr) {
+            // Safety check: return nullptr if ptr is null
+            if (!ptr) {
+                return nullptr;
+            }
+
             // Load MarpedPtr object from atomic
             MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
 
-            // Return nullptr if mark is set or ptr is nullptr
+            // Return nullptr if mark is set
             if (mPtr.getMark()) {
                 return nullptr;
             }
@@ -191,25 +206,35 @@ class LocklessQueue {
             // Load node from MarkedPtr
             Node<T>* node = mPtr.getPtr();
 
-            // If node is invalid copy handles it
+            // copy() now handles null nodes safely
             return copy(node);
         }
 
         // Like deref but a pointer is always returned
         Node<T>* derefD(std::atomic<MarkedPtr<T>>* ptr) {
+            // Safety check: return nullptr if ptr is null
+            if (!ptr) {
+                return nullptr;
+            }
+
             // Load MarpedPtr object from atomic
             MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
 
             // Load node from MarkedPtr
             Node<T>* node = mPtr.getPtr();
 
-            // If node is invalid copy handles it
+            // copy() now handles null nodes safely
             return copy(node);
         }
 
         // Atomically sets deletion marker on prev pointer
         // Tells other threads not to use this connection
         void markPrev(Node<T>* node) {
+            // Safety check: return if node is invalid
+            if (!node) {
+                return;
+            }
+
             while (true) {
                 // Retrieve marked pointer from node
                 MarkedPtr<T> link = node->prev.load();
@@ -264,6 +289,14 @@ class LocklessQueue {
 
         // Helps complete insert operation that was interrupted
         Node<T>* helpInsert(Node<T>* prev, Node<T>* node) {
+            // Safety checks: return appropriate values if inputs are invalid
+            if (!prev) {
+                return node;
+            }
+            if (!node) {
+                return prev;
+            }
+
             // Set mark of last connection
             bool lastMark = true;
 
@@ -290,6 +323,11 @@ class LocklessQueue {
 
                     // Update prev to prev2
                     prev = prev2;
+
+                    // Safety check after assignment
+                    if (!prev) {
+                        return node;
+                    }
 
                     // Go into the next loop iteration
                     continue;
@@ -352,12 +390,24 @@ class LocklessQueue {
 
         // Help complete a delete operation that may have been interrupted
         void helpDelete(Node<T>* node) {
+            // Safety check: return if node is invalid
+            if (!node) {
+                return;
+            }
+
             // Mark node's prev connection
             markPrev(node);
 
             // Retrieve prev and next and increment refCount
             Node<T>* prev = derefD(&node->prev);
             Node<T>* next = derefD(&node->next);
+
+            // Safety checks: if prev or next are null, return
+            if (!prev || !next) {
+                releaseNode(prev);
+                releaseNode(next);
+                return;
+            }
 
             // Marker of last link
             // Must be true due to markPrev being called above
@@ -368,6 +418,11 @@ class LocklessQueue {
                 // Technically should not be possible but better to be safe
                 if (prev == next) {
                     // Break out of loop
+                    break;
+                }
+
+                // Safety check: if next is null, break
+                if (!next) {
                     break;
                 }
 
@@ -382,8 +437,18 @@ class LocklessQueue {
                     // Set next to next2
                     next = next2;
 
+                    // Safety check after assignment
+                    if (!next) {
+                        break;
+                    }
+
                     // Go into the next loop iteration
                     continue;
+                }
+
+                // Safety check: if prev is null, break
+                if (!prev) {
+                    break;
                 }
 
                 // Retrieve prev->next
@@ -409,6 +474,11 @@ class LocklessQueue {
 
                     // Update prev to prev2
                     prev = prev2;
+
+                    // Safety check after assignment
+                    if (!prev) {
+                        break;
+                    }
 
                     // Go into the next loop iteration
                     continue;
@@ -437,6 +507,11 @@ class LocklessQueue {
                 // Created expected value
                 MarkedPtr<T> expected(node, false);
 
+                // Safety check: ensure prev and next are still valid
+                if (!prev || !next) {
+                    break;
+                }
+
                 // Try to atomically update prev's next pointer to next, if it still points to node
                 if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(next, false))) {
                     // Increment next refCount
@@ -461,12 +536,17 @@ class LocklessQueue {
         // Tries to break cross references between the given node and any of the nodes it references
         // This is done by repeatedly updating the prev and next point as long as they reference a fully marked node
         void removeCrossReference(Node<T>* node) {
+            // Safety check: return if node is null or retired
+            if (!node || node->isRetired.load()) {
+                return;
+            }
+
             while (true) {
                 // Retrieve node->prev pointer
                 Node<T>* prev = node->prev.load().getPtr();
 
-                // If prev->next is marked
-                if (prev->next.load().getMark()) {
+                // Safety check for prev pointer
+                if (prev && prev->next.load().getMark()) {
                     // Retrieve prev->prev
                     Node<T>* prev2 = derefD(&prev->prev);
 
@@ -483,8 +563,8 @@ class LocklessQueue {
                 // Retrieve node->next pointer
                 Node<T>* next = node->next.load().getPtr();
 
-                // If next->next is marked
-                if (next->next.load().getMark()) {
+                // Safety check for next pointer
+                if (next && next->next.load().getMark()) {
                     // Retrieve next->next
                     Node<T>* next2 = derefD(&next->next);
 
@@ -596,10 +676,17 @@ class LocklessQueue {
 
             // Gets pointer to current prev->next
             // node will take it's place
-            // Will be nullptr if prev->next is marked
+            // Will be nullptr if prev->next is marked or null
             Node<T>* next = deref(&prev->next);
 
             while (true) {
+                // Safety check: if next is null, try again
+                if (!next) {
+                    next = deref(&prev->next);
+                    std::this_thread::yield();
+                    continue;
+                }
+
                 // if prev->next does not equal unmarked next
                 if (prev->next.load() != MarkedPtr<T>(next, false)) {
                     // Release current next
@@ -646,13 +733,20 @@ class LocklessQueue {
 
             // Gets pointer to current prev->next
             // node will take it's place
-            // Will be nullptr if prev->next is marked
+            // Will be nullptr if prev->next is marked or null
             Node<T>* prev = deref(&next->prev);
 
             // Create node object
             Node<T>* node = createNode(data, memoryPool);
 
             while (true) {
+                // Safety check: if prev is null, try again
+                if (!prev) {
+                    prev = deref(&next->prev);
+                    std::this_thread::yield();
+                    continue;
+                }
+
                 // if prev->next does not equal unmarked next
                 if (prev->next.load() != MarkedPtr<T>(next, false)) {
                     prev = helpInsert(prev, next);
@@ -700,8 +794,14 @@ class LocklessQueue {
 
             while (true) {
                 // Retrieve node
-                // Will return nullptr if prev->next is marked
+                // Will return nullptr if prev->next is marked or null
                 node = deref(&prev->next);
+
+                // Safety check: if node is null, try again
+                if (!node) {
+                    std::this_thread::yield();
+                    continue;
+                }
 
                 // Check if queue is empty
                 if (node == tail) {
@@ -777,10 +877,14 @@ class LocklessQueue {
             Node<T>* next = copy(tail);
 
             // Retrieve node
-            // Will return nullptr if prev->next is marked
+            // Will return nullptr if prev->next is marked or null
             Node<T>* node = deref(&next->prev);
 
             while (true) {
+                // Safety check: if node is null, return empty
+                if (!node) {
+                    return std::nullopt;
+                }
 
                 // Check if node->next is incorrect
                 if (node->next.load() != MarkedPtr<T>(next, false)) {

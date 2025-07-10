@@ -18,9 +18,10 @@ struct HazardPointer {
     std::atomic<void*> ptr2;
     std::atomic<void*> ptr3;
     std::atomic<void*> ptr4;
+    std::atomic<void*> ptr5;
 
     // Set both slots to nullptr on construction
-    HazardPointer() : ptr1(nullptr), ptr2(nullptr), ptr3(nullptr), ptr4(nullptr) {}
+    HazardPointer() : ptr1(nullptr), ptr2(nullptr), ptr3(nullptr), ptr4(nullptr), ptr5(nullptr) {}
 };
 
 // Global array of hazard pointers, one slot per thread
@@ -68,11 +69,10 @@ void setHazardPointer(void* ptr) {
     // Check if ptr4 is available
     } else if (!globalHazardPointers[hazardSlot].ptr4.load()) {
         // Is available, use it
-        globalHazardPointers[hazardSlot].ptr4.store(ptr);
+        globalHazardPointers[hazardSlot].ptr5.store(ptr);
     } else {
-        // All slots full - replace the oldest (ptr1)
-        // This is a simple eviction policy
-        globalHazardPointers[hazardSlot].ptr1.store(ptr);
+        // Is available, use it
+        globalHazardPointers[hazardSlot].ptr5.store(ptr);
     }
 }
 
@@ -91,6 +91,9 @@ void removeHazardPointer(void* ptr) {
     } else if (globalHazardPointers[hazardSlot].ptr4.load() == ptr) {
         // Matches ptr4, clear it
         globalHazardPointers[hazardSlot].ptr4.store(nullptr);
+    } else if (globalHazardPointers[hazardSlot].ptr5.load() == ptr) {
+        // Matches ptr5, clear it
+        globalHazardPointers[hazardSlot].ptr5.store(nullptr);
     }
     // else do nothing
 }
@@ -102,7 +105,7 @@ bool isHazard(void* ptr) {
     for (size_t i = 0; i < MAX_HAZARD_POINTERS; i++) {
         // Check all four slots, if it is being protected return true
         if (globalHazardPointers[i].ptr1 == ptr || globalHazardPointers[i].ptr2 == ptr ||
-            globalHazardPointers[i].ptr3 == ptr || globalHazardPointers[i].ptr4 == ptr) {
+            globalHazardPointers[i].ptr3 == ptr || globalHazardPointers[i].ptr4 == ptr || globalHazardPointers[i].ptr5 == ptr) {
             return true;
         }
     }

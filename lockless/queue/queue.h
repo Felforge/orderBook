@@ -149,15 +149,15 @@ class LocklessQueue {
         MemoryPool<sizeof(Node<T>), 2> pool; 
 
         // Copy sets a hazard pointer and returns a node pointer
+        // This should only be called on nodes that are already protected or are dummy nodes
         Node<T>* copy(Node<T>* node) {
-            // If node is null or retired, return nullptr for safety
-            if (!node || node->isRetired.load()) {
+            // If node is null, return nullptr for safety
+            if (!node) {
                 return nullptr;
             }
 
-            // If node is valid and not a dummy node
+            // Set hazard pointer to protect the node (only for non-dummy nodes)
             if (!node->isDummy) {
-                // Set hazard pointer
                 setHazardPointer(node);
             }
 
@@ -195,19 +195,52 @@ class LocklessQueue {
                 return nullptr;
             }
 
-            // Load MarpedPtr object from atomic
-            MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
+            while (true) {
+                // Load MarkedPtr object from atomic
+                MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
 
-            // Return nullptr if mark is set
-            if (mPtr.getMark()) {
-                return nullptr;
+                // Return nullptr if mark is set
+                if (mPtr.getMark()) {
+                    return nullptr;
+                }
+
+                // Load node from MarkedPtr
+                Node<T>* node = mPtr.getPtr();
+
+                // If node is null, return nullptr
+                if (!node) {
+                    return nullptr;
+                }
+
+                // Set hazard pointer BEFORE checking anything about the node
+                if (!node->isDummy) {
+                    setHazardPointer(node);
+                }
+
+                // Re-check that the pointer hasn't changed (ABA protection)
+                MarkedPtr<T> mPtr2 = ptr->load(std::memory_order_acquire);
+                if (mPtr.getPtr() != mPtr2.getPtr() || mPtr2.getMark()) {
+                    // Pointer changed, retry
+                    if (!node->isDummy) {
+                        removeHazardPointer(node);
+                    }
+                    if (mPtr2.getMark()) {
+                        return nullptr;
+                    }
+                    continue;
+                }
+
+                // Now safely check if retired
+                if (node->isRetired.load()) {
+                    if (!node->isDummy) {
+                        removeHazardPointer(node);
+                    }
+                    return nullptr;
+                }
+
+                // Node is protected and valid
+                return node;
             }
-
-            // Load node from MarkedPtr
-            Node<T>* node = mPtr.getPtr();
-
-            // copy() now handles null nodes safely
-            return copy(node);
         }
 
         // Like deref but a pointer is always returned
@@ -217,14 +250,44 @@ class LocklessQueue {
                 return nullptr;
             }
 
-            // Load MarpedPtr object from atomic
-            MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
+            while (true) {
+                // Load MarkedPtr object from atomic
+                MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
 
-            // Load node from MarkedPtr
-            Node<T>* node = mPtr.getPtr();
+                // Load node from MarkedPtr
+                Node<T>* node = mPtr.getPtr();
 
-            // copy() now handles null nodes safely
-            return copy(node);
+                // If node is null, return nullptr
+                if (!node) {
+                    return nullptr;
+                }
+
+                // Set hazard pointer BEFORE checking anything about the node
+                if (!node->isDummy) {
+                    setHazardPointer(node);
+                }
+
+                // Re-check that the pointer hasn't changed (ABA protection)
+                MarkedPtr<T> mPtr2 = ptr->load(std::memory_order_acquire);
+                if (mPtr.getPtr() != mPtr2.getPtr()) {
+                    // Pointer changed, retry
+                    if (!node->isDummy) {
+                        removeHazardPointer(node);
+                    }
+                    continue;
+                }
+
+                // Now safely check if retired
+                if (node->isRetired.load()) {
+                    if (!node->isDummy) {
+                        removeHazardPointer(node);
+                    }
+                    return nullptr;
+                }
+
+                // Node is protected and valid
+                return node;
+            }
         }
 
         // Atomically sets deletion marker on prev pointer

@@ -6,22 +6,26 @@
 #include <cstddef>
 #include <cassert>
 #include <vector>
+#include <iostream>
 
 // Maximum number of threads that can be supported for hazard pointers
 // Would need to be higher for a GPU implementation but is fine for now
 constexpr size_t MAX_HAZARD_POINTERS = 128;
 
+// Number of hazard pointers per thread
+constexpr size_t HAZARD_POINTERS_PER_THREAD = 4;
+
 // Struct representing two hazard pointer slot for a thread
 struct HazardPointer {
     // Four atomic hazard pointer slots
-    std::atomic<void*> ptr1;
-    std::atomic<void*> ptr2;
-    std::atomic<void*> ptr3;
-    std::atomic<void*> ptr4;
-    std::atomic<void*> ptr5;
+    std::atomic<void*> ptrs[HAZARD_POINTERS_PER_THREAD];
 
     // Set both slots to nullptr on construction
-    HazardPointer() : ptr1(nullptr), ptr2(nullptr), ptr3(nullptr), ptr4(nullptr), ptr5(nullptr) {}
+    HazardPointer() {
+        for (size_t i = 0; i < HAZARD_POINTERS_PER_THREAD; ++i) {
+            ptrs[i].store(nullptr, std::memory_order_relaxed);
+        }
+    }
 };
 
 // Global array of hazard pointers, one slot per thread
@@ -51,62 +55,46 @@ void setHazardPointer(void* ptr) {
         return;
     }
 
-    // Check if ptr1 is available
-    if (!globalHazardPointers[hazardSlot].ptr1.load()) {
-        // Is available, use it
-        globalHazardPointers[hazardSlot].ptr1.store(ptr);
+    // Check all ptrs one by one
+    for (size_t i = 0; i < HAZARD_POINTERS_PER_THREAD; i++) {
+        // If the slot is empty, set it to the pointer
+        if (globalHazardPointers[hazardSlot].ptrs[i].load() == nullptr) {
+            globalHazardPointers[hazardSlot].ptrs[i].store(ptr, std::memory_order_relaxed);
 
-    // Check if ptr2 is available
-    } else if (!globalHazardPointers[hazardSlot].ptr2.load()) {
-        // Is available, use it
-        globalHazardPointers[hazardSlot].ptr2.store(ptr);
-
-    // Check if ptr3 is available
-    } else if (!globalHazardPointers[hazardSlot].ptr3.load()) {
-        // Is available, use it
-        globalHazardPointers[hazardSlot].ptr3.store(ptr);
-
-    // Check if ptr4 is available
-    } else if (!globalHazardPointers[hazardSlot].ptr4.load()) {
-        // Is available, use it
-        globalHazardPointers[hazardSlot].ptr5.store(ptr);
-    } else {
-        // Is available, use it
-        globalHazardPointers[hazardSlot].ptr5.store(ptr);
+            // Exit after setting the pointer
+            return;
+        }
     }
+
+    assert(false && "No free hazard pointer slot for this thread");
 }
 
 // Remove a given hazard pointer
 // Nothing will happen if the pointer is not protected
 void removeHazardPointer(void* ptr) {
-    if (globalHazardPointers[hazardSlot].ptr1.load() == ptr) {
-        // Matches ptr1, clear it
-        globalHazardPointers[hazardSlot].ptr1.store(nullptr);
-    } else if (globalHazardPointers[hazardSlot].ptr2.load() == ptr) {
-        // Matches ptr2, clear it
-        globalHazardPointers[hazardSlot].ptr2.store(nullptr);
-    } else if (globalHazardPointers[hazardSlot].ptr3.load() == ptr) {
-        // Matches ptr3, clear it
-        globalHazardPointers[hazardSlot].ptr3.store(nullptr);
-    } else if (globalHazardPointers[hazardSlot].ptr4.load() == ptr) {
-        // Matches ptr4, clear it
-        globalHazardPointers[hazardSlot].ptr4.store(nullptr);
-    } else if (globalHazardPointers[hazardSlot].ptr5.load() == ptr) {
-        // Matches ptr5, clear it
-        globalHazardPointers[hazardSlot].ptr5.store(nullptr);
+    // Check for ptr
+    for (size_t i = 0; i < HAZARD_POINTERS_PER_THREAD; i++) {
+        // If the slot equals to ptr set it to nullptr
+        if (globalHazardPointers[hazardSlot].ptrs[i].load() == ptr) {
+            globalHazardPointers[hazardSlot].ptrs[i].store(nullptr, std::memory_order_relaxed);
+
+            // Exit after removing the pointer
+            return;
+        }
     }
-    // else do nothing
 }
 
 // Check if any thread is currently protecting the given pointer
 // Used to determine if a pointer is "safe" to reclaim/free
-// Time is O(n) but there shouldn't be many protections at a time
+// Time is O(n^2) but there shouldn't be many protections at a time
 bool isHazard(void* ptr) {
     for (size_t i = 0; i < MAX_HAZARD_POINTERS; i++) {
         // Check all four slots, if it is being protected return true
-        if (globalHazardPointers[i].ptr1 == ptr || globalHazardPointers[i].ptr2 == ptr ||
-            globalHazardPointers[i].ptr3 == ptr || globalHazardPointers[i].ptr4 == ptr || globalHazardPointers[i].ptr5 == ptr) {
-            return true;
+        for (size_t j = 0; j < HAZARD_POINTERS_PER_THREAD; j++) {
+            // If the slot equals to ptr return true
+            if (globalHazardPointers[i].ptrs[j].load() == ptr) {
+                return true;
+            }
         }
     }
 

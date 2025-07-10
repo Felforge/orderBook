@@ -1003,28 +1003,63 @@ class LocklessQueue {
                 return std::nullopt;
             }
 
-            // Check if already marked for deletion
-            MarkedPtr<T> nextLink = node->next.load();
-            if (nextLink.getMark()) {
-                return std::nullopt;
+            // Protect node
+            copy(node);
+
+            // To be returned
+            T data = node->data;
+
+            while (true) {
+                // Retrieve marked pointer to node->next
+                MarkedPtr<T> link = node->next.load();
+
+                // If already logically deleted, help finish and return nullopt
+                if (link.getMark()) {
+                    // Help deletion along
+                    helpDelete(node);
+
+                    // Release node and next
+                    releaseNode(node);
+
+                    // Return nullopt
+                    return std::nullopt;
+                }
+
+                // Try to atomically update node->next pointer to marked pointer to next, if it is still an unmarked pointer to next
+                if (node->next.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
+                    // Call helpDelete to help remove the node now that it is marked
+                    helpDelete(node);
+
+                    // Retrieve node->prev
+                    Node<T>* prev = derefD(&node->prev);
+
+                    // Retrieve node->next
+                    Node<T>* next = derefD(&node->next);
+
+                    // Connect prev and next
+                    // If prev or next are marked helpInsert will deal with it
+                    prev = helpInsert(prev, next);
+
+                    // Decrement prev and next
+                    releaseNode(prev);
+                    releaseNode(next);
+
+                    // Break out of loop
+                    break;
+                }
+                
+                // Yield the thread before going to next loop iteration
+                std::this_thread::yield();
             }
 
-            // Try to mark the node for deletion
-            if (node->next.compare_exchange_weak(nextLink, MarkedPtr<T>(nextLink.getPtr(), true))) {
-                // Successfully marked node for deletion
-                T data = node->data;
-                
-                // Help complete the deletion
-                helpDelete(node);
-                
-                // Clean up cross references
-                removeCrossReference(node);
-                
-                return data;
-            }
-            
-            // Failed to mark for deletion
-            return std::nullopt;
+            // Break possible cyclic references that include node
+            removeCrossReference(node);
+
+            // Fully decrement node for deletion
+            releaseNode(node);
+
+            // Return data
+            return data;
         }
 };
 

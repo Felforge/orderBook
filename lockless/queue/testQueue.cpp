@@ -490,7 +490,7 @@ TEST(LocklessQueueTest, HandlesRemoveCombination) {
         // Push 6 to the left
         Node<int>* node6 = queue.pushLeft(6, pool);
 
-        // Removde node3
+        // Remove node3
         val = queue.removeNode(node3);
 
         // Verify expected result

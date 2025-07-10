@@ -111,7 +111,8 @@ class MemoryPool : public GenericMemoryPool {
 
             // Poison the block memory
             // Poison means to fill the block with garbage
-            std::memset(block, 0xAB, sizeof(Block));
+            // std::memset(block, nullptr, sizeof(Block));
+            // block = nullptr;
 
             if (isOwnerThread()) {
                 // Is owner thread, push to free List

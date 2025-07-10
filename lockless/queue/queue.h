@@ -436,8 +436,6 @@ class LocklessQueue {
 
                 // CAS is needed to connect prev and node together, as the field above asserted they aren't
                 if (node->prev.compare_exchange_weak(link, MarkedPtr<T>(prev, false))) {
-                    // Incrament prev's refCount
-                    copy(prev);
 
                     // Release the reference to the old previous node
                     releaseNode(link.getPtr());
@@ -585,9 +583,6 @@ class LocklessQueue {
 
                 // Try to atomically update prev's next pointer to next, if it still points to node
                 if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(next, false))) {
-                    // Increment next refCount
-                    copy(next);
-
                     // Release node
                     releaseNode(node);
 
@@ -858,68 +853,62 @@ class LocklessQueue {
         // Function to pop from the left side of the queue
         // Returns the data from the node or nothing
         std::optional<T> popLeft() {
-            // Start traversal from head
+            // Copy head node
             Node<T>* prev = copy(head);
             
             while (true) {
                 // Try to get the next node from current position
-                Node<T>* next = deref(&prev->next);
+                Node<T>* node = deref(&prev->next);
                 
-                // If next is null or tail, queue is empty
-                if (!next || next == tail) {
+                // If node is null or tail, queue is empty
+                if (!node || node == tail) {
                     return std::nullopt;
                 }
                 
                 // Check if next node is marked for deletion
-                MarkedPtr<T> nextLink = next->next.load();
+                MarkedPtr<T> nextLink = node->next.load();
+
                 if (nextLink.getMark()) {
                     // Node is being deleted, help complete deletion
-                    helpDelete(next);
+                    helpDelete(node);
                     
-                    // Try to repair connection and continue traversal
-                    Node<T>* afterNext = derefD(&next->next);
-                    if (afterNext) {
-                        helpInsert(prev, afterNext);
-                        releaseNode(afterNext);
-                    }
-                    
-                    releaseNode(next);
-                    std::this_thread::yield();
+                    // Release protection from node
+                    releaseNode(node);
 
                     // Continue into next loop iteration
                     continue;
                 }
                 
                 // Try to mark next node for deletion (our pop operation)
-                if (next->next.compare_exchange_weak(nextLink, MarkedPtr<T>(nextLink.getPtr(), true))) {
+                if (node->next.compare_exchange_weak(nextLink, MarkedPtr<T>(nextLink.getPtr(), true))) {
                     // Successfully marked node for deletion
-                    T data = next->data;
+                    T data = node->data;
                     
                     // Help complete the deletion process
-                    helpDelete(next);
+                    helpDelete(node);
                     
                     // Connect prev to the node after next
-                    Node<T>* afterNext = derefD(&next->next);
-                    if (afterNext) {
-                        helpInsert(prev, afterNext);
-                        releaseNode(afterNext);
-                    }
-                    
-                    // Clean up cross references
-                    removeCrossReference(next);
-                    
-                    // Release the deleted node
+                    Node<T>* next = derefD(&node->next);
+
+                    // try to connect prev to next
+                    helpInsert(prev, next);
+
+                    // Release prev and next
+                    releaseNode(prev);
                     releaseNode(next);
                     
-                    // Release prev reference
-                    releaseNode(prev);
+                    // Clean up cross references
+                    removeCrossReference(node);
+
+                    // Release node
+                    releaseNode(node);
                     
                     return data;
                 }
                 
                 // CAS failed, the node changed while we were working
                 // Continue from current position without restarting
-                releaseNode(next);
+                releaseNode(node);
                 std::this_thread::yield();
             }
         }
@@ -928,70 +917,68 @@ class LocklessQueue {
         // Returns the data from the node or nothing
         std::optional<T> popRight() {
             Node<T>* next = copy(tail);
+
+            // Get the target node
+            Node<T>* node = deref(&next->prev);
             
             while (true) {
-                // Get the previous node from current position
-                Node<T>* prev = deref(&next->prev);
                 
-                // If prev is null or we've reached the head, queue is truly empty
-                if (!prev || prev == head) {
-                    releaseNode(next);
+                // If node->next is not equal to unmarked next
+                if (node->next.load() != MarkedPtr<T>(next, false)) {
+                    // Try to connect node and next
+                    node = helpInsert(node, next);
+
+                    // Go into next loop iteration
+                    continue;
+                }
+
+                // If queue is empty
+                if (!node || node == head) {
+                    // Return nullopt
                     return std::nullopt;
-                }
-                
-                // Check if this node is already marked for deletion
-                MarkedPtr<T> prevNext = prev->next.load();
-                if (prevNext.getMark()) {
-                    // Help complete the deletion of this marked node
-                    helpDelete(prev);
-                    releaseNode(prev);
-
-                    // Go into next loop iteration
-                    continue;
-                }
-                
-                // Check if the structure is consistent
-                if (prevNext.getPtr() != next) {
-                    // Structure is inconsistent, help repair it
-                    helpInsert(prev, next);
-                    releaseNode(prev);
-
-                    // Go into next loop iteration
-                    continue;
                 }
                 
                 // Try to mark this node for deletion (this is our pop operation)
                 MarkedPtr<T> expected(next, false);
-                if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(next, true))) {
+                if (node->next.compare_exchange_weak(expected, MarkedPtr<T>(next, true))) {
                     // Successfully marked the node for deletion
-                    T data = prev->data;
+                    T data = node->data;
                     
                     // Help complete the deletion
-                    helpDelete(prev);
+                    helpDelete(node);
                     
                     // Get the node before the one we're deleting
-                    Node<T>* beforePrev = derefD(&prev->prev);
+                    Node<T>* prev = derefD(&node->prev);
                     
-                    // Connect beforePrev to next, bypassing the deleted node
-                    if (beforePrev) {
-                        helpInsert(beforePrev, next);
-                        releaseNode(beforePrev);
-                    }
-                    
-                    // Clean up cross references
-                    removeCrossReference(prev);
-                    
-                    // Release references
+                    // Connect prev to next
+                    prev = helpInsert(prev, next);
+
+                    // Release prev and next
                     releaseNode(prev);
                     releaseNode(next);
+                    
+                    // Clean up cross references
+                    removeCrossReference(node);
+                    
+                    // Release reference to node
+                    releaseNode(node);
                     
                     return data;
                 }
                 
-                // CAS failed, the node changed while we were working
-                releaseNode(prev);
+                // CAS failed
                 std::this_thread::yield();
             }
+        }
+
+        int isHazardSize() {
+            int count = 0;
+            for (size_t i = 0; i < HAZARD_POINTERS_PER_THREAD; i++) {
+                if (globalHazardPointers[hazardSlot].ptrs[i].load() != nullptr) {
+                    count++;
+                }
+            }
+            return count;
         }
 
         // Function to remove a given node
@@ -1051,7 +1038,7 @@ class LocklessQueue {
                 // Yield the thread before going to next loop iteration
                 std::this_thread::yield();
             }
-
+            
             // Break possible cyclic references that include node
             removeCrossReference(node);
 

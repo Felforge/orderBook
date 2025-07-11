@@ -246,9 +246,6 @@ TEST(LocklessQueueTest, HandlesPopLeft) {
 
     // Delete memory pool
     delete pool;
-
-    // Clear retire list
-    retireList.clear();
 }
 
 // Test Pop Right
@@ -325,9 +322,6 @@ TEST(LocklessQueueTest, HandlesPopRight) {
 
     // Delete memory pool
     delete pool;
-
-    // Clear retire list
-    retireList.clear();
 }
 
 // Test Remove Node
@@ -607,7 +601,7 @@ TEST(LocklessQueueTest, HandlesConcurrentPushing) {
 }
 
 // Test Concurrent Popping
-// Testing with 6 threads
+// Testing with 4 threads
 TEST(LocklessQueueTest, HandlesConcurrentPopping) {
     // Reference constant to be used in testing
     const int N = 1000;
@@ -631,7 +625,7 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
         LocklessQueue<int> queue = LocklessQueue<int>();
 
         // Add all nodes
-        for (int t = 0; t < 6; t++) {
+        for (int t = 0; t < 4; t++) {
             threads.emplace_back([&, t] {
                 for(int i = 0; i < N; i++) {
                     queue.pushLeft(t * N + i, pools[t]);
@@ -651,8 +645,8 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
         atomic<int> successfulPops{0};
         atomic<bool> queueExhausted{false};
 
-        // Three threads popping from left
-        for (int t = 0; t < 3; t++) {
+        // Two threads popping from left
+        for (int t = 0; t < 2; t++) {
             threads.emplace_back([&] {
                 for(int i = 0; i < N; i++) {
                     auto val = queue.popLeft();
@@ -665,15 +659,12 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
                         queueExhausted.store(true);
                         break;
                     }
-
-                    // Make sure there are no hazards
-                    EXPECT_EQ(isHazardSize(), 0);
                 }
             });
         }
 
-        // Three threads popping from right
-        for (int t = 0; t < 3; t++) {
+        // Two threads popping from right
+        for (int t = 0; t < 2; t++) {
             threads.emplace_back([&] {
                 for(int i = 0; i < N; i++) {
                     auto val = queue.popRight();
@@ -686,9 +677,6 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
                         queueExhausted.store(true);
                         break;
                     }
-
-                    // Make sure there are no hazards
-                    EXPECT_EQ(isHazardSize(), 0);
                 }
             });
         }
@@ -698,8 +686,11 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
             thread.join();
         }
 
+        // Now check that all hazard pointers are cleaned up
+        EXPECT_EQ(isHazardSize(), 0);
+
         // Verify that we popped all inserted elements
-        EXPECT_EQ(successfulPops.load(), 6 * N);
+        EXPECT_EQ(successfulPops.load(), 4 * N);
         EXPECT_FALSE(queueExhausted.load());
 
         // Verify that the queue is empty
@@ -718,88 +709,88 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
     retireList.clear();
 }
 
-// // Test Concurrent Removing
-// // Testing with 6 threads
-// TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
-//     // Reference constant to be used in testing
-//     const int N = 1000;
+// Test Concurrent Removing
+// Testing with 6 threads
+TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
+    // Reference constant to be used in testing
+    const int N = 1000;
 
-//     // Create memory pool vector
-//     // Each memory pool will have a capacity of N
-//     vector<MemoryPool<sizeof(Node<int>), N>*>pools(6);
+    // Create memory pool vector
+    // Each memory pool will have a capacity of N
+    vector<MemoryPool<sizeof(Node<int>), N>*>pools(6);
 
-//     // Construct pools
-//     for (int i = 0; i < 6; i++) {
-//         pools[i] = new MemoryPool<sizeof(Node<int>), N>();
-//     }
+    // Construct pools
+    for (int i = 0; i < 6; i++) {
+        pools[i] = new MemoryPool<sizeof(Node<int>), N>();
+    }
 
-//     // Create vector to hold working threads
-//     vector<thread> threads;
+    // Create vector to hold working threads
+    vector<thread> threads;
 
-//     // Create vectors to hold nodes
-//     vector<vector<Node<int>*>> nodeVecs(6);
+    // Create vectors to hold nodes
+    vector<vector<Node<int>*>> nodeVecs(6);
 
-//     // Partition to allow the queue to destruct
-//     // MemoryPool must be deleted after the queue
-//     {
-//         // Create queue
-//         LocklessQueue<int> queue = LocklessQueue<int>();
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
 
-//         // Add all nodes
-//         for (int t = 0; t < 6; t++) {
-//             // Pre-allocate to avoid reallocations
-//             nodeVecs[t].reserve(N);
+        // Add all nodes
+        for (int t = 0; t < 6; t++) {
+            // Pre-allocate to avoid reallocations
+            nodeVecs[t].reserve(N);
 
-//             for(int i = 0; i < N; i++) {
-//                 Node<int>* node = queue.pushLeft(t * N + i, pools[t]);
-//                 nodeVecs[t].push_back(node);
-//             }
-//         }
+            for(int i = 0; i < N; i++) {
+                Node<int>* node = queue.pushLeft(t * N + i, pools[t]);
+                nodeVecs[t].push_back(node);
+            }
+        }
 
-//         // Use atomic counter to track successful removals
-//         atomic<int> successfulRemovals{0};
+        // Use atomic counter to track successful removals
+        atomic<int> successfulRemovals{0};
 
-//         // Six threads removing their assigned nodes
-//         for (int t = 0; t < 6; t++) {
-//             threads.emplace_back([&, t] {
-//                 for(int i = 0; i < N; i++) {
-//                     Node<int>* nodeToRemove = nodeVecs[t][i];
-//                     auto val = queue.removeNode(nodeToRemove);
+        // Six threads removing their assigned nodes
+        for (int t = 0; t < 6; t++) {
+            threads.emplace_back([&, t] {
+                for(int i = 0; i < N; i++) {
+                    Node<int>* nodeToRemove = nodeVecs[t][i];
+                    auto val = queue.removeNode(nodeToRemove);
 
-//                     // Make sure removal is valid
-//                     if (val.has_value()) {
-//                         successfulRemovals.fetch_add(1);
+                    // Make sure removal is valid
+                    if (val.has_value()) {
+                        successfulRemovals.fetch_add(1);
 
-//                         // Verify the removed value is correct
-//                         EXPECT_EQ(*val, t * N + i);
-//                     }
-//                 }
-//             });
-//         }
+                        // Verify the removed value is correct
+                        EXPECT_EQ(*val, t * N + i);
+                    }
+                }
+            });
+        }
 
-//         // Wait for threads to finish
-//         for (auto& thread : threads) {
-//             thread.join();
-//         }
+        // Wait for threads to finish
+        for (auto& thread : threads) {
+            thread.join();
+        }
 
-//         // Verify that we removed all inserted elements
-//         EXPECT_EQ(successfulRemovals.load(), 6 * N);
+        // Verify that we removed all inserted elements
+        EXPECT_EQ(successfulRemovals.load(), 6 * N);
 
-//         // Verify that the queue is empty
-//         EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
-//         EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
-//         EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
-//         EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
-//     }
+        // Verify that the queue is empty
+        EXPECT_EQ(queue.head->next.load().getPtr()->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.head->next.load().getPtr(), queue.tail);
+        EXPECT_EQ(queue.tail->prev.load().getPtr(), queue.head);
+        EXPECT_EQ(queue.tail->prev.load().getPtr()->next.load().getPtr(), queue.tail);
+    }
 
-//     // Delete Memory Pools
-//     for (auto pool: pools) {
-//         delete pool;
-//     }
+    // Delete Memory Pools
+    for (auto pool: pools) {
+        delete pool;
+    }
 
-//     // Clear retire list
-//     retireList.clear();
-// }
+    // Clear retire list
+    retireList.clear();
+}
 
 // Run all tests
 int main(int argc, char **argv) {

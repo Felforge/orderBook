@@ -220,14 +220,6 @@ class LocklessQueue {
                     continue;
                 }
 
-                // Now safely check if retired
-                if (node->isRetired.load()) {
-                    if (!node->isDummy) {
-                        removeHazardPointer(node);
-                    }
-                    return HazardGuard<Node<T>>(nullptr);
-                }
-
                 // Node is protected and valid - we're returning without removing the hazard pointer
                 // since the HazardGuard will take care of it
                 return guard;
@@ -315,9 +307,6 @@ class LocklessQueue {
 
                 // Attempt to swap next->prev from link to unmarked pointer to node
                 if (next->prev.compare_exchange_weak(link, MarkedPtr<T>(node, false))) {
-                    // Increase refCount of node
-                    HazardGuard<Node<T>> Hnode = copy(node);
-
                     // Release next->prev
                     releaseNode(link.getPtr());
 
@@ -336,10 +325,6 @@ class LocklessQueue {
                 // Yield the thread if unsuccessful
                 std::this_thread::yield();
             }
-
-            // Release references to next and node
-            releaseNode(next);
-            releaseNode(node);
         }
 
        // Helps complete insert operation that was interrupted
@@ -486,15 +471,9 @@ class LocklessQueue {
 
                 // If next->next is marked
                 if (next->next.load().getMark()) {
-                    // Retrieve next->next and increment refCount
-                    HazardGuard<Node<T>> Hnext2 = derefD(&next->next);
-                    Node<T>* next2 = Hnext2.ptr;
-
-                    // Release next
-                    releaseNode(next);
-
-                    // Set next to next2
-                    next = next2;
+                    // Get new next with fresh guard
+                    Hnext = derefD(&next->next);
+                    next = Hnext.ptr;
 
                     // Safety check after assignment
                     if (!next) {
@@ -526,15 +505,9 @@ class LocklessQueue {
                         lastMark = true;
                     }
 
-                    // Update prev2
-                    Hprev2 = derefD(&prev->prev);
-                    prev2 = Hprev2.ptr;
-
-                    // Release reference from prev
-                    releaseNode(prev);
-
-                    // Update prev to prev2
-                    prev = prev2;
+                    // Get new prev with fresh guard
+                    Hprev = derefD(&prev->prev);
+                    prev = Hprev.ptr;
 
                     // Safety check after assignment
                     if (!prev) {
@@ -551,11 +524,8 @@ class LocklessQueue {
                     // Set lastMark to false
                     lastMark = false;
 
-                    // Release reference from prev
-                    releaseNode(prev);
-
-                    // Set prev equal to prev2
-                    // This is done for backtracking
+                    // Transfer guard from Hprev2 to Hprev
+                    Hprev = HazardGuard<Node<T>>(prev2, prev2->isDummy);
                     prev = prev2;
 
                     // Go into the next loop iteration
@@ -677,6 +647,9 @@ class LocklessQueue {
             }
             terminateNode(head, true);
             terminateNode(tail, true);
+
+            // Clear retire list
+            retireList.clear();
         }
 
         // Returns a node created with the given data
@@ -752,9 +725,6 @@ class LocklessQueue {
 
                 // if prev->next does not equal unmarked next
                 if (prev->next.load() != MarkedPtr<T>(next, false)) {
-                    // Release current next
-                    releaseNode(next);
-                    
                     // Redeclare it
                     Hnext = deref(&prev->next);
                     next = Hnext.ptr;
@@ -773,6 +743,7 @@ class LocklessQueue {
 
                 // Try to atomically update prev->next pointer to next, if it still points to unmarked next
                 if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(node, false))) {
+
                     // Break out of loop
                     break;
                 }
@@ -816,9 +787,6 @@ class LocklessQueue {
 
                 // if prev->next does not equal unmarked next
                 if (prev->next.load() != MarkedPtr<T>(next, false)) {
-                    // Release current prev
-                    releaseNode(prev);
-                    
                     // Redeclare it from next->prev
                     Hprev = deref(&next->prev);
                     prev = Hprev.ptr;
@@ -893,7 +861,7 @@ class LocklessQueue {
                     Node<T>* next = Hnext.ptr;
 
                     // try to connect prev to next
-                    helpInsert(prev, next);
+                    prev = helpInsert(prev, next);
                     
                     // Clean up cross references
                     removeCrossReference(node);
@@ -910,28 +878,30 @@ class LocklessQueue {
         // Function to pop from the right side of the queue
         // Returns the data from the node or nothing
         std::optional<T> popRight() {
+            // PR1: next:=COPY_NODE(tail);
             HazardGuard<Node<T>> Hnext = copy(tail);
             Node<T>* next = Hnext.ptr;
 
-            // Get the target node
-            HazardGuard<Node<T>> Hnode = deref(&next->prev);
-            Node<T>* node = Hnode.ptr;
-            
             while (true) {
+                // PR2: node:=READ_NODE(&next.prev);
+                HazardGuard<Node<T>> Hnode = deref(&next->prev);
+                Node<T>* node = Hnode.ptr;
                 
-                // If node->next is not equal to unmarked next
-                if (node->next.load() != MarkedPtr<T>(next, false)) {
-                    // Try to connect node and next
-                    node = helpInsert(node, next);
-
-                    // Go into next loop iteration
-                    continue;
-                }
-
-                // If queue is empty
+                // PR7: if node = head then (queue empty check)
                 if (!node || node == head) {
                     // Return nullopt
                     return std::nullopt;
+                }
+                
+                // PR4: if node.next ≠ (next,false) then
+                if (node->next.load() != MarkedPtr<T>(next, false)) {
+                    // PR5: node:=HelpInsert(node,next);
+                    Node<T>* newNode = helpInsert(node, next);
+                    // Update hazard guard to protect the new node
+                    Hnode = HazardGuard<Node<T>>(newNode, newNode->isDummy);
+                    node = newNode;
+                    // PR6: continue;
+                    continue;
                 }
                 
                 // Try to mark this node for deletion (this is our pop operation)

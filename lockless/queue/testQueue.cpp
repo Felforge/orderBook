@@ -4,6 +4,7 @@
 #include <optional>
 #include <set>
 #include <iostream>
+#include <random>
 #include "queue.h"
 using namespace std;
 
@@ -608,10 +609,10 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
 
     // Create memory pool vector
     // Each memory pool will have a capacity of N
-    vector<MemoryPool<sizeof(Node<int>), N>*>pools(6);
+    vector<MemoryPool<sizeof(Node<int>), N>*>pools(4);
 
     // Construct pools
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 4; i++) {
         pools[i] = new MemoryPool<sizeof(Node<int>), N>();
     }
 
@@ -790,6 +791,80 @@ TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
 
     // Clear retire list
     retireList.clear();
+}
+
+// Test Concurrent Combination of Push and Pop
+// Basically a mini version of the soak I'll do later
+// Testing with 6 threads
+TEST(LocklessQueueTest, HandlesConcurrentCombination) {
+    // Estimate memory pool size
+    const size_t poolSize = 5000;
+
+    // Create memory pool vector
+    // Memory pool size is an instance
+    vector<MemoryPool<sizeof(Node<int>), poolSize>*>pools(6);
+
+    // Construct pools
+    for (int i = 0; i < 6; i++) {
+        pools[i] = new MemoryPool<sizeof(Node<int>), poolSize>();
+    }
+
+    // Create vector to hold working threads
+    vector<thread> threads;
+
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
+
+        // Launch threads
+        atomic<bool> stop = false;
+
+        for (int i = 0; i < 6; ++i) {
+            threads.emplace_back([&, i]() {
+                mt19937 rng(random_device{}());
+                
+                while (!stop) {
+                    int op = rng() % 4;
+
+                    switch (op) {
+                        case 0: 
+                            queue.pushLeft(rng(), pools[i]); 
+                            break;
+
+                        case 1: 
+                            queue.pushRight(rng(), pools[i]); 
+                            break;
+
+                        case 2: 
+                            queue.popLeft(); 
+                            break;
+
+                        case 3: 
+                            queue.popRight(); 
+                            break;
+                    }
+                }
+            });
+        }
+
+        // Wait for 1 second
+        this_thread::sleep_for(chrono::seconds(1));
+
+        // Stop threads
+        stop.store(true);
+
+        // Wait for threads to finish
+        for (auto& thread : threads) {
+            thread.join();
+        }
+    }
+
+    // Delete Memory Pools
+    for (auto pool: pools) {
+        delete pool;
+    }
 }
 
 // Run all tests

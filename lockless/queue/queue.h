@@ -182,436 +182,495 @@ class LocklessQueue {
             }
         }
 
-        // Adds node into a hazard pointer for the given thread
-        // Returns nullptr if mark is set and returns node pointer otherwise
-        HazardGuard<Node<T>> deref(std::atomic<MarkedPtr<T>>* ptr) {
-            // Safety check: return nullptr if ptr is null
-            if (!ptr) {
-                return HazardGuard<Node<T>>(nullptr);
-            }
+    //     // Adds node into a hazard pointer for the given thread
+    //     // Returns nullptr if mark is set and returns node pointer otherwise
+    //     HazardGuard<Node<T>> deref(std::atomic<MarkedPtr<T>>* ptr) {
+    //         // Safety check: return nullptr if ptr is null
+    //         if (!ptr) {
+    //             return HazardGuard<Node<T>>(nullptr);
+    //         }
 
-            while (true) {
-                // Load MarkedPtr object from atomic
-                MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
+    //         while (true) {
+    //             // Load MarkedPtr object from atomic
+    //             MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
 
-                // Return nullptr if mark is set
-                if (mPtr.getMark()) {
-                    return HazardGuard<Node<T>>(nullptr);
-                }
+    //             // Return nullptr if mark is set
+    //             if (mPtr.getMark()) {
+    //                 return HazardGuard<Node<T>>(nullptr);
+    //             }
 
-                // Load node from MarkedPtr
-                Node<T>* node = mPtr.getPtr();
+    //             // Load node from MarkedPtr
+    //             Node<T>* node = mPtr.getPtr();
 
-                // If node is null, return nullptr
-                if (!node) {
-                    return HazardGuard<Node<T>>(nullptr);
-                }
+    //             // If node is null, return nullptr
+    //             if (!node) {
+    //                 return HazardGuard<Node<T>>(nullptr);
+    //             }
 
-                // Create guard
-                HazardGuard<Node<T>> guard(node, node->isDummy);
+    //             // Set hazard pointer manually (don't use RAII yet)
+    //             if (!node->isDummy) {
+    //                 setHazardPointer(node);
+    //             }
 
-                // Re-check that the pointer hasn't changed (ABA protection)
-                MarkedPtr<T> mPtr2 = ptr->load(std::memory_order_acquire);
-                if (mPtr.getPtr() != mPtr2.getPtr() || mPtr2.getMark()) {
-                    if (mPtr2.getMark()) {
-                        return HazardGuard<Node<T>>(nullptr);
-                    }
-                    std::this_thread::yield();
-                    continue;
-                }
-
-                // Node is protected and valid - we're returning without removing the hazard pointer
-                // since the HazardGuard will take care of it
-                return guard;
-            }
-        }
-
-        // Like deref but a pointer is always returned
-        HazardGuard<Node<T>> derefD(std::atomic<MarkedPtr<T>>* ptr) {
-            // Safety check: return nullptr if ptr is null
-            if (!ptr) {
-                return HazardGuard<Node<T>>(nullptr);
-            }
-
-            while (true) {
-                // Load MarkedPtr object from atomic
-                MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
-
-                // Load node from MarkedPtr
-                Node<T>* node = mPtr.getPtr();
-
-                // If node is null, return nullptr
-                if (!node) {
-                    return HazardGuard<Node<T>>(nullptr);
-                }
-
-                // Create guard
-                HazardGuard<Node<T>> guard(node, node->isDummy);
-
-                // Re-check that the pointer hasn't changed (ABA protection)
-                MarkedPtr<T> mPtr2 = ptr->load(std::memory_order_acquire);
-                if (mPtr.getPtr() != mPtr2.getPtr()) {
-                    // Pointer changed, retry
-                    if (!node->isDummy) {
-                        removeHazardPointer(node);
-                    }
-                    std::this_thread::yield();
-                    continue;
-                }
-
-                // Now safely check if retired
-                if (node->isRetired.load()) {
-                    if (!node->isDummy) {
-                        removeHazardPointer(node);
-                    }
-                    return HazardGuard<Node<T>>(nullptr);
-                }
-
-                // Node is protected and valid - we're returning without removing the hazard pointer
-                // since the HazardGuard will take care of it
-                return guard;
-            }
-        }
-
-        // Atomically sets deletion marker on prev pointer
-        // Tells other threads not to use this connection
-        void markPrev(Node<T>* node) {
-            // Safety check: return if node is invalid
-            if (!node) {
-                return;
-            }
-
-            while (true) {
-                // Retrieve marked pointer from node
-                MarkedPtr<T> link = node->prev.load();
-
-                // Exchange for marked version of the same pointer
-                // Return when exchange is successful
-                if (link.getMark() || node->prev.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
-                    return;
-                }
-            }
-        }
-
-        // Common logic for push operations
-        void pushCommon(Node<T>* node, Node<T>* next) {
-            while (true) {
-                // Retrieve next->prev
-                MarkedPtr<T> link = next->prev;
-
-                // If link is marked or node->next does not equal unmarked next
-                if (link.getMark() || node->next.load() != MarkedPtr<T>(next, false)) {
-                    // Break out of loop
-                    break;
-                }
-
-                // Attempt to swap next->prev from link to unmarked pointer to node
-                if (next->prev.compare_exchange_weak(link, MarkedPtr<T>(node, false))) {
-                    // Release next->prev
-                    releaseNode(link.getPtr());
-
-                    // Helps complete incomplete right side of insertion
-                    if (node->prev.load().getMark()) {
-                        HazardGuard<Node<T>> Hprev2 = copy(node);
-                        Node<T>* prev2 = Hprev2.ptr;
-                        prev2 = helpInsert(prev2, next);
-                        releaseNode(prev2);
-                    }
+    //             // Re-check that the pointer hasn't changed (ABA protection)
+    //             MarkedPtr<T> mPtr2 = ptr->load(std::memory_order_acquire);
+    //             if (mPtr.getPtr() != mPtr2.getPtr() || mPtr2.getMark()) {
+    //                 // Clean up hazard pointer before continuing
+    //                 if (!node->isDummy) {
+    //                     removeHazardPointer(node);
+    //                 }
                     
-                    // Break out of the loop
-                    break;
-                }
+    //                 if (mPtr2.getMark()) {
+    //                     return HazardGuard<Node<T>>(nullptr);
+    //                 }
+    //                 std::this_thread::yield();
+    //                 continue;
+    //             }
 
-                // Yield the thread if unsuccessful
-                std::this_thread::yield();
-            }
-        }
+    //             // Create guard with node that's already protected
+    //             // Use a special constructor that doesn't set the hazard pointer again
+    //             HazardGuard<Node<T>> guard(node, node->isDummy);
+                
+    //             // If it's not a dummy node, we need to remove the manual hazard pointer
+    //             // since the HazardGuard will manage it now
+    //             if (!node->isDummy) {
+    //                 removeHazardPointer(node);
+    //             }
 
-       // Helps complete insert operation that was interrupted
-        Node<T>* helpInsert(Node<T>* prev, Node<T>* node) {
-            // Safety checks: return appropriate values if inputs are invalid
-            if (!prev) {
-                return node;
-            }
-            if (!node) {
-                return prev;
-            }
+    //             return guard;
+    //         }
+    //     }
 
-            // Set mark of last connection
-            bool lastMark = true;
+    //     // Like deref but a pointer is always returned
+    //     HazardGuard<Node<T>> derefD(std::atomic<MarkedPtr<T>>* ptr) {
+    //         // Safety check: return nullptr if ptr is null
+    //         if (!ptr) {
+    //             return HazardGuard<Node<T>>(nullptr);
+    //         }
 
-            while (true) {
-                // Retrieves safe to use copy of prev->next
-                HazardGuard<Node<T>> Hprev2 = deref(&prev->next);
-                Node<T>* prev2 = Hprev2.ptr;
+    //         while (true) {
+    //             // Load MarkedPtr object from atomic
+    //             MarkedPtr<T> mPtr = ptr->load(std::memory_order_acquire);
 
-                // if prev2 is invalid
-                if (!prev2) {
-                    // If lastMark is set to false
-                    if (!lastMark) {
-                        // Calc helpDelete on prev
-                        helpDelete(prev);
+    //             // Load node from MarkedPtr
+    //             Node<T>* node = mPtr.getPtr();
 
-                        // Set lastMark to true to match helpDelete
-                        lastMark = true;
-                    }
+    //             // If node is null, return nullptr
+    //             if (!node) {
+    //                 return HazardGuard<Node<T>>(nullptr);
+    //             }
 
-                    // Update prev2
-                    Hprev2 = derefD(&prev->prev);
-                    prev2 = Hprev2.ptr;
+    //             // Set hazard pointer manually (don't use RAII yet)
+    //             if (!node->isDummy) {
+    //                 setHazardPointer(node);
+    //             }
 
-                    // Release reference from prev
-                    releaseNode(prev);
+    //             // Re-check that the pointer hasn't changed (ABA protection)
+    //             MarkedPtr<T> mPtr2 = ptr->load(std::memory_order_acquire);
+    //             if (mPtr.getPtr() != mPtr2.getPtr()) {
+    //                 // Clean up hazard pointer before continuing
+    //                 if (!node->isDummy) {
+    //                     removeHazardPointer(node);
+    //                 }
+    //                 std::this_thread::yield();
+    //                 continue;
+    //             }
 
-                    // Update prev to prev2
-                    prev = prev2;
+    //             // Now safely check if retired
+    //             if (node->isRetired.load()) {
+    //                 if (!node->isDummy) {
+    //                     removeHazardPointer(node);
+    //                 }
+    //                 return HazardGuard<Node<T>>(nullptr);
+    //             }
 
-                    // Safety check after assignment
-                    if (!prev) {
-                        return node;
-                    }
+    //             // Create guard with node that's already protected
+    //             HazardGuard<Node<T>> guard(node, node->isDummy);
+                
+    //             // If it's not a dummy node, we need to remove the manual hazard pointer
+    //             // since the HazardGuard will manage it now
+    //             if (!node->isDummy) {
+    //                 removeHazardPointer(node);
+    //             }
 
-                    // Go into the next loop iteration
-                    continue;
-                }
+    //             return guard;
+    //         }
+    //     }
 
-                // Load the current value of node's prev pointer
-                MarkedPtr<T> link = node->prev.load();
+    //     // Atomically sets deletion marker on prev pointer
+    //     // Tells other threads not to use this connection
+    //     // Returns true if this thread marked it, false if already marked
+    //     bool markPrev(Node<T>* node) {
+    //         // Safety check: return if node is invalid
+    //         if (!node) {
+    //             std::cout << "markPrev: node is null, returning false" << std::endl;
+    //             return false;
+    //         }
+            
+    //         int attempts = 0;
+    //         while (true) {
+    //             attempts++;
+    //             // Retrieve marked pointer from node
+    //             MarkedPtr<T> link = node->prev.load();
 
-                // If link is marked
-                if (link.getMark()) {
-                    // Release prev2 reference
-                    releaseNode(prev2);
-                    // Break out of loop
-                    break;
-                }
+    //             // If already marked, return false (someone else marked it)
+    //             if (link.getMark()) {
+    //                 if (attempts <= 3) {
+    //                     std::cout << "markPrev: node=" << node << " prev already marked (ptr=" << link.getPtr() << "), returning false, thread " << std::this_thread::get_id() << std::endl;
+    //                 }
+    //                 return false;
+    //             }
 
-                // If prev2 doesn't point to node we need to traverse further
-                if (prev2 != node) {
-                    // Update lastMark
-                    lastMark = prev->next.load().getMark();
+    //             // Try to mark it - if successful, return true
+    //             if (node->prev.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
+    //                 if (attempts <= 3) {
+    //                     std::cout << "markPrev: node=" << node << " successfully marked prev (ptr=" << link.getPtr() << "), thread " << std::this_thread::get_id() << std::endl;
+    //                 }
+    //                 return true;
+    //             }
+    //             if (attempts <= 5) {
+    //                 std::cout << "markPrev: node=" << node << " CAS failed, retrying (attempt " << attempts << "), thread " << std::this_thread::get_id() << std::endl;
+    //             }
+    //             if (attempts > 100) {
+    //                 std::cout << "markPrev: Too many failed attempts (" << attempts << "), breaking" << std::endl;
+    //                 return false;
+    //             }
+    //         }
+    //     }
 
-                    // Release reference from prev
-                    releaseNode(prev);
+    //     // Common logic for push operations
+    //     void pushCommon(Node<T>* node, Node<T>* next) {
+    //         while (true) {
+    //             // Retrieve next->prev
+    //             MarkedPtr<T> link = next->prev;
 
-                    // Move forward in the queue
-                    prev = prev2;
+    //             // If link is marked or node->next does not equal unmarked next
+    //             if (link.getMark() || node->next.load() != MarkedPtr<T>(next, false)) {
+    //                 // Break out of loop
+    //                 break;
+    //             }
+
+    //             // Attempt to swap next->prev from link to unmarked pointer to node
+    //             if (next->prev.compare_exchange_weak(link, MarkedPtr<T>(node, false))) {
+    //                 // Release next->prev
+    //                 releaseNode(link.getPtr());
+
+    //                 // Helps complete incomplete right side of insertion
+    //                 if (node->prev.load().getMark()) {
+    //                     HazardGuard<Node<T>> Hprev2 = copy(node);
+    //                     Node<T>* prev2 = Hprev2.ptr;
+    //                     prev2 = helpInsert(prev2, next);
+    //                     releaseNode(prev2);
+    //                 }
                     
-                    // Go into the next loop iteration
-                    continue;
-                }
+    //                 // Break out of the loop
+    //                 break;
+    //             }
 
-                // It is assumed here that prev2 == node so a reference could be released
-                // This is because a reference added to prev2 added it to node
-                releaseNode(prev2);
+    //             // Yield the thread if unsuccessful
+    //             std::this_thread::yield();
+    //         }
+    //     }
 
-                // CAS is needed to connect prev and node together, as the field above asserted they aren't
-                if (node->prev.compare_exchange_weak(link, MarkedPtr<T>(prev, false))) {
+    //    // Helps complete insert operation that was interrupted
+    //     Node<T>* helpInsert(Node<T>* prev, Node<T>* node) {
+    //         // Safety checks: return appropriate values if inputs are invalid
+    //         if (!prev) {
+    //             return node;
+    //         }
+    //         if (!node) {
+    //             return prev;
+    //         }
 
-                    // Release the reference to the old previous node
-                    releaseNode(link.getPtr());
+    //         // HI1: lastlink.d:=true; - Initialize lastlink flag
+    //         bool lastlink_d = true;
+            
+    //         static int helpInsert_count = 0;
+    //         helpInsert_count++;
+    //         if (helpInsert_count % 10000 == 0) {
+    //             std::cout << "helpInsert: Called " << helpInsert_count << " times, thread " << std::this_thread::get_id() << std::endl;
+    //         }
 
-                    // If prev's prev pointer is not marked we are done
-                    if (prev->prev.load().getMark()) {
-                        // Continue into next loop iteration
-                        continue;
-                    }
+    //         int helpInsert_loop_count = 0;
+    //         // HI2: while true do - Main loop
+    //         while (true) {
+    //             helpInsert_loop_count++;
+    //             if (helpInsert_loop_count % 100 == 0) {
+    //                 std::cout << "helpInsert: Loop " << helpInsert_loop_count << ", prev=" << prev << ", node=" << node << std::endl;
+    //             }
+                
+    //             // HI3: prev2:=READ_NODE(&prev.next); - Get prev.next
+    //             HazardGuard<Node<T>> Hprev2 = deref(&prev->next);
+    //             Node<T>* prev2 = Hprev2.ptr;
+                
+    //             // HI4: if prev2 = NULL then - If prev2 is null (marked)
+    //             if (!prev2) {
+    //                 // HI5: if lastlink.d = false then - If we haven't called DeleteNext on prev
+    //                 if (!lastlink_d) {
+    //                     // HI6: DeleteNext(prev); - Call DeleteNext on prev
+    //                     helpDelete(prev);
+    //                     // HI7: lastlink.d:=true; - Set flag
+    //                     lastlink_d = true;
+    //                 }
+                    
+    //                 // HI8: prev2:=READ_DEL_NODE(&prev.prev); - Get prev.prev
+    //                 HazardGuard<Node<T>> Hprev2_alt = derefD(&prev->prev);
+    //                 Node<T>* prev2_alt = Hprev2_alt.ptr;
+                    
+    //                 // HI9: RELEASE_NODE(prev); - Release prev
+    //                 releaseNode(prev);
+                    
+    //                 // HI10: prev:=prev2; - Set prev to prev2
+    //                 prev = prev2_alt;
+                    
+    //                 // HI11: continue; - Continue
+    //                 continue;
+    //             }
 
-                    // Break out of loop otherwise
-                    break;
-                }
-                // Yield the thread if unsuccessful
-                std::this_thread::yield();
-            }
+    //             // HI12: link1:=node.prev; - Load node's prev pointer
+    //             MarkedPtr<T> link1 = node->prev.load();
+                
+    //             // HI13: if link1.d = true then - If link is marked
+    //             if (link1.getMark()) {
+    //                 // HI14: RELEASE_NODE(prev2); - Release prev2
+    //                 releaseNode(prev2);
+    //                 // HI15: break; - Break out of loop
+    //                 break;
+    //             }
 
-            // Return the node that now precedes the inserted node
-            return prev;
-        }
+    //             // HI16: if prev2 ≠ node then - If prev2 != node
+    //             if (prev2 != node) {
+    //                 // HI17: lastlink.d:=false; - Set flag for forward traversal
+    //                 lastlink_d = false;
+                    
+    //                 // HI18: RELEASE_NODE(prev); - Release prev
+    //                 releaseNode(prev);
+                    
+    //                 // HI19: prev:=prev2; - Set prev to prev2
+    //                 prev = prev2;
+                    
+    //                 // HI20: continue; - Continue
+    //                 continue;
+    //             }
 
-        // Help complete a delete operation that may have been interrupted
-        void helpDelete(Node<T>* node) {
-            // Safety check: return if node is invalid
-            if (!node) {
-                return;
-            }
+    //             // HI21: RELEASE_NODE(prev2); - Release prev2
+    //             releaseNode(prev2);
 
-            // Mark node's prev connection
-            markPrev(node);
+    //             // HI22: if CAS(&node.prev,link1,(prev,false)) then - Try to connect node to prev
+    //             if (node->prev.compare_exchange_weak(link1, MarkedPtr<T>(prev, false))) {
+    //                 // HI23: COPY_NODE(prev); - Copy prev (increment reference count)
+    //                 // This is already handled by the hazard guard system
+                    
+    //                 // HI24: RELEASE_NODE(link1.p); - Release old prev
+    //                 releaseNode(link1.getPtr());
+                    
+    //                 // HI25: if prev.prev.d = true then continue; - If prev's prev is marked, continue
+    //                 if (prev->prev.load().getMark()) {
+    //                     continue;
+    //                 }
+                    
+    //                 // HI26: break; - Break out of loop
+    //                 break;
+    //             }
 
-            // Retrieve prev and next and increment refCount
-            HazardGuard<Node<T>> Hprev = derefD(&node->prev);
-            HazardGuard<Node<T>> Hnext = derefD(&node->next);
-            // Fixed: use correct type Node<T>* instead of Node<int>*
-            Node<T>* prev = Hprev.ptr;
-            Node<T>* next = Hnext.ptr;
+    //             // HI27: Back-Off - Back off
+    //             std::this_thread::yield();
+    //         }
 
-            // Safety checks: if prev or next are null, return
-            if (!prev || !next) {
-                releaseNode(prev);
-                releaseNode(next);
-                return;
-            }
+    //         // HI28: return prev; - Return prev
+    //         return prev;
+    //     }
 
-            // Marker of last link
-            // Must be true due to markPrev being called above
-            bool lastMark = true;
+    //     // Help complete a delete operation that may have been interrupted
+    //     void helpDelete(Node<T>* node) {
+    //         // Safety check: return if node is invalid
+    //         if (!node) {
+    //             return;
+    //         }
+            
+    //         std::cout << "helpDelete: Starting for node=" << node << " (data=" << node->data << "), thread " << std::this_thread::get_id() << std::endl;
 
-            while (true) {
-                // if prev and next are equal
-                // Technically should not be possible but better to be safe
-                if (prev == next) {
-                    // Break out of loop
-                    break;
-                }
+    //         // DN1-DN4: Mark the prev pointer of the node (loop until marked)
+    //         while (true) {
+    //             MarkedPtr<T> link = node->prev.load();
+    //             if (link.getMark() || node->prev.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
+    //                 break;
+    //             }
+    //         }
+            
+    //         // DN5: lastlink.d:=true; - Initialize lastlink flag
+    //         bool lastlink_d = true;
+            
+    //         // DN6: prev:=READ_DEL_NODE(&node.prev); - Get prev pointer
+    //         HazardGuard<Node<T>> Hprev = derefD(&node->prev);
+    //         Node<T>* prev = Hprev.ptr;
 
-                // Safety check: if next is null, break
-                if (!next) {
-                    break;
-                }
+    //         // DN7: next:=READ_DEL_NODE(&node.next); - Get next pointer
+    //         HazardGuard<Node<T>> Hnext = derefD(&node->next);
+    //         Node<T>* next = Hnext.ptr;
 
-                // If next->next is marked
-                if (next->next.load().getMark()) {
-                    // Get new next with fresh guard
-                    Hnext = derefD(&next->next);
-                    next = Hnext.ptr;
+    //         std::cout << "helpDelete: Initial prev=" << prev << ", next=" << next << ", node=" << node << std::endl;
 
-                    // Safety check after assignment
-                    if (!next) {
-                        break;
-                    }
+    //         // Safety checks: if prev or next are null, return
+    //         if (!prev || !next) {
+    //             std::cout << "helpDelete: prev or next is null, returning" << std::endl;
+    //             return;
+    //         }
+            
+    //         int helpDelete_loop_count = 0;
+    //         // DN8: while true do - Main loop
+    //         while (true) {
+    //             helpDelete_loop_count++;
+    //             if (helpDelete_loop_count % 100 == 0) {
+    //                 std::cout << "helpDelete: Loop iteration " << helpDelete_loop_count << ", prev=" << prev << ", next=" << next << ", node=" << node << ", thread " << std::this_thread::get_id() << std::endl;
+    //             }
+                
+    //             // DN9: if prev = next then break; - If prev equals next, break
+    //             if (prev == next) {
+    //                 std::cout << "helpDelete: prev == next (" << prev << "), breaking immediately" << std::endl;
+    //                 break;
+    //             }
 
-                    // Go into the next loop iteration
-                    continue;
-                }
+    //             // DN10: if next.next.d = true then - If next is marked
+    //             if (next && next->next.load().getMark()) {
+    //                 std::cout << "helpDelete: next is marked, advancing next pointer" << std::endl;
+    //                 // DN11: next2:=READ_DEL_NODE(&next.next); - Get next.next
+    //                 HazardGuard<Node<T>> Hnext2 = derefD(&next->next);
+    //                 Node<T>* next2 = Hnext2.ptr;
+                    
+    //                 // DN12: RELEASE_NODE(next); - Release next
+    //                 releaseNode(next);
+                    
+    //                 // DN13: next:=next2; - Move to next2
+    //                 Hnext = std::move(Hnext2);
+    //                 next = next2;
+                    
+    //                 // DN14: continue; - Continue loop
+    //                 continue;
+    //             }
 
-                // Safety check: if prev is null, break
-                if (!prev) {
-                    break;
-                }
+    //             // DN15: prev2:=READ_NODE(&prev.next); - Get prev.next  
+    //             HazardGuard<Node<T>> Hprev2 = deref(&prev->next);
+    //             Node<T>* prev2 = Hprev2.ptr;
 
-                // Retrieve prev->next
-                HazardGuard<Node<T>> Hprev2 = deref(&prev->next);
-                Node<T>* prev2 = Hprev2.ptr;
+    //             // DN16: if prev2 = NULL then - If prev2 is null (marked)
+    //             if (!prev2) {
+    //                 // DN17: if lastlink.d = false then - If we haven't called DeleteNext on prev
+    //                 if (!lastlink_d) {
+    //                     // DN18: DeleteNext(prev); - Call DeleteNext on prev
+    //                     helpDelete(prev);
+    //                     // DN19: lastlink.d:=true; - Set flag
+    //                     lastlink_d = true;
+    //                 }
+                    
+    //                 // DN20: prev2:=READ_DEL_NODE(&prev.prev); - Get prev.prev
+    //                 HazardGuard<Node<T>> Hprev2_alt = derefD(&prev->prev);
+    //                 Node<T>* prev2_alt = Hprev2_alt.ptr;
+                    
+    //                 // DN21: RELEASE_NODE(prev); - Release prev
+    //                 releaseNode(prev);
+                    
+    //                 // DN22: prev:=prev2; - Set prev to prev2
+    //                 prev = prev2_alt;
+                    
+    //                 // DN23: continue; - Continue
+    //                 continue;
+    //             }
 
-                // If prev2 is nullptr
-                // This happens if it is marked
-                if (!prev2) {
-                    // If lastMark is false
-                    if (!lastMark) {
-                        // Calc helpDelete on prev
-                        helpDelete(prev);
+    //             // DN24: if prev2 ≠ node then - If prev2 != node
+    //             if (prev2 != node) {
+    //                 // DN25: lastlink.d:=false; - Set flag for forward traversal
+    //                 lastlink_d = false;
+                    
+    //                 // DN26: RELEASE_NODE(prev); - Release prev
+    //                 releaseNode(prev);
+                    
+    //                 // DN27: prev:=prev2; - Set prev to prev2
+    //                 prev = prev2;
+                    
+    //                 // DN28: continue; - Continue
+    //                 continue;
+    //             }
 
-                        // Set lastMark to true to match helpDelete
-                        lastMark = true;
-                    }
+    //             // DN29: RELEASE_NODE(prev2); - Release prev2
+    //             releaseNode(prev2);
 
-                    // Get new prev with fresh guard
-                    Hprev = derefD(&prev->prev);
-                    prev = Hprev.ptr;
+    //             // DN30: if CAS(&prev.next,(node,false),(next,false)) then - Try to connect prev to next
+    //             MarkedPtr<T> expected(node, false);
+                
+    //             if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(next, false))) {
+    //                 // DN31: COPY_NODE(next); - Copy next (increment reference count)
+    //                 // This is already handled by the hazard guard system
+                    
+    //                 // DN32: RELEASE_NODE(node); - Release node
+    //                 releaseNode(node);
+                    
+    //                 // DN33: break; - Break out of loop
+    //                 break;
+    //             }
 
-                    // Safety check after assignment
-                    if (!prev) {
-                        break;
-                    }
+    //             // DN34: Back-Off - Back off
+    //             std::this_thread::yield();
+    //         }
+            
+    //         // DN35: RELEASE_NODE(prev); - Release prev
+    //         releaseNode(prev);
+            
+    //         // DN36: RELEASE_NODE(next); - Release next
+    //         releaseNode(next);
+    //     }
 
-                    // Go into the next loop iteration
-                    continue;
-                }
+    //     // Tries to break cross references between the given node and any of the nodes it references
+    //     // This is done by repeatedly updating the prev and next point as long as they reference a fully marked node
+    //     void removeCrossReference(Node<T>* node) {
+    //         // Safety check: return if node is null or retired
+    //         if (!node || node->isRetired.load()) {
+    //             return;
+    //         }
 
-                // If prev2 is not equal to node
-                // prev2 == node is the expected behavior
-                if (prev2 != node) {
-                    // Set lastMark to false
-                    lastMark = false;
+    //         while (true) {
+    //             // Retrieve node->prev pointer
+    //             Node<T>* prev = node->prev.load().getPtr();
 
-                    // Transfer guard from Hprev2 to Hprev
-                    Hprev = HazardGuard<Node<T>>(prev2, prev2->isDummy);
-                    prev = prev2;
+    //             // Safety check for prev pointer
+    //             if (prev && prev->next.load().getMark()) {
+    //                 // Retrieve prev->prev
+    //                 HazardGuard<Node<T>> Hprev2 = derefD(&prev->prev);
+    //                 Node<T>* prev2 = Hprev2.ptr;
 
-                    // Go into the next loop iteration
-                    continue;
-                }
+    //                 // Replace node->prev with marked node->prev->prev
+    //                 node->prev.store(MarkedPtr<T>(prev2, true));
 
-                // Release reference from prev2
-                releaseNode(prev2);
+    //                 // Release old node->prev
+    //                 releaseNode(prev);
 
-                // Created expected value
-                MarkedPtr<T> expected(node, false);
+    //                 // Go into the next loop iteration
+    //                 continue;
+    //             }
 
-                // Safety check: ensure prev and next are still valid
-                if (!prev || !next) {
-                    break;
-                }
+    //             // Retrieve node->next pointer
+    //             Node<T>* next = node->next.load().getPtr();
 
-                // Try to atomically update prev's next pointer to next, if it still points to node
-                if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(next, false))) {
-                    // Release node
-                    releaseNode(node);
+    //             // Safety check for next pointer
+    //             if (next && next->next.load().getMark()) {
+    //                 // Retrieve next->next
+    //                 HazardGuard<Node<T>> Hnext2 = derefD(&next->next);
+    //                 Node<T>* next2 = Hnext2.ptr;
 
-                    // Break out of loop
-                    break;
-                }
+    //                 // Replace node->next with marked node->next->next
+    //                 node->next.store(MarkedPtr<T>(next2, true));
 
-                // Yield the thread before going to next loop iteration
-                std::this_thread::yield();
-            }
+    //                 // Release old node->next
+    //                 releaseNode(next);
 
-            // Release prev and next
-            releaseNode(prev);
-            releaseNode(next);
-        }
+    //                 // Go into the next loop iteration
+    //                 continue;
+    //             }
 
-        // Tries to break cross references between the given node and any of the nodes it references
-        // This is done by repeatedly updating the prev and next point as long as they reference a fully marked node
-        void removeCrossReference(Node<T>* node) {
-            // Safety check: return if node is null or retired
-            if (!node || node->isRetired.load()) {
-                return;
-            }
-
-            while (true) {
-                // Retrieve node->prev pointer
-                Node<T>* prev = node->prev.load().getPtr();
-
-                // Safety check for prev pointer
-                if (prev && prev->next.load().getMark()) {
-                    // Retrieve prev->prev
-                    HazardGuard<Node<T>> Hprev2 = derefD(&prev->prev);
-                    Node<T>* prev2 = Hprev2.ptr;
-
-                    // Replace node->prev with marked node->prev->prev
-                    node->prev.store(MarkedPtr<T>(prev2, true));
-
-                    // Release old node->prev
-                    releaseNode(prev);
-
-                    // Go into the next loop iteration
-                    continue;
-                }
-
-                // Retrieve node->next pointer
-                Node<T>* next = node->next.load().getPtr();
-
-                // Safety check for next pointer
-                if (next && next->next.load().getMark()) {
-                    // Retrieve next->next
-                    HazardGuard<Node<T>> Hnext2 = derefD(&next->next);
-                    Node<T>* next2 = Hnext2.ptr;
-
-                    // Replace node->next with marked node->next->next
-                    node->next.store(MarkedPtr<T>(next2, true));
-
-                    // Release old node->next
-                    releaseNode(next);
-
-                    // Go into the next loop iteration
-                    continue;
-                }
-
-                // Break from loop
-                break;
-            }
-        }
+    //             // Break from loop
+    //             break;
+    //         }
+    //     }
 
     public:
 
@@ -697,299 +756,327 @@ class LocklessQueue {
             ownerPool->deallocate(node->memoryBlock);
         }
 
-        // Function to push to the left side of the queue
-        // Returns a pointer to the node incase it is needed later
-        // Creation of a node requires a memory block from an external memory pool
-        Node<T>* pushLeft(T data, GenericMemoryPool* memoryPool) {
-            // Create node object
-            Node<T>* node = createNode(data, memoryPool);
+        // // Function to push to the left side of the queue
+        // // Returns a pointer to the node incase it is needed later
+        // // Creation of a node requires a memory block from an external memory pool
+        // Node<T>* pushLeft(T data, GenericMemoryPool* memoryPool) {
+        //     // Create node object
+        //     Node<T>* node = createNode(data, memoryPool);
 
-            // Copy head
-            HazardGuard<Node<T>> Hprev = copy(head);
-            Node<T>* prev = Hprev.ptr;
+        //     // Copy head
+        //     HazardGuard<Node<T>> Hprev = copy(head);
+        //     Node<T>* prev = Hprev.ptr;
 
-            // Gets pointer to current prev->next
-            // node will take it's place
-            // Will be nullptr if prev->next is marked or null
-            HazardGuard<Node<T>> Hnext = deref(&prev->next);
-            Node<T>* next = Hnext.ptr;
+        //     // Gets pointer to current prev->next
+        //     // node will take it's place
+        //     // Will be nullptr if prev->next is marked or null
+        //     HazardGuard<Node<T>> Hnext = deref(&prev->next);
+        //     Node<T>* next = Hnext.ptr;
 
-            while (true) {
-                // Safety check: if next is null, try again
-                if (!next) {
-                    Hnext = deref(&prev->next);
-                    next = Hnext.ptr;
-                    std::this_thread::yield();
-                    continue;
-                }
+        //     while (true) {
+        //         // Safety check: if next is null, try again
+        //         if (!next) {
+        //             Hnext = deref(&prev->next);
+        //             next = Hnext.ptr;
+        //             std::this_thread::yield();
+        //             continue;
+        //         }
 
-                // if prev->next does not equal unmarked next
-                if (prev->next.load() != MarkedPtr<T>(next, false)) {
-                    // Redeclare it
-                    Hnext = deref(&prev->next);
-                    next = Hnext.ptr;
+        //         // if prev->next does not equal unmarked next
+        //         if (prev->next.load() != MarkedPtr<T>(next, false)) {
+        //             // Redeclare it
+        //             Hnext = deref(&prev->next);
+        //             next = Hnext.ptr;
 
-                    // Go into the next loop iteration
-                    continue;
-                }
+        //             // Go into the next loop iteration
+        //             continue;
+        //         }
 
-                // Set values for node->prev and node->next
-                // These pointers are unmarked
-                node->prev.store(MarkedPtr<T>(prev, false));
-                node->next.store(MarkedPtr<T>(next, false));
+        //         // Set values for node->prev and node->next
+        //         // These pointers are unmarked
+        //         node->prev.store(MarkedPtr<T>(prev, false));
+        //         node->next.store(MarkedPtr<T>(next, false));
 
-                // Set expected value
-                MarkedPtr<T> expected(next, false);
+        //         // Set expected value
+        //         MarkedPtr<T> expected(next, false);
 
-                // Try to atomically update prev->next pointer to next, if it still points to unmarked next
-                if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(node, false))) {
+        //         // Try to atomically update prev->next pointer to next, if it still points to unmarked next
+        //         if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(node, false))) {
 
-                    // Break out of loop
-                    break;
-                }
+        //             // Break out of loop
+        //             break;
+        //         }
 
-                // Yield the thread before going to next loop iteration
-                std::this_thread::yield();
-            }
+        //         // Yield the thread before going to next loop iteration
+        //         std::this_thread::yield();
+        //     }
 
-            // Run pushCommon to fully insert node into the queue
-            pushCommon(node, next);
+        //     // Run pushCommon to fully insert node into the queue
+        //     pushCommon(node, next);
 
-            // Return node
-            return node;
-        }
+        //     // Return node
+        //     return node;
+        // }
 
-        // Function to push to the right side of the queue
-        // Returns a pointer to the node incase it is needed later
-        // Creation of a node requires a memory block from an external memory pool
-        Node<T>* pushRight(T data, GenericMemoryPool* memoryPool) {
-            // Increment refCount of head
-            HazardGuard<Node<T>> Hnext = copy(tail);
-            Node<T>* next = Hnext.ptr;
+        // // Function to push to the right side of the queue
+        // // Returns a pointer to the node incase it is needed later
+        // // Creation of a node requires a memory block from an external memory pool
+        // Node<T>* pushRight(T data, GenericMemoryPool* memoryPool) {
+        //     // Increment refCount of head
+        //     HazardGuard<Node<T>> Hnext = copy(tail);
+        //     Node<T>* next = Hnext.ptr;
 
-            // Gets pointer to current prev->next
-            // node will take it's place
-            // Will be nullptr if prev->next is marked or null
-            HazardGuard<Node<T>> Hprev = deref(&next->prev);
-            Node<T>* prev = Hprev.ptr;
+        //     // Gets pointer to current prev->next
+        //     // node will take it's place
+        //     // Will be nullptr if prev->next is marked or null
+        //     HazardGuard<Node<T>> Hprev = deref(&next->prev);
+        //     Node<T>* prev = Hprev.ptr;
 
-            // Create node object
-            Node<T>* node = createNode(data, memoryPool);
+        //     // Create node object
+        //     Node<T>* node = createNode(data, memoryPool);
 
-            while (true) {
-                // Safety check: if prev is null, try again
-                if (!prev) {
-                    Hprev = deref(&next->prev);
-                    prev = Hprev.ptr;
-                    std::this_thread::yield();
-                    continue;
-                }
+        //     while (true) {
+        //         // Safety check: if prev is null, try again
+        //         if (!prev) {
+        //             Hprev = deref(&next->prev);
+        //             prev = Hprev.ptr;
+        //             std::this_thread::yield();
+        //             continue;
+        //         }
 
-                // if prev->next does not equal unmarked next
-                if (prev->next.load() != MarkedPtr<T>(next, false)) {
-                    // Redeclare it from next->prev
-                    Hprev = deref(&next->prev);
-                    prev = Hprev.ptr;
+        //         // if prev->next does not equal unmarked next
+        //         if (prev->next.load() != MarkedPtr<T>(next, false)) {
+        //             // Redeclare it from next->prev
+        //             Hprev = deref(&next->prev);
+        //             prev = Hprev.ptr;
 
-                    // Go into the next loop iteration
-                    continue;
-                }
+        //             // Go into the next loop iteration
+        //             continue;
+        //         }
 
-                // Set values for node->prev and node->next
-                // These pointers are unmarked
-                node->prev.store(MarkedPtr<T>(prev, false));
-                node->next.store(MarkedPtr<T>(next, false));
+        //         // Set values for node->prev and node->next
+        //         // These pointers are unmarked
+        //         node->prev.store(MarkedPtr<T>(prev, false));
+        //         node->next.store(MarkedPtr<T>(next, false));
 
-                // Set expected value
-                MarkedPtr<T> expected(next, false);
+        //         // Set expected value
+        //         MarkedPtr<T> expected(next, false);
 
-                // Try to atomically update prev->next pointer to next, if it still points to unmarked next
-                if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(node, false))) {
-                    // Break out of loop
-                    break;
-                }
+        //         // Try to atomically update prev->next pointer to next, if it still points to unmarked next
+        //         if (prev->next.compare_exchange_weak(expected, MarkedPtr<T>(node, false))) {
+        //             // Break out of loop
+        //             break;
+        //         }
 
-                // Yield the thread before going to next loop iteration
-                std::this_thread::yield();
-            }
+        //         // Yield the thread before going to next loop iteration
+        //         std::this_thread::yield();
+        //     }
 
-            // Run pushCommon to fully insert node into the queue
-            pushCommon(node, next);
+        //     // Run pushCommon to fully insert node into the queue
+        //     pushCommon(node, next);
 
-            // Return node
-            return node;
-        }
+        //     // Return node
+        //     return node;
+        // }
 
-        // Function to pop from the left side of the queue
-        // Returns the data from the node or nothing
-        std::optional<T> popLeft() {
-            // Copy head node
-            HazardGuard<Node<T>> Hprev = copy(head);
-            Node<T>* prev = Hprev.ptr;
+        // // Function to pop from the left side of the queue
+        // // Returns the data from the node or nothing
+        // std::optional<T> popLeft() {
+        //     int popLeft_attempts = 0;
+        //     while (true) { // This loop restarts the entire traversal
+        //         popLeft_attempts++;
+        //         if (popLeft_attempts % 10000 == 0) {
+        //             std::cout << "popLeft: Main loop attempt " << popLeft_attempts << ", thread " << std::this_thread::get_id() << std::endl;
+        //         }
+        //         HazardGuard<Node<T>> Hprev = copy(head);
+        //         Node<T>* prev = Hprev.ptr;
+                
+        //         HazardGuard<Node<T>> Hnode = deref(&prev->next);
+        //         Node<T>* node = Hnode.ptr;
+                
+        //         if (!node || node == tail) {
+        //             return std::nullopt;
+        //         }
+
+        //         // We have a candidate node to pop.
+        //         // Let's try to pop it.
+                
+        //         MarkedPtr<T> nextLink = node->next.load();
+
+        //         if (nextLink.getMark()) {
+        //             // PL10: DeleteNext(node); - Help delete the marked node
+        //             std::cout << "popLeft: Found marked node, calling helpDelete, thread " << std::this_thread::get_id() << std::endl;
+        //             helpDelete(node);
+        //             // PL11: RELEASE_NODE(node); - Release node (handled by hazard guard)
+        //             // PL12: continue; - Continue main loop
+        //             continue;
+        //         }
+                
+        //         // Try to mark the node for deletion.
+        //         if (node->next.compare_exchange_weak(nextLink, MarkedPtr<T>(nextLink.getPtr(), true))) {
+        //             // Success!
+        //             T data = node->data;
+        //             helpDelete(node);
+                    
+        //             HazardGuard<Node<T>> Hnext = derefD(&node->next);
+        //             Node<T>* next = Hnext.ptr;
+
+        //             if (next) {
+        //                 prev = helpInsert(prev, next);
+        //             }
+                    
+        //             removeCrossReference(node);
+                    
+        //             return data;
+        //         }
+                
+        //         // CAS failed. Another thread interfered.
+        //         // Yield and restart the whole traversal.
+        //         std::this_thread::yield();
+        //         // The loop will restart automatically.
+        //     }
+        // }
+
+        // // Function to pop from the right side of the queue
+        // // Returns the data from the node or nothing
+        // std::optional<T> popRight() {
+        //     // PR1: next:=COPY_NODE(tail);
+        //     HazardGuard<Node<T>> Hnext = copy(tail);
+        //     Node<T>* next = Hnext.ptr;
+
+        //     // PR2: node:=READ_NODE(&next.prev);
+        //     HazardGuard<Node<T>> Hnode = deref(&next->prev);
+        //     Node<T>* node = Hnode.ptr;
+
+        //     // PR3: while true do
+        //     int popRight_attempts = 0;
+        //     while (true) {
+        //         popRight_attempts++;
+        //         if (popRight_attempts % 10000 == 0) {
+        //             std::cout << "popRight: Main loop attempt " << popRight_attempts << ", node=" << node << ", next=" << next << ", thread " << std::this_thread::get_id() << std::endl;
+        //         }
+
+        //         // PR4: if node.next ≠ ⟨next,false⟩ then
+        //         MarkedPtr<T> nodeNext = node->next.load();
+        //         MarkedPtr<T> expectedNext(next, false);
+        //         if (nodeNext != expectedNext) {
+        //             // PR5: node:=HelpInsert(node,next);
+        //             if (popRight_attempts % 10000 == 0) {
+        //                 std::cout << "popRight: Node->next changed, calling helpInsert, thread " << std::this_thread::get_id() << std::endl;
+        //             }
+        //             Node<T>* newNode = helpInsert(node, next);
+        //             // Update our node reference
+        //             releaseNode(node);
+        //             node = newNode;
+        //             // PR6: continue;
+        //             continue;
+        //         }
+
+        //         // PR7: if node = head then
+        //         if (node == head) {
+        //             // PR8: RELEASE_NODE(node);
+        //             // PR9: RELEASE_NODE(next);
+        //             // PR10: return ⊥;
+        //             if (popRight_attempts % 10000 == 0) {
+        //                 std::cout << "popRight: Queue empty, node is head, returning nullopt" << std::endl;
+        //             }
+        //             return std::nullopt;
+        //         }
+
+        //         // PR11: if CAS(&node.next,⟨next,false⟩,⟨next,true⟩) then
+        //         if (node->next.compare_exchange_weak(expectedNext, MarkedPtr<T>(next, true))) {
+        //             // PR12: HelpDelete(node);
+        //             helpDelete(node);
+
+        //             // PR13: prev:=READ_DEL_NODE(&node.prev);
+        //             HazardGuard<Node<T>> Hprev = derefD(&node->prev);
+        //             Node<T>* prev = Hprev.ptr;
+
+        //             // PR14: prev:=HelpInsert(prev,next);
+        //             if (prev) {
+        //                 prev = helpInsert(prev, next);
+        //             }
+
+        //             // PR15: RELEASE_NODE(prev);
+        //             // PR16: RELEASE_NODE(next);
+        //             // PR17: value:=node.value;
+        //             T data = node->data;
+                    
+        //             // PR18: break;
+        //             // PR20: RemoveCrossReference(node);
+        //             removeCrossReference(node);
+                    
+        //             // PR21: RELEASE_NODE(node);
+        //             // PR22: return value;
+        //             return data;
+        //         }
+
+        //         // PR19: Back-Off
+        //         std::this_thread::yield();
+        //     }
+        // }
+
+        // // Function to remove a given node
+        // // Based off of popRight
+        // // Returns the data from the node or nothing
+        // std::optional<T> removeNode(Node<T>* node) {
+        //     // Return nullopt if node is invalid or a dummy node
+        //     if (!node || node->isDummy) {
+        //         return std::nullopt;
+        //     }
+
+        //     // Protect node
+        //     HazardGuard<Node<T>> guard = copy(node);
+
+        //     // To be returned
+        //     T data = node->data;
+
+        //     while (true) {
+        //         // Retrieve marked pointer to node->next
+        //         MarkedPtr<T> link = node->next.load();
+
+        //         // If already logically deleted, help finish and return nullopt
+        //         if (link.getMark()) {
+        //             // Help deletion along
+        //             helpDelete(node);
+
+        //             // Return nullopt
+        //             return std::nullopt;
+        //         }
+
+        //         // Try to atomically update node->next pointer to marked pointer to next, if it is still an unmarked pointer to next
+        //         if (node->next.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
+        //             // Call helpDelete to help remove the node now that it is marked
+        //             helpDelete(node);
+
+        //             // Retrieve node->prev
+        //             HazardGuard<Node<T>> Hprev = derefD(&node->prev);
+        //             Node<T>* prev = Hprev.ptr;
+
+        //             // Retrieve node->next
+        //             HazardGuard<Node<T>> Hnext = derefD(&node->next);
+        //             Node<T>* next = Hnext.ptr;
+
+        //             // Connect prev and next
+        //             // If prev or next are marked helpInsert will deal with it
+        //             if (next) {
+        //                 prev = helpInsert(prev, next);
+        //             }
+
+        //             // Break out of loop
+        //             break;
+        //         }
+                
+        //         // Yield the thread before going to next loop iteration
+        //         std::this_thread::yield();
+        //     }
             
-            while (true) {
-                // Try to get the next node from current position
-                HazardGuard<Node<T>> Hnode = deref(&prev->next);
-                Node<T>* node = Hnode.ptr;
-                
-                // If node is null or tail, queue is empty
-                if (!node || node == tail) {
-                    return std::nullopt;
-                }
-                
-                // Check if next node is marked for deletion
-                MarkedPtr<T> nextLink = node->next.load();
+        //     // Break possible cyclic references that include node
+        //     removeCrossReference(node);
 
-                if (nextLink.getMark()) {
-                    // Node is being deleted, help complete deletion
-                    helpDelete(node);
-                    
-                    // Continue into next loop iteration
-                    continue;
-                }
-                
-                // Try to mark next node for deletion (our pop operation)
-                if (node->next.compare_exchange_weak(nextLink, MarkedPtr<T>(nextLink.getPtr(), true))) {
-                    // Successfully marked node for deletion
-                    T data = node->data;
-                    
-                    // Help complete the deletion process
-                    helpDelete(node);
-                    
-                    // Connect prev to the node after next
-                    HazardGuard<Node<T>> Hnext = derefD(&node->next);
-                    Node<T>* next = Hnext.ptr;
-
-                    // try to connect prev to next
-                    prev = helpInsert(prev, next);
-                    
-                    // Clean up cross references
-                    removeCrossReference(node);
-                    
-                    return data;
-                }
-                
-                // CAS failed, the node changed while we were working
-                // Continue from current position without restarting
-                std::this_thread::yield();
-            }
-        }
-
-        // Function to pop from the right side of the queue
-        // Returns the data from the node or nothing
-        std::optional<T> popRight() {
-            // PR1: next:=COPY_NODE(tail);
-            HazardGuard<Node<T>> Hnext = copy(tail);
-            Node<T>* next = Hnext.ptr;
-
-            while (true) {
-                // PR2: node:=READ_NODE(&next.prev);
-                HazardGuard<Node<T>> Hnode = deref(&next->prev);
-                Node<T>* node = Hnode.ptr;
-                
-                // PR7: if node = head then (queue empty check)
-                if (!node || node == head) {
-                    // Return nullopt
-                    return std::nullopt;
-                }
-                
-                // PR4: if node.next ≠ (next,false) then
-                if (node->next.load() != MarkedPtr<T>(next, false)) {
-                    // PR5: node:=HelpInsert(node,next);
-                    Node<T>* newNode = helpInsert(node, next);
-                    // Update hazard guard to protect the new node
-                    Hnode = HazardGuard<Node<T>>(newNode, newNode->isDummy);
-                    node = newNode;
-                    // PR6: continue;
-                    continue;
-                }
-                
-                // Try to mark this node for deletion (this is our pop operation)
-                MarkedPtr<T> expected(next, false);
-                if (node->next.compare_exchange_weak(expected, MarkedPtr<T>(next, true))) {
-                    // Successfully marked the node for deletion
-                    T data = node->data;
-                    
-                    // Help complete the deletion
-                    helpDelete(node);
-                    
-                    // Get the node before the one we're deleting
-                    HazardGuard<Node<T>> Hprev = derefD(&node->prev);
-                    Node<T>* prev = Hprev.ptr;
-                    
-                    // Connect prev to next
-                    prev = helpInsert(prev, next);
-                    
-                    // Clean up cross references
-                    removeCrossReference(node);
-                    
-                    return data;
-                }
-                
-                // CAS failed
-                std::this_thread::yield();
-            }
-        }
-
-        // Function to remove a given node
-        // Based off of popRight
-        // Returns the data from the node or nothing
-        std::optional<T> removeNode(Node<T>* node) {
-            // Return nullopt if node is invalid or a dummy node
-            if (!node || node->isDummy) {
-                return std::nullopt;
-            }
-
-            // Protect node
-            HazardGuard<Node<T>> guard = copy(node);
-
-            // To be returned
-            T data = node->data;
-
-            while (true) {
-                // Retrieve marked pointer to node->next
-                MarkedPtr<T> link = node->next.load();
-
-                // If already logically deleted, help finish and return nullopt
-                if (link.getMark()) {
-                    // Help deletion along
-                    helpDelete(node);
-
-                    // Return nullopt
-                    return std::nullopt;
-                }
-
-                // Try to atomically update node->next pointer to marked pointer to next, if it is still an unmarked pointer to next
-                if (node->next.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
-                    // Call helpDelete to help remove the node now that it is marked
-                    helpDelete(node);
-
-                    // Retrieve node->prev
-                    HazardGuard<Node<T>> Hprev = derefD(&node->prev);
-                    Node<T>* prev = Hprev.ptr;
-
-                    // Retrieve node->next
-                    HazardGuard<Node<T>> Hnext = derefD(&node->next);
-                    Node<T>* next = Hnext.ptr;
-
-                    // Connect prev and next
-                    // If prev or next are marked helpInsert will deal with it
-                    prev = helpInsert(prev, next);
-
-                    // Break out of loop
-                    break;
-                }
-                
-                // Yield the thread before going to next loop iteration
-                std::this_thread::yield();
-            }
-            
-            // Break possible cyclic references that include node
-            removeCrossReference(node);
-
-            // Return data
-            return data;
-        }
+        //     // Return data
+        //     return data;
+        // }
 };
 
 #endif

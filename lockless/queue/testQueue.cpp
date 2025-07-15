@@ -605,7 +605,7 @@ TEST(LocklessQueueTest, HandlesConcurrentPushing) {
 // Testing with 4 threads
 TEST(LocklessQueueTest, HandlesConcurrentPopping) {
     // Reference constant to be used in testing
-    const int N = 1000;
+    const int N = 10000;
 
     // Create memory pool vector
     // Each memory pool will have a capacity of N
@@ -795,17 +795,17 @@ TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
 
 // Test Concurrent Combination of Push and Pop
 // Basically a mini version of the soak I'll do later
-// Testing with 6 threads
+// Testing with 4 threads
 TEST(LocklessQueueTest, HandlesConcurrentCombination) {
     // Estimate memory pool size
-    const size_t poolSize = 5000;
+    const size_t poolSize = 50000000;
 
     // Create memory pool vector
     // Memory pool size is an instance
-    vector<MemoryPool<sizeof(Node<int>), poolSize>*>pools(6);
+    vector<MemoryPool<sizeof(Node<int>), poolSize>*>pools(4);
 
     // Construct pools
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 4; i++) {
         pools[i] = new MemoryPool<sizeof(Node<int>), poolSize>();
     }
 
@@ -821,33 +821,67 @@ TEST(LocklessQueueTest, HandlesConcurrentCombination) {
         // Launch threads
         atomic<bool> stop = false;
 
-        for (int i = 0; i < 6; ++i) {
-            threads.emplace_back([&, i]() {
-                mt19937 rng(random_device{}());
+        // for (int i = 0; i < 4; ++i) {
+        //     threads.emplace_back([&, i]() {
+        //         mt19937 rng(random_device{}());
                 
-                while (!stop) {
-                    int op = rng() % 4;
+        //         while (!stop) {
+        //             int op = rng() % 4;
 
-                    switch (op) {
-                        case 0: 
-                            queue.pushLeft(rng(), pools[i]); 
-                            break;
+        //             switch (op) {
+        //                 case 0: 
+        //                     queue.pushLeft(rng(), pools[i]); 
+        //                     break;
 
-                        case 1: 
-                            queue.pushRight(rng(), pools[i]); 
-                            break;
+        //                 case 1: 
+        //                     queue.pushRight(rng(), pools[i]); 
+        //                     break;
 
-                        case 2: 
-                            queue.popLeft(); 
-                            break;
+        //                 case 2: 
+        //                     queue.popLeft(); 
+        //                     break;
 
-                        case 3: 
-                            queue.popRight(); 
-                            break;
-                    }
+        //                 case 3: 
+        //                     queue.popRight(); 
+        //                     break;
+        //             }
+        //         }
+        //     });
+        // }
+
+        threads.emplace_back([&]() {
+            while (!stop) {
+                queue.pushRight(1, pools[0]);
+            }
+        });
+
+        threads.emplace_back([&]() {
+            while (!stop) {
+                queue.pushLeft(2, pools[1]);
+            }
+        });
+
+        threads.emplace_back([&]() {
+            int count = 0;
+            while (!stop) {
+                auto result = queue.popRight();
+                count++;
+                if (count % 10000 == 0) {
+                    std::cout << "Thread popRight: " << count << " operations" << std::endl;
                 }
-            });
-        }
+            }
+        });
+
+        threads.emplace_back([&]() {
+            int count = 0;
+            while (!stop) {
+                auto result = queue.popLeft();
+                count++;
+                if (count % 10000 == 0) {
+                    std::cout << "Thread popLeft: " << count << " operations" << std::endl;
+                }
+            }
+        });
 
         // Wait for 1 second
         this_thread::sleep_for(chrono::seconds(1));

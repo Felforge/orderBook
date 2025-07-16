@@ -11,6 +11,14 @@
 #include "../hazardPointers/hazardRetire.h"
 #include "../hazardPointers/hazardGuard.h"
 
+// Define SPIN_PAUSE based on architecture
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
+    #include <immintrin.h>
+    #define SPIN_PAUSE() _mm_pause()
+#else
+    #define SPIN_PAUSE() std::atomic_signal_fence(std::memory_order_seq_cst)
+#endif
+
 // Tomorrow:
 // Add soak (long-duration high-concurrency test) to the lockless queue once it passes everything
 
@@ -147,6 +155,15 @@ class LocklessQueue {
         // Size must be assigned in constructor
         MemoryPool<sizeof(Node<T>), 2> pool; 
 
+        // Function to back off for unsuccessful operations
+        // The number of spins could be messed with
+        void spinBackoff(int spinCount = 100) {
+            for (int i = 0; i < spinCount; ++i) {
+                // Run spin pause
+                SPIN_PAUSE();
+            }
+        }
+
         // Copy sets a hazard pointer and returns a node pointer
         // This should only be called on nodes that are already protected or are dummy nodes
         HazardGuard<Node<T>> DeRefLink(Node<T>* node) {
@@ -228,7 +245,7 @@ class LocklessQueue {
                 }
 
                 // Back off
-                std::this_thread::yield();
+                spinBackoff();
             }
         }
 
@@ -330,7 +347,7 @@ class LocklessQueue {
                 }
 
                 // Back off
-                std::this_thread::yield();
+                spinBackoff();
             }
 
             // Return prev
@@ -457,7 +474,7 @@ class LocklessQueue {
                 next = Hnext.ptr;
 
                 // Back-Off
-                std::this_thread::yield();
+                spinBackoff();
             }
 
             // Finish push
@@ -498,7 +515,7 @@ class LocklessQueue {
                 prev = correctPrev(prev, next);
 
                 // Back-Off
-                std::this_thread::yield();
+                spinBackoff();
             }
 
             // Finish push
@@ -565,7 +582,7 @@ class LocklessQueue {
                 }
 
                 // Back-Off
-                std::this_thread::yield();
+                spinBackoff();
             }
             
             // Release node for deletion
@@ -628,7 +645,7 @@ class LocklessQueue {
                 }
 
                 // Back-Off
-                std::this_thread::yield();
+                spinBackoff();
             }
 
             // Release node for deletion
@@ -690,7 +707,7 @@ class LocklessQueue {
         //         }
                 
         //         // Yield the thread before going to next loop iteration
-        //         std::this_thread::yield();
+        //         spinBackoff();
         //     }
             
         //     // Break possible cyclic references that include node

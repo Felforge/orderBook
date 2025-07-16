@@ -12,7 +12,7 @@
 constexpr size_t MAX_HAZARD_POINTERS = 128;
 
 // Number of hazard pointers per thread
-constexpr size_t HAZARD_POINTERS_PER_THREAD = 8;
+constexpr size_t HAZARD_POINTERS_PER_THREAD = 6;
 
 // Struct representing two hazard pointer slot for a thread
 struct HazardPointer {

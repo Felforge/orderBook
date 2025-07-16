@@ -793,10 +793,70 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
 //     retireList.clear();
 // }
 
-// Test Concurrent Combination of Push and Pop
+// Test Simple Concurrent Combination of Push and Pop
+// Testing with 2 threads
+TEST(LocklessQueueTest, HandlesConcurrentCombinationSimple) {
+    // Estimate memory pool size
+    const size_t poolSize = 100;
+
+    // Create memory pool vector
+    // Memory pool size is an instance
+    vector<MemoryPool<sizeof(Node<int>), poolSize>*>pools(2);
+
+    // Construct pools
+    for (int i = 0; i < 2; i++) {
+        pools[i] = new MemoryPool<sizeof(Node<int>), poolSize>();
+    }
+
+    // Create vector to hold working threads
+    vector<thread> threads;
+
+    // Partition to allow the queue to destruct
+    // MemoryPool must be deleted after the queue
+    {
+        // Create queue
+        LocklessQueue<int> queue = LocklessQueue<int>();
+
+        threads.emplace_back([&] {
+            for (int i = 0; i < poolSize; i++) {
+                queue.pushLeft(i, pools[0]);
+            }
+        });
+
+        threads.emplace_back([&] {
+            for (int i = 0; i < poolSize; i++) {
+                queue.pushRight(i, pools[1]);
+            }
+        });
+
+        threads.emplace_back([&] {
+            for (int i = 0; i < poolSize; i++) {
+                queue.popLeft();
+            }
+        });
+
+        threads.emplace_back([&] {
+            for (int i = 0; i < poolSize; i++) {
+                queue.popRight();
+            }
+        });
+
+        // Wait for threads to finish
+        for (auto& thread : threads) {
+            thread.join();
+        }
+    }
+
+    // Delete Memory Pools
+    for (auto pool: pools) {
+        delete pool;
+    }
+}
+
+// Test Random Concurrent Combination of Push and Pop
 // Basically a mini version of the soak I'll do later
 // Testing with 4 threads
-TEST(LocklessQueueTest, HandlesConcurrentCombination) {
+TEST(LocklessQueueTest, HandlesConcurrentCombinationComplex) {
     // Estimate memory pool size
     const size_t poolSize = 1000000;
 

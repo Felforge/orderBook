@@ -798,14 +798,14 @@ TEST(LocklessQueueTest, HandlesConcurrentPopping) {
 // Testing with 4 threads
 TEST(LocklessQueueTest, HandlesConcurrentCombination) {
     // Estimate memory pool size
-    const size_t poolSize = 50000000;
+    const size_t poolSize = 1000000;
 
     // Create memory pool vector
     // Memory pool size is an instance
-    vector<MemoryPool<sizeof(Node<int>), poolSize>*>pools(4);
+    vector<MemoryPool<sizeof(Node<int>), poolSize>*>pools(5);
 
     // Construct pools
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         pools[i] = new MemoryPool<sizeof(Node<int>), poolSize>();
     }
 
@@ -817,6 +817,11 @@ TEST(LocklessQueueTest, HandlesConcurrentCombination) {
     {
         // Create queue
         LocklessQueue<int> queue = LocklessQueue<int>();
+
+        // Populate queue
+        for (int i = 0; i < 1000000; i++) {
+            queue.pushLeft(i, pools[4]);
+        }
 
         // Launch threads
         atomic<bool> stop = false;

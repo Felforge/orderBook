@@ -122,13 +122,19 @@ void updateRetireListQueue(LocklessQueue<T>& queue) {
 // Queue-specific version of retireObj from hazardRetire.h
 template<typename T>
 void retireQueueNode(Node<T>* node, LocklessQueue<T>& queue) {
-    // Return if node is already retired or is a dummy node
+    // Return if node is null or is a dummy node
+    if (!node || node->isDummy) {
+        return;
+    }
+    
+    // Return if node is already retired
     // If node->isRetired is false exchange it for true
-    if (node->isDummy || node->isRetired.exchange(true)) {
+    if (node->isRetired.exchange(true)) {
         return;
     }
 
     // Add the node to this thread's retire list
+    // We can safely cast to void* since we checked isDummy above
     retireList.push_back(static_cast<void*>(node));
 
     // If the retire list has grown large enough, attempt to reclaim nodes
@@ -155,7 +161,8 @@ class LocklessQueue {
                 return HazardGuard<Node<T>>(nullptr);
             }
 
-            // Return node
+            // Dummy nodes don't need protection as they're never deleted
+            // Only protect non-dummy nodes
             return HazardGuard<Node<T>>(node, node->isDummy);
         }
 
@@ -172,12 +179,13 @@ class LocklessQueue {
                 return;
             }
 
-            // If node is no longer protected retire it
+            // Always remove our protection first
+            removeHazardPointer(node);
+            
+            // Then try to retire the node if no other threads are protecting it
+            // This check is now safe because we've removed our protection
             if (!isHazard(node)) {
                 retireQueueNode<T>(node, *this);
-            } else {
-                // Release protection of node
-                removeHazardPointer(node);
             }
         }
 
@@ -249,36 +257,38 @@ class LocklessQueue {
                 // Retrieve node-> prev
                 MarkedPtr<T> link1 = node->prev.load();
 
-                // Break if link1 is marked
-                if (link1.getMark()) {
-                    break;
-                }
-
                 // Retrieve prev->next
                 MarkedPtr<T> Mprev2 = prev->next.load();
-                HazardGuard<Node<T>> Hprev2 = DeRefLink(Mprev2.getPtr());
-                Node<T>* prev2 = Hprev2.ptr;
+                Node<T>* prev2 = Mprev2.getPtr();
+                
+                // Skip if prev2 is null (shouldn't happen in correct implementation)
+                if (!prev2) {
+                    break;
+                }
+                
+                HazardGuard<Node<T>> Hprev2 = DeRefLink(prev2);
+                prev2 = Hprev2.ptr;
 
                 // If prev2 is marked
                 if (Mprev2.getMark()) {
-
                     // If lastlink is valid
                     if (lastLink) {
                         // Set mark on node
                         setMark(&prev->prev);
 
-                        // Swap references
-                        CASRef(&lastLink->next, MarkedPtr<T>(prev, false), MarkedPtr<T>(prev2, false));
+                        // Swap references - help complete the deletion
+                        if (CASRef(&lastLink->next, MarkedPtr<T>(prev, false), MarkedPtr<T>(prev2, false))) {
+                            // Successfully helped complete the deletion
+                            // Release the node that was unlinked
+                            releaseNode(prev);
+                        }
 
                         // Set prev to lastlink
                         prev = lastLink;
 
-                        // Transfer protection
+                        // Transfer protection from Hlast to Hprev
                         Hprev = std::move(Hlast);
-                        Hlast = std::move(HazardGuard<Node<T>>(nullptr));
-
-                        // Transfer protection
-                        Hprev = DeRefLink(prev);
+                        Hlast = HazardGuard<Node<T>>(nullptr);
 
                         // Clear lastlink
                         lastLink = nullptr;
@@ -288,7 +298,7 @@ class LocklessQueue {
                     }
                     
                     // retrieve prev->prev
-                    HazardGuard<Node<T>> Hprev2 = DeRefLink(prev->prev.load().getPtr());
+                    Hprev2 = DeRefLink(prev->prev.load().getPtr());
                     prev2 = Hprev2.ptr;
 
                     // Set prev to prev2
@@ -303,7 +313,6 @@ class LocklessQueue {
 
                 // If prev2 does not eqaul node
                 if (prev2 != node) {
-
                     // Set lastLink to prev
                     lastLink = prev;
 
@@ -372,8 +381,9 @@ class LocklessQueue {
             terminateNode(head, true);
             terminateNode(tail, true);
 
-            // Clear retire list
-            retireList.clear();
+            // Update retire list
+            // All protection should be removed by this point
+            updateRetireListQueue<T>(*this);
         }
 
         // Returns a node created with the given data
@@ -543,7 +553,11 @@ class LocklessQueue {
                     setMark(&node->prev);
 
                     // Switch prev->next from node to unmarked next
-                    CASRef(&prev->next, Mnode, MarkedPtr<T>(next, false));
+                    if (CASRef(&prev->next, MarkedPtr<T>(node, false), MarkedPtr<T>(next, false))) {
+                        // Successfully helped complete the deletion
+                        // Release the node that was unlinked
+                        releaseNode(node);
+                    }
 
                     // Go into next loop iteration
                     continue;
@@ -593,8 +607,13 @@ class LocklessQueue {
             while (true) {
                 // If node->next does not equal unmarked next correct the connection
                 if (node->next.load() != MarkedPtr<T>(next, false)) {
+                    // correctPrev returns a node that should already be protected
                     node = correctPrev(node, next);
-                    Hnode = HazardGuard<Node<T>>(node);
+                    // Update protection to the new node
+                    Hnode = DeRefLink(node);
+
+                    // Continue into next loop iteration
+                    continue;
                 }
 
                 // If queue is empty return nullopt
@@ -611,17 +630,17 @@ class LocklessQueue {
                     Node<T>* prev = Hprev.ptr;
 
                     // Connect prev->next directly to next (bypassing deleted node)
+                    // If CAS succeeds remove protection from node
                     MarkedPtr<T> expected(node, false);
-                    CASRef(&prev->next, expected, MarkedPtr<T>(next, false));
+                    if (CASRef(&prev->next, expected, MarkedPtr<T>(next, false))) {
+                        releaseNode(node);
+                    }
 
                     // Connect prev and next
                     prev = correctPrev(prev, next);
 
                     // Store data
                     data = node->data;
-
-                    // Release node from protection
-                    releaseNode(node);
 
                     // Break out of loop
                     break;

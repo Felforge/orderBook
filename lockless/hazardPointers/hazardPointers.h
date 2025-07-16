@@ -6,7 +6,6 @@
 #include <cstddef>
 #include <cassert>
 #include <vector>
-#include <iostream>
 
 // Maximum number of threads that can be supported for hazard pointers
 // Would need to be higher for a GPU implementation but is fine for now

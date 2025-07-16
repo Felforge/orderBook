@@ -1,7 +1,6 @@
 #ifndef HAZARD_GUARD_H
 #define HAZARD_GUARD_H
 
-#include <iostream>
 #include <thread>
 #include "hazardPointers.h"
 

@@ -130,22 +130,14 @@ void updateRetireListQueue(LocklessQueue<T>& queue) {
 // Queue-specific version of retireObj from hazardRetire.h
 template<typename T>
 void retireQueueNode(Node<T>* node, LocklessQueue<T>& queue) {
-    // Return if node is already retired or is a dummy node
-    // If node->isRetired is false exchange it for true
-    if (node->isDummy || node->isRetired.exchange(true)) {
+    // Return if node is a dummy node
+    // isRetired is already set by releaseNode()
+    if (node->isDummy) {
         return;
     }
 
     // Add the node to this thread's retire list
     retireList.push_back(static_cast<void*>(node));
-
-    // If the retire list has grown large enough, attempt to reclaim nodes
-    // This threshold can be tuned for performance/memory tradeoff
-    // Potentially find a way to eliminate this boundary later
-    if (retireList.size() >= 64) {
-        // Clear retire list if applicable
-        updateRetireListQueue<T>(queue);
-    }
 }
 
 template<typename T>
@@ -157,7 +149,7 @@ class LocklessQueue {
 
         // Function to back off for unsuccessful operations
         // The number of spins could be messed with
-        void spinBackoff(int spinCount = 100) {
+        void spinBackoff(int spinCount = 1) {
             for (int i = 0; i < spinCount; ++i) {
                 // Run spin pause
                 SPIN_PAUSE();
@@ -184,14 +176,12 @@ class LocklessQueue {
                 return;
             }
 
-            // Additional safety check: don't release already retired nodes
-            if (node->isRetired.load()) {
-                return;
-            }
-
             // If node is no longer protected retire it
             if (!isHazard(node)) {
-                retireQueueNode<T>(node, *this);
+                // Only retire if not already retired (atomic check-and-set)
+                if (!node->isRetired.exchange(true)) {
+                    retireQueueNode<T>(node, *this);
+                }
             } else {
                 // Release protection of node
                 removeHazardPointer(node);
@@ -202,14 +192,21 @@ class LocklessQueue {
         void setMark(std::atomic<MarkedPtr<T>>* link) {
             // Start infinite loop
             while (true) {
-                // Retrieve node
-                Node<T>* node = link->load().getPtr();
+                // Retrieve node with proper memory ordering
+                MarkedPtr<T> current = link->load(std::memory_order_acquire);
+                Node<T>* node = current.getPtr();
+
+                // If already marked, we're done
+                if (current.getMark()) {
+                    break;
+                }
 
                 // Declare expected value
                 MarkedPtr<T> expected(node, false);
 
-                // If node is marked or CAS succeeds break
-                if (link->load().getMark() || link->compare_exchange_strong(expected, MarkedPtr<T>(node, true))) {
+                // Try to set mark with proper memory ordering
+                if (link->compare_exchange_strong(expected, MarkedPtr<T>(node, true), 
+                                                std::memory_order_release, std::memory_order_relaxed)) {
                     break;
                 }
             }
@@ -251,6 +248,11 @@ class LocklessQueue {
 
         // CorrectPrev function from Figure 15 of the paper
         Node<T>* correctPrev(Node<T>* prev, Node<T>* node) {
+            // Return null if either parameter is null
+            if (!prev || !node) {
+                return nullptr;
+            }
+
             // Set lastLink as nullptr
             Node<T>* lastLink = nullptr;
 
@@ -383,11 +385,11 @@ class LocklessQueue {
             Node<T>* next;
             while (curr != tail) {
                 next = curr->next.load().getPtr();
-                terminateNode(curr, true);
+                terminateNode(curr);
                 curr = next;
             }
-            terminateNode(head, true);
-            terminateNode(tail, true);
+            terminateNode(head);
+            terminateNode(tail);
 
             // Clear retire list
             retireList.clear();
@@ -421,7 +423,7 @@ class LocklessQueue {
         // Calls Node destructor and deletes it from memory
         // bool destructor should be set to true in the destructor
         // Needs to be public to retire list nodes
-        void terminateNode(Node<T>* node, bool destructor = false) {
+        void terminateNode(Node<T>* node) {
             // If node is nullptr return
             if (!node) {
                 return;
@@ -573,6 +575,13 @@ class LocklessQueue {
 
                     // Connect prev and next
                     prev = correctPrev(prev, next);
+                    
+                    // If correctPrev returns null, restart from head
+                    if (!prev) {
+                        Hprev = DeRefLink(head);
+                        prev = Hprev.ptr;
+                        continue;
+                    }
 
                     // Store data
                     data = node->data;
@@ -655,67 +664,71 @@ class LocklessQueue {
             return data;
         }
 
-        // // Function to remove a given node
-        // // Based off of popRight
-        // // Returns the data from the node or nothing
-        // std::optional<T> removeNode(Node<T>* node) {
-        //     // Return nullopt if node is invalid or a dummy node
-        //     if (!node || node->isDummy) {
-        //         return std::nullopt;
-        //     }
+        // Function to remove a given node
+        // Returns the data from the node or nothing
+        std::optional<T> removeNode(Node<T>* node) {
+            // Return nullopt if node is invalid or a dummy node
+            if (!node || node->isDummy) {
+                return std::nullopt;
+            }
 
-        //     // Protect node
-        //     HazardGuard<Node<T>> guard = copy(node);
+            // Protect node
+            HazardGuard<Node<T>> Hnode = DeRefLink(node);
 
-        //     // To be returned
-        //     T data = node->data;
-
-        //     while (true) {
-        //         // Retrieve marked pointer to node->next
-        //         MarkedPtr<T> link = node->next.load();
-
-        //         // If already logically deleted, help finish and return nullopt
-        //         if (link.getMark()) {
-        //             // Help deletion along
-        //             helpDelete(node);
-
-        //             // Return nullopt
-        //             return std::nullopt;
-        //         }
-
-        //         // Try to atomically update node->next pointer to marked pointer to next, if it is still an unmarked pointer to next
-        //         if (node->next.compare_exchange_weak(link, MarkedPtr<T>(link.getPtr(), true))) {
-        //             // Call helpDelete to help remove the node now that it is marked
-        //             helpDelete(node);
-
-        //             // Retrieve node->prev
-        //             HazardGuard<Node<T>> Hprev = derefD(&node->prev);
-        //             Node<T>* prev = Hprev.ptr;
-
-        //             // Retrieve node->next
-        //             HazardGuard<Node<T>> Hnext = derefD(&node->next);
-        //             Node<T>* next = Hnext.ptr;
-
-        //             // Connect prev and next
-        //             // If prev or next are marked helpInsert will deal with it
-        //             if (next) {
-        //                 prev = helpInsert(prev, next);
-        //             }
-
-        //             // Break out of loop
-        //             break;
-        //         }
-                
-        //         // Yield the thread before going to next loop iteration
-        //         spinBackoff();
-        //     }
+            // To be returned
+            T data = node->data;
             
-        //     // Break possible cyclic references that include node
-        //     removeCrossReference(node);
+            // Start infinite loop
+            while (true) {
+                // Retrieve node->next
+                MarkedPtr<T> Mnext = node->next.load();
+                HazardGuard<Node<T>> Hnext = DeRefLink(Mnext.getPtr());
+                Node<T>* next = Hnext.ptr;
 
-        //     // Return data
-        //     return data;
-        // }
+                // If next is marked return nullopt
+                if (Mnext.getMark()) {
+                    return std::nullopt;
+                }
+
+                // Attempt to mark node->next
+                if (CASRef(&node->next, Mnext, MarkedPtr<T>(next, true))) {
+                    // Hold prev for outside use
+                    HazardGuard<Node<T>> Hprev(nullptr);
+                    Node<T>* prev;
+
+                    // Start infinite loop
+                    while (true) {
+                        // Retrieve node->prev
+                        MarkedPtr<T> Mprev = node->prev.load();
+                        Hprev = DeRefLink(Mprev.getPtr());
+                        prev = Hprev.ptr;
+
+                        // If prev is already marked or is successfully marked break
+                        if(Mprev.getMark() || CASRef(&node->prev, Mprev, MarkedPtr<T>(prev, true))) {
+                            break;
+                        }
+
+                        // Back off if failed
+                        spinBackoff();
+                    }
+
+                    // Connect prev and next
+                    prev = correctPrev(prev, next);
+
+                    // Release the protection from node
+                    releaseNode(node);
+
+                    // Release node for retirement
+                    releaseNode(node);
+
+                    // Return data
+                    return data;
+                }
+                
+                // Back off if failed
+                spinBackoff();
+            }
+        }
 };
 
 #endif

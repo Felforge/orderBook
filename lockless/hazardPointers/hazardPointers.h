@@ -12,7 +12,7 @@
 constexpr size_t MAX_HAZARD_POINTERS = 128;
 
 // Number of hazard pointers per thread
-constexpr size_t HAZARD_POINTERS_PER_THREAD = 6;
+constexpr size_t HAZARD_POINTERS_PER_THREAD = 8;
 
 // Struct representing two hazard pointer slot for a thread
 struct HazardPointer {
@@ -58,7 +58,7 @@ void setHazardPointer(void* ptr) {
     for (size_t i = 0; i < HAZARD_POINTERS_PER_THREAD; i++) {
         // If the slot is empty, set it to the pointer
         if (globalHazardPointers[hazardSlot].ptrs[i].load() == nullptr) {
-            globalHazardPointers[hazardSlot].ptrs[i].store(ptr, std::memory_order_relaxed);
+            globalHazardPointers[hazardSlot].ptrs[i].store(ptr, std::memory_order_release);
 
             // Exit after setting the pointer
             return;
@@ -75,7 +75,7 @@ void removeHazardPointer(void* ptr) {
     for (size_t i = 0; i < HAZARD_POINTERS_PER_THREAD; i++) {
         // If the slot equals to ptr set it to nullptr
         if (globalHazardPointers[hazardSlot].ptrs[i].load() == ptr) {
-            globalHazardPointers[hazardSlot].ptrs[i].store(nullptr, std::memory_order_relaxed);
+            globalHazardPointers[hazardSlot].ptrs[i].store(nullptr, std::memory_order_release);
 
             // Exit after removing the pointer
             return;
@@ -91,7 +91,7 @@ bool isHazard(void* ptr) {
         // Check all four slots, if it is being protected return true
         for (size_t j = 0; j < HAZARD_POINTERS_PER_THREAD; j++) {
             // If the slot equals to ptr return true
-            if (globalHazardPointers[i].ptrs[j].load() == ptr) {
+            if (globalHazardPointers[i].ptrs[j].load(std::memory_order_acquire) == ptr) {
                 return true;
             }
         }

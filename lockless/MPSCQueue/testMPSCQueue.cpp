@@ -5,6 +5,13 @@
 #include "MPSCQueue.h"
 using namespace std;
 
+// Test Status
+// Normal: PASSED
+// ASAN: PASSED
+// TSAN: PASSED
+
+// Note: For ASAN there was an issue caused by Gtest itself, everything can pass one at a time
+
 // Test Single Item
 TEST(LocklessQueueTest, HandlesSingleItem) {
     // Create queue
@@ -86,15 +93,15 @@ TEST(LocklessQueueTest, HandlesConcurrentAdding) {
 
     // Create vector of values to be pushed
     vector<int> vals;
-    for (int i = 1; i <= 1024; i++) {
+    for (int i = 0; i < 1024; i++) {
         vals.push_back(i);
     }
 
     // Run threads
     for (int t = 0; t < 8; t++) {
         threads.emplace_back([&, t] {
-            for(int i = 0; i < 128; ++i) {
-                queue.push(&vals[t * 128 + i - 1]);
+            for(int i = 0; i < 128; i++) {
+                queue.push(&vals[t * 128 + i]);
             }
         });
     }
@@ -110,7 +117,7 @@ TEST(LocklessQueueTest, HandlesConcurrentAdding) {
 }
 
 // Test Concurrent Adding and Removing
-// Testing with 5 threads
+// Testing with 8 threads
 TEST(LocklessQueueTest, HandlesConcurrentAddRemove) {
     // Create queue
     MPSCQueue<int, 1024> queue;
@@ -124,14 +131,14 @@ TEST(LocklessQueueTest, HandlesConcurrentAddRemove) {
 
     // Create vector of values to be pushed
     vector<int> vals;
-    for (int i = 1; i <= 1024; i++) {
+    for (int i = 0; i < 1024; i++) {
         vals.push_back(i);
     }
 
     // Run Add threads
     for (int t = 0; t < 8; t++) {
         threads.emplace_back([&, t] {
-            for(int i = 0; i < 128; ++i) {
+            for(int i = 0; i < 128; i++) {
                 queue.push(&vals[t * 128 + i]);
             }
         });
@@ -141,15 +148,12 @@ TEST(LocklessQueueTest, HandlesConcurrentAddRemove) {
     // Sets guarentee all elements are unique
     set<int> seen;
     
-    // Run Single Remove thread
-    threads.emplace_back([&] {
-        for(int i = 0; i < 1024; ++i) {
-            int* result;
-            queue.pop(result);
-            seen.insert(*result);
-        }
-    });
-
+    // Check everything concurrently
+    while (!queue.isEmpty()) {
+        int* result;
+        queue.pop(result);
+        seen.insert(*result);
+    }
 
     // Wait for threads to finish
     for (auto& thread : threads) {

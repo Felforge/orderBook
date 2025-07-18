@@ -8,6 +8,11 @@
 #include "queue.h"
 using namespace std;
 
+// Test Status
+// Normal: PASSED
+// ASAN: PASSED
+// TSAN: PASSED
+
 int isHazardSize() {
     int count = 0;
     for (size_t i = 0; i < HAZARD_POINTERS_PER_THREAD; i++) {
@@ -794,7 +799,7 @@ TEST(LocklessQueueTest, HandlesConcurrentRemoving) {
 }
 
 // Test Simple Concurrent Combination of Push and Pop
-// Testing with 2 threads
+// Testing with 4 threads
 TEST(LocklessQueueTest, HandlesConcurrentCombinationSimple) {
     // Estimate memory pool size
     const size_t poolSize = 1000;
@@ -876,17 +881,17 @@ TEST(LocklessQueueTest, HandlesConcurrentCombinationSimple) {
 
 // Test Random Concurrent Combination of Push and Pop
 // Basically a mini version of the soak I'll do later
-// Testing with 4 threads
+// Testing with 8 threads
 TEST(LocklessQueueTest, HandlesConcurrentCombinationComplex) {
     // Estimate memory pool size
     const size_t poolSize = 1000000;
 
     // Create memory pool vector
     // Memory pool size is an instance
-    vector<MemoryPool<sizeof(Node<int>), poolSize>*>pools(5);
+    vector<MemoryPool<sizeof(Node<int>), poolSize>*>pools(9);
 
     // Construct pools
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 9; i++) {
         pools[i] = new MemoryPool<sizeof(Node<int>), poolSize>();
     }
 
@@ -900,14 +905,15 @@ TEST(LocklessQueueTest, HandlesConcurrentCombinationComplex) {
         LocklessQueue<int> queue = LocklessQueue<int>();
 
         // Populate queue
+        // Not doing so can cause unwanted behavior
         for (int i = 0; i < 1000000; i++) {
-            queue.pushLeft(i, pools[4]);
+            queue.pushLeft(i, pools[8]);
         }
 
         // Launch threads
         atomic<bool> stop = false;
 
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < 8; ++i) {
             threads.emplace_back([&, i]() {
                 mt19937 rng(random_device{}());
                 

@@ -39,6 +39,14 @@ class MPSCQueue {
             }
         }
 
+        // Destructor
+        ~MPSCQueue() {
+            // Clear all values
+            for (size_t i = 0; i < Capacity; i++) {
+                buffer[i].store(nullptr, std::memory_order_relaxed);
+            }
+        }
+
         // Push a pointer to a value item into the queue
         // Thread safe for multiple producers
         // Returns true if the push was successful
@@ -93,7 +101,7 @@ class MPSCQueue {
 
             // Clear the slot
             buffer[idx].store(nullptr, std::memory_order_release);
-            tail.store(tail + 1, std::memory_order_relaxed);
+            tail.store(curTail + 1, std::memory_order_relaxed);
 
             // Success, return true
             return true;

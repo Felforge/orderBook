@@ -1,7 +1,10 @@
 g++ -std=c++20 testQueue.cpp -lgtest -o testQueue.exe
+g++ -std=c++20 testQueueSoak.cpp -lgtest -o testQueueSoak.exe
 
 For Debugging Single Threaded:
 g++ -std=c++20 -fsanitize=address testQueue.cpp -lgtest -o testQueue.exe
+g++ -std=c++20 -fsanitize=address testQueueSoak.cpp -lgtest -o testQueueSoak.exe
 
 For Debugging Concurrency:
 g++ -std=c++20 -fsanitize=thread testQueue.cpp -lgtest -o testQueue.exe
+g++ -std=c++20 -fsanitize=thread testQueueSoak.cpp -lgtest -o testQueueSoak.exe

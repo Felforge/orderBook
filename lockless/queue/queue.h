@@ -19,9 +19,6 @@
     #define SPIN_PAUSE() std::atomic_signal_fence(std::memory_order_seq_cst)
 #endif
 
-// Tomorrow:
-// Add soak (long-duration high-concurrency test) to the lockless queue once it passes everything
-
 // Based off of an algorithm developed by Sundell and Tsigas
 
 // Predeclare for access below
@@ -220,6 +217,9 @@ class LocklessQueue {
 
         // Common push function
         void pushEnd(Node<T>* node, Node<T>* next) {
+            // Protect node
+            HazardGuard<Node<T>> Hnode = HazardGuard<Node<T>>(node);
+
             // Start infinite loop
             while (true) {
                 // Get next->prev link
@@ -232,9 +232,9 @@ class LocklessQueue {
 
                 // next->prev is swapped from link1 to unmarked node
                 if (CASRef(&next->prev, link1, MarkedPtr<T>(node, false))) {
-                    // If node->prev is makred correct it
+                    // If node->prev is marked correct it
                     if (node->prev.load().getMark()) {
-                        node = correctPrev(node, next);
+                        Hnode = correctPrev(std::move(Hnode), next);
                     }
 
                     // Break out of the loop
@@ -247,20 +247,20 @@ class LocklessQueue {
         }
 
         // CorrectPrev function from Figure 15 of the paper
-        Node<T>* correctPrev(Node<T>* prev, Node<T>* node) {
+        // Returns a HazardGuard protecting the corrected previous node
+        HazardGuard<Node<T>> correctPrev(HazardGuard<Node<T>> Hprev, Node<T>* node) {
             // Return null if either parameter is null
-            if (!prev || !node) {
-                return nullptr;
+            if (!Hprev.ptr || !node) {
+                return HazardGuard<Node<T>>(nullptr);
             }
+
+            // Retrieve prev
+            Node<T>* prev = Hprev.ptr;
 
             // Set lastLink as nullptr
             Node<T>* lastLink = nullptr;
-
-            // Protect prev and node
-            HazardGuard<Node<T>> Hprev = DeRefLink(prev);
-            HazardGuard<Node<T>> Hnode = DeRefLink(node);
-
-            // lastLink protection
+            
+            // Protection for lastLink
             HazardGuard<Node<T>> Hlast(nullptr);
 
             // Start infinite loop
@@ -271,6 +271,11 @@ class LocklessQueue {
                 // Break if link1 is marked
                 if (link1.getMark()) {
                     break;
+                }
+
+                // Check if prev is still valid before accessing it
+                if (!prev) {
+                    return HazardGuard<Node<T>>(nullptr);
                 }
 
                 // Retrieve prev->next
@@ -289,15 +294,15 @@ class LocklessQueue {
                         // Swap references
                         CASRef(&lastLink->next, MarkedPtr<T>(prev, false), MarkedPtr<T>(prev2, false));
 
-                        // Set prev to lastlink
+                        // Release prev
+                        releaseNode(prev);
+
+                        // Release prev2
+                        releaseNode(prev2);
+
+                        // Set prev to lastlink and transfer protection
                         prev = lastLink;
-
-                        // Transfer protection
                         Hprev = std::move(Hlast);
-                        Hlast = std::move(HazardGuard<Node<T>>(nullptr));
-
-                        // Transfer protection
-                        Hprev = DeRefLink(prev);
 
                         // Clear lastlink
                         lastLink = nullptr;
@@ -306,9 +311,17 @@ class LocklessQueue {
                         continue;
                     }
                     
+                    // Check if prev is still valid before accessing prev->prev
+                    if (!prev) {
+                        return HazardGuard<Node<T>>(nullptr);
+                    }
+
                     // retrieve prev->prev
                     HazardGuard<Node<T>> Hprev2 = DeRefLink(prev->prev.load().getPtr());
                     prev2 = Hprev2.ptr;
+
+                    // Release prev
+                    releaseNode(prev);
 
                     // Set prev to prev2
                     prev = prev2;
@@ -317,21 +330,25 @@ class LocklessQueue {
                     Hprev = std::move(Hprev2);
 
                     // Continue into next loop iteration
-                     continue;
+                    continue;
                 }
 
                 // If prev2 does not eqaul node
                 if (prev2 != node) {
-
-                    // Set lastLink to prev
+                    // Transfer protection to lastLink before setting it
+                    Hlast = std::move(Hprev);
+                    
+                    // Set lastLink to prev (now protected by Hlast)
                     lastLink = prev;
 
+                    // Move protection to prev2
+                    Hprev = std::move(Hprev2);
+                    
                     // Move up prev2
                     prev = prev2;
-
-                    // Swap protection
-                    Hlast = std::move(Hprev);
-                    Hprev = std::move(Hprev2);
+                    
+                    // Continue into next loop iteration per paper CP20
+                    continue;
                 }
 
                 // Destroy prev2 protection
@@ -339,6 +356,11 @@ class LocklessQueue {
 
                 // Try to swap node->prev from link1 to unmarked prev
                 if (CASRef(&node->prev, link1, MarkedPtr<T>(prev, false))) {
+                    // Check if prev is still valid before accessing it
+                    if (!prev) {
+                        continue;
+                    }
+
                     // If prev->prev is marked then loop again
                     if (prev->prev.load().getMark()) {
                         continue;
@@ -352,8 +374,11 @@ class LocklessQueue {
                 spinBackoff();
             }
 
+            // Release lastLink protection if applicable
+            // Note: lastLink protection is handled by Hlast which will be destroyed automatically
+
             // Return prev
-            return prev;
+            return std::move(Hprev);
         }
 
     public:
@@ -395,8 +420,8 @@ class LocklessQueue {
             retireList.clear();
         }
 
-        // Returns a node created with the given data
-        Node<T>* createNode(T data, GenericMemoryPool* memoryPool) {
+        // Returns a node created with the given data, protected by a hazard guard
+        HazardGuard<Node<T>> createNode(T data, GenericMemoryPool* memoryPool) {
             // Try to allocate memory block
             void* memoryBlock;
             try {
@@ -416,8 +441,8 @@ class LocklessQueue {
             // Create node object
             Node<T>* node = new (memoryBlock) Node<T>(memoryPool, memoryBlock, data);
 
-            // Return node
-            return node;
+            // Return node with hazard protection
+            return HazardGuard<Node<T>>(node);
         }
 
         // Calls Node destructor and deletes it from memory
@@ -444,8 +469,9 @@ class LocklessQueue {
         // Function to push to the left side of the queue
         // Based on Figure 9 PushLeft procedure from the paper
         Node<T>* pushLeft(T data, GenericMemoryPool* memoryPool) {
-            // create new node
-            Node<T>* node = createNode(data, memoryPool);
+            // create new node with hazard protection
+            HazardGuard<Node<T>> Hnode = createNode(data, memoryPool);
+            Node<T>* node = Hnode.ptr;
 
             // retrieve prev
             HazardGuard<Node<T>> Hprev = DeRefLink(head);
@@ -488,8 +514,9 @@ class LocklessQueue {
         // Function to push to the right side of the queue  
         // Based on Figure 9 PushRight procedure from the paper
         Node<T>* pushRight(T data, GenericMemoryPool* memoryPool) {
-            // create new node
-            Node<T>* node = createNode(data, memoryPool);
+            // create new node with hazard protection
+            HazardGuard<Node<T>> Hnode = createNode(data, memoryPool);
+            Node<T>* node = Hnode.ptr;
 
             // retrieve next
             HazardGuard<Node<T>> Hnext = DeRefLink(tail);
@@ -514,7 +541,8 @@ class LocklessQueue {
                 }
 
                 // Correct the error
-                prev = correctPrev(prev, next);
+                Hprev = correctPrev(std::move(Hprev), next);
+                prev = Hprev.ptr;  // Update prev pointer
 
                 // Back-Off
                 spinBackoff();
@@ -574,14 +602,8 @@ class LocklessQueue {
                     CASRef(&prev->next, Mnode, MarkedPtr<T>(next, false));
 
                     // Connect prev and next
-                    prev = correctPrev(prev, next);
-                    
-                    // If correctPrev returns null, restart from head
-                    if (!prev) {
-                        Hprev = DeRefLink(head);
-                        prev = Hprev.ptr;
-                        continue;
-                    }
+                    Hprev = correctPrev(std::move(Hprev), next);
+                    prev = Hprev.ptr;  // Update prev pointer
 
                     // Store data
                     data = node->data;
@@ -619,8 +641,8 @@ class LocklessQueue {
             while (true) {
                 // If node->next does not equal unmarked next correct the connection
                 if (node->next.load() != MarkedPtr<T>(next, false)) {
-                    node = correctPrev(node, next);
-                    Hnode = HazardGuard<Node<T>>(node);
+                    Hnode = correctPrev(std::move(Hnode), next);
+                    node = Hnode.ptr;  // Update node pointer
                 }
 
                 // If queue is empty return nullopt
@@ -641,7 +663,7 @@ class LocklessQueue {
                     CASRef(&prev->next, expected, MarkedPtr<T>(next, false));
 
                     // Connect prev and next
-                    prev = correctPrev(prev, next);
+                    Hprev = correctPrev(std::move(Hprev), next);
 
                     // Store data
                     data = node->data;
@@ -713,7 +735,7 @@ class LocklessQueue {
                     }
 
                     // Connect prev and next
-                    prev = correctPrev(prev, next);
+                    Hprev = correctPrev(std::move(Hprev), next);
 
                     // Release the protection from node
                     releaseNode(node);

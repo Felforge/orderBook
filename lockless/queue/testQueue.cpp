@@ -904,12 +904,6 @@ TEST(LocklessQueueTest, HandlesConcurrentCombinationComplex) {
         // Create queue
         LocklessQueue<int> queue = LocklessQueue<int>();
 
-        // Populate queue
-        // Not doing so can cause unwanted behavior
-        for (int i = 0; i < 1000000; i++) {
-            queue.pushLeft(i, pools[8]);
-        }
-
         // Launch threads
         atomic<bool> stop = false;
 

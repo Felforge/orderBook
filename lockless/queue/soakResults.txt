@@ -1,0 +1,26 @@
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from LocklessQueueSoakTest
+[ RUN      ] LocklessQueueSoakTest.HandlesFifteenMinSoakTest
+Five Minute Soak Test Starting
+Five Minute Soak Test Time: 1 min
+Five Minute Soak Test Time: 2 min
+Five Minute Soak Test Time: 3 min
+Five Minute Soak Test Time: 4 min
+Five Minute Soak Test Time: 5 min
+Five Minute Soak Test Completed
+[       OK ] LocklessQueueSoakTest.HandlesFifteenMinSoakTest (326119 ms)
+[ RUN      ] LocklessQueueSoakTest.HandlesHighContentionTest
+High Contention Test Starting
+High Contention Test Time: 1 min
+High Contention Test Time: 2 min
+High Contention Test Time: 3 min
+High Contention Test Time: 4 min
+High Contention Test Time: 5 min
+High Contention Test Completed
+[       OK ] LocklessQueueSoakTest.HandlesHighContentionTest (305167 ms)
+[----------] 2 tests from LocklessQueueSoakTest (631286 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (631287 ms total)
+[  PASSED  ] 2 tests.

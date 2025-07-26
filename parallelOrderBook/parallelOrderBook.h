@@ -148,79 +148,6 @@ class OrderBook {
         // Vector to hold threads
         std::vector<std::thread> threads;
 
-        // Create and return an order pointer
-        // This function is meant to be run on an external thread
-        Order* createOrder(int userID, SymbolID symbolID, Side side, int quantity, double price) {
-            // Allocate memory block
-            void* memoryBlock = pools<maxOrders>.orderPool.allocate();
-
-            // Retrieve order ID
-            int currID  = orderID.fetch_add(1);
-
-            // Return order pointer
-            return new (memoryBlock) Order(memoryBlock, currID, userID, side, symbolID, quantity, price);
-        }
-
-        // Thread function to intake a given order
-        void intakeOrder(int userID, SymbolID symbolID, Side side, int quantity, double price) {
-            // Create order object
-            Order* order = createOrder(userID, symbolID, side, quantity, price);
-
-            // Add order to symbol queue
-            symbolQueues[symbolID].pushRight(order, pools<maxOrders>.nodePool);
-        }
-
-        // Intake worker thread function
-        void intakeWorker() {
-            // WHile running flag is set
-            while (running.load()) {
-                // Attempt to pop from pendingAddOrders
-                std::optional<OrderParams> params = pendingAddOrders.popLeft();
-
-                // If params has a value intake it
-                if (params.has_value()) {
-                    // Get params out of optional wrapper
-                    OrderParams paramsObj = *params;
-                    intakeOrder(paramsObj.userID, paramsObj.symbolID, paramsObj.side, paramsObj.quantity, paramsObj.price);
-                }
-
-                // Attempt to pop from pendingRemoveOrders;
-                std::optional<int> ID = pendingRemoveOrders.popLeft();
-
-                // If ID had a value remove it
-                if (ID.has_value()) {
-                    // Top be implemented later
-                }
-
-                // Yield if nothing to do
-                std::this_thread::yield();
-            }
-        }
-
-    public:
-        // Constructor
-        OrderBook() {
-            // Make sure number of matching and working threads are valid
-            static_assert(NUM_THREADS > maxTickers, "Too many tickers for the number of threads");
-
-            // Create pending pools
-            pendingAddOrders = new MemoryPool<sizeof(Node<OrderParams>), maxOrders>();
-            pendingRemovePool = new MemoryPool<sizeof(Node<int>), maxOrders>;
-
-            // Launch threads
-            for (int i = 0; i < NUM_THREADS; i++) {
-                threads.emplace_back([&]{
-                    intakeWorker();
-                })
-            }
-
-            // Start threads
-            running.store(true);
-        }
-
-        // Destructor
-        ~OrderBook();
-
         // Register a symbol and return its fast ID
         SymbolID registerSymbol(const std::string& symbolName) {
             // Check if already registered
@@ -256,29 +183,97 @@ class OrderBook {
             throw std::invalid_argument("Invalid side: " + sideStr);
         }
 
-        // Add order using string interface
-        void addOrder(int userID, const std::string& ticker, const std::string& side, int quantity, double price) {
-            // Convert to internal types
-            auto symbolIt = symbolNameToID.find(ticker);
-            if (symbolIt == symbolNameToID.end()) {
-                cout << "Order Book Error: Ticker is Invalid - use registerSymbol() first" << endl;
-                return;
-            }
-            
-            Side sideEnum;
-            try {
-                sideEnum = parseSide(side);
-            } catch (const std::invalid_argument&) {
-                cout << "Order Book Error: Invalid Order Side" << endl;
-                return;
-            }
-            
-            // Call direct version
-            addOrderFast(userID, symbolIt->second, sideEnum, quantity, price);
+        // Create and return an order pointer
+        // This function is meant to be run on an external thread
+        Order* createOrder(int userID, SymbolID symbolID, Side side, int quantity, double price) {
+            // Allocate memory block
+            void* memoryBlock = pools<maxOrders>.orderPool.allocate();
+
+            // Retrieve order ID
+            int currID  = orderID.fetch_add(1);
+
+            // Return order pointer
+            return new (memoryBlock) Order(memoryBlock, currID, userID, side, symbolID, quantity, price);
         }
-        
+
+        // Thread function to intake a given order
+        void intakeOrder(int userID, SymbolID symbolID, Side side, int quantity, double price) {
+            // Create order object
+            Order* order = createOrder(userID, symbolID, side, quantity, price);
+
+            // Add order to symbol queue
+            symbolQueues[symbolID].pushRight(order, pools<maxOrders>.nodePool);
+        }
+
+        // Thread function to remove a given order ID
+        void wokrerRemoveOrder(int orderID) {
+            // Get order pointer
+            Order* orderPtr = nullptr;
+
+            // Run removeNode on order pointer
+            symbolQueues[orderPtr->symbolID].removeNode(orderPtr);
+        }
+
+        // Intake worker thread function
+        void workerThread() {
+            // While running flag is set
+            while (running.load()) {
+                // Attempt to pop from pendingAddOrders
+                std::optional<OrderParams> params = pendingAddOrders.popLeft();
+
+                // If params has a value intake it
+                if (params.has_value()) {
+                    // Get params out of optional wrapper
+                    OrderParams paramsObj = *params;
+                    intakeOrder(paramsObj.userID, paramsObj.symbolID, paramsObj.side, paramsObj.quantity, paramsObj.price);
+
+                    // Go into next loop iteration
+                    continue;
+                }
+
+                // Attempt to pop from pendingRemoveOrders;
+                std::optional<int> ID = pendingRemoveOrders.popLeft();
+
+                // If ID had a value remove it
+                if (ID.has_value()) {
+                    // Remove the given ID
+                    wokrerRemoveOrder(*ID);
+
+                    // Go into next loop iteration
+                    continue;
+                }
+
+                // Yield if nothing to do
+                std::this_thread::yield();
+            }
+        }
+
+    public:
+        // Constructor
+        OrderBook() {
+            // Make sure number of matching and working threads are valid
+            static_assert(NUM_THREADS > maxTickers, "Too many tickers for the number of threads");
+
+            // Create pending pools
+            pendingAddOrders = new MemoryPool<sizeof(Node<OrderParams>), maxOrders>();
+            pendingRemovePool = new MemoryPool<sizeof(Node<int>), maxOrders>;
+
+            // Launch threads
+            for (int i = 0; i < NUM_THREADS; i++) {
+                threads.emplace_back([&]{
+                    workerThread();
+                })
+            }
+
+            // Start threads
+            running.store(true);
+        }
+
+        // Destructor
+        ~OrderBook();
+
         // Add order using IDs and enums directly
-        void addOrderFast(int userID, SymbolID symbolID, Side side, int quantity, double price) {
+        void addOrder(int userID, SymbolID symbolID, Side side, int quantity, double price) {
             // Basic validation
             if (quantity <= 0 || price <= 0.0) {
                 return;

@@ -10,6 +10,7 @@
 #include <vector>
 #include "../memoryPool/memoryPool.h"
 #include "../lockless/queue/queue.h"
+#include "../lockless/MPSCQueue/MPSCQueue.h"
 
 // NUM_THREADS will be set to the maximum supported amount
 const int NUM_THREADS = std::thread::hardware_concurrency();
@@ -111,6 +112,11 @@ struct OrderParams {
 template<size_t maxOrders>
 thread_local Pools<maxOrders> pools;
 
+// Define thread local order tracking
+template<size_t maxOrders>
+thread_local MPSCQueue<int, maxOrders> myRemovalQueue;
+thread_local std::unordered_map<int, Order*> myOrders;
+
 // Max orders is given per thread
 // This design uses a thread to match each symbol
 // This would not scale to thousands of symbols
@@ -118,6 +124,9 @@ thread_local Pools<maxOrders> pools;
 template<size_t maxTickers, size_t maxOrders>
 class OrderBook {
     private:
+        // Number of worker threads
+        const int WORKERS = NUM_THREADS - maxTickers;
+
         // Universal order ID
         std::atomic<int> orderID{0};
 
@@ -147,6 +156,13 @@ class OrderBook {
 
         // Vector to hold threads
         std::vector<std::thread> threads;
+
+        // To track removal queues
+        // This is used to take an Order ID out of foreign thread local tracking
+        MPSCQueue<int, maxOrders>* allRemovalQueues[WORKERS];
+
+        // To track all orders universally
+        std::unordered_map<int, Order*>* allOrderMaps[WORKERS];
 
         // Register a symbol and return its fast ID
         SymbolID registerSymbol(const std::string& symbolName) {
@@ -201,21 +217,71 @@ class OrderBook {
             // Create order object
             Order* order = createOrder(userID, symbolID, side, quantity, price);
 
+            // Track order locally
+            myOrders[order->orderID] = order;
+
             // Add order to symbol queue
             symbolQueues[symbolID].pushRight(order, pools<maxOrders>.nodePool);
         }
 
         // Thread function to remove a given order ID
-        void wokrerRemoveOrder(int orderID) {
+        // For this implementation it is assumed that there will not be duplicate cancellations
+        void wokrerRemoveOrder(int threadNum, int orderID) {
             // Get order pointer
             Order* orderPtr = nullptr;
+
+            // Check local storage
+            auto it = myOrders.find(orderID);
+
+            // If key is not found
+            if (it == myOrders.end()) {
+                // Check all threads
+                for (int i = 0; i < WORKERS; i++) {
+                    // Already checked
+                    if (i == threadNum) {
+                        continue;
+                    }
+
+                    // Check foreign thread in the same way
+                    it = allOrderMaps[i]->find(orderID);
+
+                    // If it is found
+                    if (it != allOrderMaps[i]->end()) {
+                        // Set orderPtr
+                        orderPtr = it->second;
+
+                        // Store for removal
+                        allRemovalQueues[i]->push(orderID);
+
+                        // Break out of loop
+                        break;
+                    }
+                }
+            
+            // Else it is found locally, do everything right here
+            } else {
+                // Set orderPtr
+                orderPtr = it->second;
+
+                // Erase order from map
+                myOrders.erase(orderID);
+            }
+
+            // If order is never found throw an invalid argument error
+            if (!orderPtr) {
+                throw std::invalid_argument;
+            }
 
             // Run removeNode on order pointer
             symbolQueues[orderPtr->symbolID].removeNode(orderPtr);
         }
 
         // Intake worker thread function
-        void workerThread() {
+        void workerThread(int numThread) {
+            // Create order tracking mechanism
+            allRemovalQueues[numThread] = &myRemovalQueue<maxOrders>;
+            allOrderMaps[numThread] = &myOrders;
+
             // While running flag is set
             while (running.load()) {
                 // Attempt to pop from pendingAddOrders
@@ -237,9 +303,21 @@ class OrderBook {
                 // If ID had a value remove it
                 if (ID.has_value()) {
                     // Remove the given ID
-                    wokrerRemoveOrder(*ID);
+                    wokrerRemoveOrder(threadNum, *ID);
 
                     // Go into next loop iteration
+                    continue;
+                }
+
+                // Check if any orders need to be removed from tracking
+                int removalID = -1;
+                while (myRemovalQueue.pop(&removalID)) {
+                    // Erase ID
+                    myOrders.erase(removalID);
+                }
+
+                // If removalID was used avoid the yield
+                if (removalID != -1) {
                     continue;
                 }
 
@@ -259,9 +337,9 @@ class OrderBook {
             pendingRemovePool = new MemoryPool<sizeof(Node<int>), maxOrders>;
 
             // Launch threads
-            for (int i = 0; i < NUM_THREADS; i++) {
-                threads.emplace_back([&]{
-                    workerThread();
+            for (int i = 0; i < WORKERS; i++) {
+                threads.emplace_back([&, i]{
+                    workerThread(i);
                 })
             }
 
@@ -273,6 +351,7 @@ class OrderBook {
         ~OrderBook();
 
         // Add order using IDs and enums directly
+        // Some way to get the order ID back to the user should probably be added
         void addOrder(int userID, SymbolID symbolID, Side side, int quantity, double price) {
             // Basic validation
             if (quantity <= 0 || price <= 0.0) {
@@ -281,6 +360,11 @@ class OrderBook {
             
             // Push add order
             pendingAddOrders.pushRight(OrderParams(userID, symbolID, side, quantity, price), pendingAddPool);
+        }
+
+        // Remove an order given the ID
+        void removeOrder(int orderID) {
+            pendingRemoveOrders.pushRight(orderID, pendingRemovePool);
         }
     };
 

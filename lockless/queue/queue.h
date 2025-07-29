@@ -751,6 +751,44 @@ class LocklessQueue {
                 spinBackoff();
             }
         }
+
+        // Function to get left node data if not empty
+        // Returns the data from the node or nothing
+        // Not neccessarily thread safe on the same side
+        std::optional<T> getLeft() {
+            // Get node ptr
+            Node<T>* ptr = head->next.load().getPtr();
+
+            // If queue is empty return nullopt
+            if (ptr == tail) {
+                return std::nullopt;
+            }
+
+            // Else return the value
+            return ptr->data;
+        }
+
+        // Function to get right node data if not empty
+        // Returns the data from the node or nothing
+        // Not neccessarily thread safe on the same side
+        std::optional<T> getLeft() {
+            // Get node ptr
+            Node<T>* ptr = tail->prev.load().getPtr();
+
+            // If queue is empty return nullopt
+            if (ptr == head) {
+                return std::nullopt;
+            }
+
+            // Else return the value
+            return ptr->data;
+        }
+
+        // Check if the queue is empty
+        // Not neccessarily thread safe on the same side
+        bool isEmpty() {
+            return head->next.load().getPtr() == tail;
+        }
 };
 
 #endif

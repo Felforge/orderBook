@@ -771,7 +771,7 @@ class LocklessQueue {
         // Function to get right node data if not empty
         // Returns the data from the node or nothing
         // Not neccessarily thread safe on the same side
-        std::optional<T> getLeft() {
+        std::optional<T> getRight() {
             // Get node ptr
             Node<T>* ptr = tail->prev.load().getPtr();
 

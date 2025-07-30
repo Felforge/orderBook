@@ -7,9 +7,9 @@
 #include <atomic>
 #include <vector>
 #include <thread>
-#include "../memoryPool/memoryPool.h"
 #include "../lockless/queue/queue.h"
 #include "../lockless/MPSCQueue/MPSCQueue.h"
+#include "../lockless/memoryPool/memoryPool.h"
 
 // Default best bid
 const double BEST_BID = 0.0;
@@ -54,7 +54,9 @@ struct Order {
 
     // Constructor
     Order(void* memoryBlock, int orderID, int userID, Side side,
-        SymbolID symbolID, int quantity, double price);
+        SymbolID symbolID, int quantity, double price)
+        : memoryBlock(memoryBlock), orderID(orderID), userID(userID), 
+          price(price), quantity(quantity), side(side), symbolID(symbolID) {}
   };
 
 // Best orders are being left as PriceLevel to access the whole doubly linked list
@@ -93,7 +95,7 @@ struct alignas(64) Pools {
     // Constructor
     Pools() {
         // Create orderPool
-        orderPool = new MemoryPool<sizeof(Order*), maxOrders>();
+        orderPool = new MemoryPool<sizeof(Order), maxOrders>();
 
         // Create nodePool
         nodePool = new MemoryPool<sizeof(Node<Order*>), maxOrders>();
@@ -111,6 +113,9 @@ struct OrderParams {
     int quantity;
     double price;
 
+    // Default constructor
+    OrderParams() : userID(0), symbolID(0), side(Side::BUY), quantity(0), price(0.0) {}
+    
     // Constructor
     OrderParams(int userID, SymbolID symbolID, Side side, int quantity, double price)
         : userID(userID), symbolID(symbolID), side(side), quantity(quantity), price(price) {}
@@ -123,31 +128,33 @@ thread_local Pools<maxOrders> pools;
 // Define thread local order tracking
 template<size_t maxOrders>
 thread_local MPSCQueue<int, maxOrders> myRemovalQueue;
-thread_local std::unordered_map<int, Order*> myOrders;
+thread_local std::unordered_map<int, Node<Order*>*> myOrders;
 
 // Max orders is given per thread
 // This design uses a thread to match each symbol
 // This would not scale to thousands of symbols
 // For that many symbols a different approach shopuld be used
-template<size_t maxSymbols, size_t maxOrders>
+template<size_t maxSymbols, size_t maxOrders, size_t numThreads, size_t maxLevels>
 class OrderBook {
     private:
         // Number of worker threads
-        const int WORKERS = NUM_THREADS - maxSymbols;
+        static constexpr int WORKERS = numThreads - maxSymbols;
 
         // Universal order ID
         std::atomic<int> orderID{0};
 
         // Maps to hold all deques
-        std::unordered_map<SymbolID, std::unordered_map<double, LocklessQueue<Order*>>> symbolBuyQueues;
-        std::unordered_map<SymbolID, std::unordered_map<double, LocklessQueue<Order*>>> symbolSellQueues;
+        std::unordered_map<SymbolID, std::unordered_map<double, LocklessQueue<Order*>*>> symbolBuyQueues;
+        std::unordered_map<SymbolID, std::unordered_map<double, LocklessQueue<Order*>*>> symbolSellQueues;
+        
+        // Memory pool for lockless queues
+        MemoryPool<sizeof(LocklessQueue<Order*>), 2 * maxLevels> queuePool;
         
         // Map to hold all symbols with their price level data
         std::unordered_map<SymbolID, Symbol*> symbols;
         
         // Symbol registration maps
         std::unordered_map<std::string, SymbolID> symbolNameToID;
-        std::unordered_map<SymbolID, std::string> symbolIDToName;
         std::atomic<SymbolID> nextSymbolID{1};
         
         // Memory pool for symbols
@@ -170,68 +177,21 @@ class OrderBook {
 
         // To track removal queues
         // This is used to take an Order ID out of foreign thread local tracking
-        MPSCQueue<int, maxOrders>* allRemovalQueues[WORKERS];
-
-        // To track all orders universally
-        std::unordered_map<int, Order*>* allOrderMaps[WORKERS];
+        std::vector<MPSCQueue<int, maxOrders>*> allRemovalQueues;
 
         // MPSC Queues to hold requested price levels
-        std::unordered_map<SymbolID, MPSCQueue<double>> requestedBuyPriceLevels;
-        std::unordered_map<SymbolID, MPSCQueue<double>> requestedSellPriceLevels;
-
-        // Register a symbol and return its fast ID
-        SymbolID registerSymbol(const std::string& symbolName) {
-            // Make sure limit is not exceeded
-            assert(symbolNameToID.size() < maxSymbols && "Cannot add another symbol, limit reached");
-
-            // Check if already registered
-            auto it = symbolNameToID.find(symbolName);
-            if (it != symbolNameToID.end()) {
-                return it->second;
-            }
-            
-            // Create new symbol ID
-            SymbolID newID = nextSymbolID.fetch_add(1);
-            
-            // Register mappings
-            symbolNameToID[symbolName] = newID;
-            symbolIDToName[newID] = symbolName;
-
-            // Create price level request queues
-            requestedBuyPriceLevels[symbolID] = MPSCQueue<double>();
-            requestedSellPriceLevels[symbolID] = MPSCQueue<double>();
-            
-            // Create symbol object with price tracking
-            void* symbolMemory = symbolPool.allocate();
-            symbols[newID] = new (symbolMemory) Symbol(symbolMemory, symbolName);
-
-            // Start matching thread on this symbol
-            threads.emplace_back([&, newID]{
-                matchOrders(newID);
-            })
-            
-            // Return symbol ID
-            return newID;
-        }
+        std::unordered_map<SymbolID, MPSCQueue<double, maxOrders>*> requestedBuyPriceLevels;
+        std::unordered_map<SymbolID, MPSCQueue<double, maxOrders>*> requestedSellPriceLevels;
         
-        // Convert side string to enum
-        Side parseSide(const std::string& sideStr) {
-            // Parse input
-            if (sideStr == "BUY") {
-                return Side::BUY;
-            } else if (sideStr == "SELL") { 
-                return Side::SELL;
-            }
-
-            // Throw error if side is invalid
-            throw std::invalid_argument("Invalid side: " + sideStr);
-        }
+        // Memory pool for MPSC queues
+        MemoryPool<sizeof(MPSCQueue<double, maxOrders>), 2 * maxOrders> priceRequestPool;
+        
 
         // Create and return an order pointer
         // This function is meant to be run on an external thread
         Order* createOrder(int userID, SymbolID symbolID, Side side, int quantity, double price) {
             // Allocate memory block
-            void* memoryBlock = pools<maxOrders>.orderPool.allocate();
+            void* memoryBlock = pools<maxOrders>.orderPool->allocate();
 
             // Retrieve order ID
             int currID  = orderID.fetch_add(1);
@@ -245,18 +205,15 @@ class OrderBook {
             // Create order object
             Order* order = createOrder(userID, symbolID, side, quantity, price);
 
-            // Track order locally
-            myOrders[order->orderID] = order;
-
             // Check if price level exists and if not create it
-            if (side == 0) {
+            if (side == Side::BUY) {
                 // Cache symbol buy queues reference
                 auto& symbolBuyLevels = symbolBuyQueues[symbolID];
                 
                 // Check if key exists
                 if (symbolBuyLevels.find(price) == symbolBuyLevels.end()) {
                     // Create request to add price level
-                    requestedBuyPriceLevels[symbolID].push(price);
+                    requestedBuyPriceLevels[symbolID]->push(&price);
 
                     // Yield while price level is not added
                     while (symbolBuyLevels.find(price) == symbolBuyLevels.end()) {
@@ -265,15 +222,18 @@ class OrderBook {
                 }
 
                 // Push order to cached price level
-                symbolBuyLevels[price].pushRight(order, pools<maxOrders>.nodePool);
-            } else { // side == 1
+                Node<Order*>* orderNode = symbolBuyLevels[price]->pushRight(order, pools<maxOrders>.nodePool);
+
+                // Track order locally
+                myOrders[order->orderID] = orderNode;
+            } else { // side == Side::SELL
                 // Cache symbol sell queues reference
                 auto& symbolSellLevels = symbolSellQueues[symbolID];
                 
                 // Check if key exists
                 if (symbolSellLevels.find(price) == symbolSellLevels.end()) {
                     // Create request to add price level
-                    requestedSellPriceLevels[symbolID].push(price);
+                    requestedSellPriceLevels[symbolID]->push(&price);
 
                     // Yield while price level is not added
                     while (symbolSellLevels.find(price) == symbolSellLevels.end()) {
@@ -281,15 +241,18 @@ class OrderBook {
                     }
                 }
                 // Push order to cached price level
-                symbolSellLevels[price].pushRight(order, pools<maxOrders>.nodePool);
+                Node<Order*>* orderNode = symbolSellLevels[price]->pushRight(order, pools<maxOrders>.nodePool);
+
+                // Track order locally
+                myOrders[order->orderID] = orderNode;
             }
         }
 
         // Thread function to remove a given order ID
         // For this implementation it is assumed that there will not be duplicate cancellations
         void wokrerRemoveOrder(int threadNum, int orderID) {
-            // Get order pointer
-            Order* orderPtr = nullptr;
+            // Get order node
+            Node<Order*>* orderNode = nullptr;
 
             // Check local storage
             auto it = myOrders.find(orderID);
@@ -308,11 +271,11 @@ class OrderBook {
 
                     // If it is found
                     if (it != allOrderMaps[i]->end()) {
-                        // Set orderPtr
-                        orderPtr = it->second;
+                        // Set orderNode
+                        orderNode = it->second;
 
                         // Store for removal
-                        allRemovalQueues[i]->push(orderID);
+                        allRemovalQueues[i]->push(&orderID);
 
                         // Break out of loop
                         break;
@@ -321,20 +284,24 @@ class OrderBook {
             
             // Else it is found locally, do everything right here
             } else {
-                // Set orderPtr
-                orderPtr = it->second;
+                // Set orderNode
+                orderNode = it->second;
 
                 // Erase order from map
                 myOrders.erase(orderID);
             }
 
             // If order is never found throw an invalid argument error
-            if (!orderPtr) {
-                throw std::invalid_argument;
+            if (!orderNode) {
+                throw std::invalid_argument("ERROR: Provided Order ID Not Found");
             }
 
-            // Run removeNode on order pointer
-            symbolQueues[orderPtr->symbolID].removeNode(orderPtr);
+            // Run removeNode on order node
+            if (orderNode->data->side == Side::BUY) {
+                symbolBuyQueues[orderNode->data->symbolID][orderNode->data->price]->removeNode(orderNode);
+            } else { // orderNode->data->side == Side::SELL
+                symbolSellQueues[orderNode->data->symbolID][orderNode->data->price]->removeNode(orderNode);
+            }
         }
 
         // Intake worker thread function
@@ -364,21 +331,21 @@ class OrderBook {
                 // If ID had a value remove it
                 if (ID.has_value()) {
                     // Remove the given ID
-                    wokrerRemoveOrder(threadNum, *ID);
+                    wokrerRemoveOrder(numThread, *ID);
 
                     // Go into next loop iteration
                     continue;
                 }
 
                 // Check if any orders need to be removed from tracking
-                int removalID = -1;
-                while (myRemovalQueue.pop(&removalID)) {
+                int* removalID = nullptr;
+                while (myRemovalQueue<maxOrders>.pop(removalID)) {
                     // Erase ID
-                    myOrders.erase(removalID);
+                    myOrders.erase(*removalID);
                 }
 
                 // If removalID was used avoid the yield
-                if (removalID != -1) {
+                if (removalID) {
                     continue;
                 }
 
@@ -392,51 +359,53 @@ class OrderBook {
             // Start infinite loop when start flag is thrown
             while (running.load()) {
                 // Add price levels if requested
-                while (!requestedBuyPriceLevels[symbol].isEmpty()) {
+                while (!requestedBuyPriceLevels[symbol]->isEmpty()) {
                     // Create variable to hold result
-                    double newPriceLevel;
+                    double* newPriceLevel;
 
                     // Get requested price level
-                    requestedBuyPriceLevels[symbol].pop(&newPriceLevel);
+                    requestedBuyPriceLevels[symbol]->pop(newPriceLevel);
                     
                     // If it has already been added go on
-                    if (symbolBuyQueues[symbol].find(newPriceLevel) != symbolBuyQueues[symbol].end()) {
+                    if (symbolBuyQueues[symbol].find(*newPriceLevel) != symbolBuyQueues[symbol].end()) {
                         continue;
                     }
 
                     // Add price level
-                    symbolBuyQueues[symbol][newPriceLevel] = LocklessQueue<Order*>();
+                    void* queueMemory = queuePool.allocate();
+                    symbolBuyQueues[symbol][*newPriceLevel] = new (queueMemory) LocklessQueue<Order*>();
 
                     // Add to active buy prices
-                    symbols[symbol]->activeBuyPrices.push(newPriceLevel);
+                    symbols[symbol]->activeBuyPrices.push(*newPriceLevel);
 
                     // Set new best buy price if applicable
-                    if (newPriceLevel > symbols[symbol]->bestBid) {
-                        symbols[symbol]->bestBid = newPriceLevel;
+                    if (*newPriceLevel > symbols[symbol]->bestBid) {
+                        symbols[symbol]->bestBid = *newPriceLevel;
                     }
                 }
 
-                while (!requestedSellPriceLevels[symbol].isEmpty()) {
+                while (!requestedSellPriceLevels[symbol]->isEmpty()) {
                     // Create variable to hold result
-                    double newPriceLevel;
+                    double* newPriceLevel;
 
                     // Get requested price level
-                    requestedSellPriceLevels[symbol].pop(&newPriceLevel);
+                    requestedSellPriceLevels[symbol]->pop(newPriceLevel);
 
                     // If it has already been added go on
-                    if (symbolSellQueues[symbol].find(newPriceLevel) != symbolSellQueues[symbol].end()) {
+                    if (symbolSellQueues[symbol].find(*newPriceLevel) != symbolSellQueues[symbol].end()) {
                         continue;
                     }
 
                     // Add price level
-                    symbolSellQueues[symbol][newPriceLevel] = LocklessQueue<Order*>();
+                    void* queueMemory = queuePool.allocate();
+                    symbolSellQueues[symbol][*newPriceLevel] = new (queueMemory) LocklessQueue<Order*>();
 
                     // Add to active sell prices
-                    symbols[symbol]->activeSellPrices.push(newPriceLevel);
+                    symbols[symbol]->activeSellPrices.push(*newPriceLevel);
 
                     // Set new best buy price if applicable
-                    if (newPriceLevel < symbols[symbol]->bestAsk) {
-                        symbols[symbol]->bestAsk = newPriceLevel;
+                    if (*newPriceLevel < symbols[symbol]->bestAsk) {
+                        symbols[symbol]->bestAsk = *newPriceLevel;
                     }
                 }
 
@@ -450,10 +419,10 @@ class OrderBook {
                     
                     while (symbolData->bestBid >= symbolData->bestAsk) {
                         // Get best buy order
-                        Order* bestBuyOrder = *buyQueues[symbolData->bestBid].getLeft();
+                        Order* bestBuyOrder = *buyQueues[symbolData->bestBid]->getLeft();
 
                         // Get best sell order
-                        Order* bestSellOrder = *sellQueues[symbolData->bestAsk].getLeft();
+                        Order* bestSellOrder = *sellQueues[symbolData->bestAsk]->getLeft();
 
                         // If the buy quantity is greater than the sell quantity
                         if (bestBuyOrder->quantity > bestSellOrder->quantity) {
@@ -461,7 +430,7 @@ class OrderBook {
                             bestBuyOrder->quantity -= bestSellOrder->quantity;
 
                             // Pop the best sell order
-                            sellQueues[symbolData->bestAsk].popLeft();
+                            sellQueues[symbolData->bestAsk]->popLeft();
 
                         // Else if the sell quantity is greater than the buy quantity
                         } else if (bestSellOrder->quantity > bestBuyOrder->quantity) {
@@ -469,7 +438,7 @@ class OrderBook {
                             bestSellOrder->quantity -= bestBuyOrder->quantity;
 
                             // Pop the best sell order
-                            buyQueues[symbolData->bestBid].popLeft();
+                            buyQueues[symbolData->bestBid]->popLeft();
 
                         // Else they are even
                         } else {
@@ -477,11 +446,11 @@ class OrderBook {
                             bestBuyOrder->quantity -= bestSellOrder->quantity;
 
                             // Pop the best sell order
-                            buyQueues[symbolData->bestBid].popLeft();
+                            buyQueues[symbolData->bestBid]->popLeft();
                         }
 
                         // If the buy price level is now empty remove it from active and set a new best bid
-                        if (buyQueues[symbolData->bestBid].isEmpty()) {
+                        if (buyQueues[symbolData->bestBid]->isEmpty()) {
                             // Pop it
                             symbolData->activeBuyPrices.pop();
 
@@ -496,7 +465,7 @@ class OrderBook {
                         } 
 
                         // If the sell price level is now empty remove it from active and set a new best ask
-                        if (sellQueues[symbolData->bestAsk].isEmpty()) {
+                        if (sellQueues[symbolData->bestAsk]->isEmpty()) {
                             // Pop it
                             symbolData->activeSellPrices.pop();
 
@@ -517,20 +486,28 @@ class OrderBook {
         }
 
     public:
+        // To track all orders universally
+        // Public for testing
+        std::vector<std::unordered_map<int, Node<Order*>*>*> allOrderMaps;
+
         // Constructor
         OrderBook() {
             // Make sure number of matching and working threads are valid
-            static_assert(NUM_THREADS > maxSymbols, "Too many tickers for the number of threads");
+            static_assert(numThreads > maxSymbols, "Too many tickers for the number of threads");
+
+            // Allocate space in allRemovalQueues and allOrderMaps
+            allRemovalQueues.resize(WORKERS);
+            allOrderMaps.resize(WORKERS);
 
             // Create pending pools
-            pendingAddOrders = new MemoryPool<sizeof(Node<OrderParams>), maxOrders>();
-            pendingRemovePool = new MemoryPool<sizeof(Node<int>), maxOrders>;
+            pendingAddPool = new MemoryPool<sizeof(Node<OrderParams>), maxOrders>();
+            pendingRemovePool = new MemoryPool<sizeof(Node<int>), maxOrders>();
 
             // Launch working threads
             for (int i = 0; i < WORKERS; i++) {
                 threads.emplace_back([&, i]{
                     workerThread(i);
-                })
+                });
             }
 
             // Start threads
@@ -546,6 +523,41 @@ class OrderBook {
             for (auto& thread : threads) {
                 thread.join();
             }
+        }
+
+        // Register a symbol
+        SymbolID registerSymbol(const std::string& symbolName) {
+            // Make sure limit is not exceeded
+            assert(symbolNameToID.size() < maxSymbols && "Cannot add another symbol, limit reached");
+
+            // Check if already registered
+            auto it = symbolNameToID.find(symbolName);
+            if (it != symbolNameToID.end()) {
+                return it->second;
+            }
+            
+            // Create new symbol ID
+            SymbolID newID = nextSymbolID.fetch_add(1);
+            
+            // Register mappings
+            symbolNameToID[symbolName] = newID;
+
+            // Create price level request queues
+            void* buyQueueMemory = priceRequestPool.allocate();
+            requestedBuyPriceLevels[newID] = new (buyQueueMemory) MPSCQueue<double, maxOrders>();
+            void* sellQueueMemory = priceRequestPool.allocate();
+            requestedSellPriceLevels[newID] = new (sellQueueMemory) MPSCQueue<double, maxOrders>();
+            
+            // Create symbol object with price tracking
+            void* symbolMemory = symbolPool.allocate();
+            symbols[newID] = new (symbolMemory) Symbol(symbolMemory, symbolName, newID);
+
+            // Start matching thread on this symbol
+            threads.emplace_back([&, newID]{
+                matchOrders(newID);
+            });
+            
+            return newID;
         }
 
         // Add order using IDs and enums directly

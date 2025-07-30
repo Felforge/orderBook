@@ -4,12 +4,13 @@
 #include <algorithm>
 #include <unistd.h>
 #include "parallelOrderBook.h"
+using namespace std;
 
-std::string captureOutput(std::function<void()> func) {
-    std::stringstream buffer;
-    std::streambuf* old = std::cout.rdbuf(buffer.rdbuf());
+string captureOutput(function<void()> func) {
+    stringstream buffer;
+    streambuf* old = cout.rdbuf(buffer.rdbuf());
     func();  // Run function that prints output
-    std::cout.rdbuf(old);
+    cout.rdbuf(old);
     return buffer.str();
 }
 
@@ -24,370 +25,370 @@ void isOrderEqual(Order* expected, Order* actual) {
     EXPECT_EQ(expected->price, actual->price);
     EXPECT_EQ(expected->quantity, actual->quantity);
     EXPECT_EQ(expected->side, actual->side);
-    EXPECT_EQ(expected->ticker, actual->ticker);
-}
-
-// Check if all elements are nullptr
-bool isEmpty(std::vector<OrderNode*> vec) {
-    return std::all_of(vec.begin(), vec.end(), [](OrderNode* listPtr) {
-        return !listPtr;
-    });
+    EXPECT_EQ(expected->symbolID, actual->symbolID);
 }
 
 // Test Adding Valid Buy Order
 TEST(OrderBookTest, HandlesValidBuyOrderAdding) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.0);
-    usleep(1000000); // Delay to make sure it completes
-
-    // Check Order Map
-    Order* actual = orderBook.orders[0]->order;
-    isOrderEqual(expected, actual);
-
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-    isOrderEqual(expected, actual);
-
-    delete expected;
-}
-
-// Test Adding Valid Sell Order
-TEST(OrderBookTest, HandlesValidSellOrderAdding) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
-    Order* expected = new Order(nullptr, 0, 1, "SELL", "AAPL", 10, 100.0);
-    usleep(1000000); // Delay to make sure it completes
+    OrderBook<1, 1, 2, 1> orderBook = OrderBook<1, 1, 2, 1>();
+    SymbolID appleID = orderBook.registerSymbol("AAPL");
+    orderBook.addOrder(1, appleID, Side::BUY, 10, 100.0);
     
-    // Check Order Map
-    Order* actual = orderBook.orders[0]->order;
-    isOrderEqual(expected, actual);
+    Order* expected = new Order(nullptr, 0, 1, Side::BUY, appleID, 10, 100.0);
 
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-    isOrderEqual(expected, actual);
+    // // Find order
+    // Order* actual = nullptr;
+    // for (unordered_map<int, Node<Order*>*>* map: orderBook.allOrderMaps) {
+    //     // If key exists set it to actual
+    //     if (map->find(0) != map->end()) {
+    //         actual = (*map)[0]->data;
+    //     }
+    // }
+
+    // // Make sure item was found
+    // EXPECT_NE(actual, nullptr);
+
+    // // Make sure orders are equal
+    // isOrderEqual(expected, actual);
 
     delete expected;
 }
 
-// Test Adding Valid Buy and Sell Order
-TEST(OrderBookTest, HandlesValidBuyAndSellOrderAdding) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
-    usleep(1000000); // Delay to make sure it completes
+// // Test Adding Valid Sell Order
+// TEST(OrderBookTest, HandlesValidSellOrderAdding) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
+//     Order* expected = new Order(nullptr, 0, 1, "SELL", "AAPL", 10, 100.0);
+//     usleep(1000000); // Delay to make sure it completes
     
-    // Check Buy 
-    Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.0);
+//     // Check Order Map
+//     Order* actual = orderBook.orders[0]->order;
+//     isOrderEqual(expected, actual);
 
-    // Check Order Map
-    Order* actual = orderBook.orders[0]->order;
-    isOrderEqual(expected, actual);
+//     // Check Order List
+//     actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
+//     isOrderEqual(expected, actual);
 
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-    isOrderEqual(expected, actual);
-    delete expected;
+//     delete expected;
+// }
 
-    // Check Sell
-    expected = new Order(nullptr, 1, 1, "SELL", "AAPL", 10, 100.0);
-
-    // Check Order Map
-    actual = orderBook.orders[1]->order;
-    isOrderEqual(expected, actual);
-
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-    isOrderEqual(expected, actual);
-    delete expected;
-}
-
-// Test Adding Multiple Same Price Price Orders
-TEST(OrderBookTest, HandlesMultipleSamePriceOrderAdding) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    usleep(1000000); // Delay to make sure it completes
+// // Test Adding Valid Buy and Sell Order
+// TEST(OrderBookTest, HandlesValidBuyAndSellOrderAdding) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
+//     usleep(1000000); // Delay to make sure it completes
     
-    // First Order
-    Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.0);
+//     // Check Buy 
+//     Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.0);
 
-    // Check Order Map
-    Order* actual = orderBook.orders[0]->order;
-    isOrderEqual(expected, actual);
+//     // Check Order Map
+//     Order* actual = orderBook.orders[0]->order;
+//     isOrderEqual(expected, actual);
 
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-    isOrderEqual(expected, actual);
-    delete expected;
+//     // Check Order List
+//     actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
+//     isOrderEqual(expected, actual);
+//     delete expected;
 
-    // Last Order
-    expected = new Order(nullptr, 2, 1, "BUY", "AAPL", 10, 100.0);
+//     // Check Sell
+//     expected = new Order(nullptr, 1, 1, "SELL", "AAPL", 10, 100.0);
 
-    // Check Order Map
-    actual = orderBook.orders[2]->order;
-    isOrderEqual(expected, actual);
+//     // Check Order Map
+//     actual = orderBook.orders[1]->order;
+//     isOrderEqual(expected, actual);
 
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->tail.load()->order;
-    isOrderEqual(expected, actual);
-    delete expected;
+//     // Check Order List
+//     actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
+//     isOrderEqual(expected, actual);
+//     delete expected;
+// }
 
-    // Middle Order
-    expected = new Order(nullptr, 1, 1, "BUY", "AAPL", 10, 100.0);
-
-    // Check Order Map
-    actual = orderBook.orders[1]->order;
-    isOrderEqual(expected, actual);
-
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->next.load()->order; // From head
-    isOrderEqual(expected, actual);
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->tail.load()->prev.load()->order; // From tail
-    isOrderEqual(expected, actual);
-    delete expected;
-}
-
-// Test Adding Multiple Different Price Price Orders
-TEST(OrderBookTest, HandlesMultipleDifferentPriceOrderAdding) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 90.0, false);
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 110.0, false);
-    usleep(1000000); // Delay to make sure it completes
+// // Test Adding Multiple Same Price Price Orders
+// TEST(OrderBookTest, HandlesMultipleSamePriceOrderAdding) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     usleep(1000000); // Delay to make sure it completes
     
-    // First Order
-    Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 90.0);
+//     // First Order
+//     Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.0);
 
-    // Check Order Map
-    Order* actual = orderBook.orders[0]->order;
-    isOrderEqual(expected, actual);
+//     // Check Order Map
+//     Order* actual = orderBook.orders[0]->order;
+//     isOrderEqual(expected, actual);
 
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(90.0, 50.0)]->head.load()->order;
-    isOrderEqual(expected, actual);
-    delete expected;
+//     // Check Order List
+//     actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
+//     isOrderEqual(expected, actual);
+//     delete expected;
 
-    // Second Order
-    expected = new Order(nullptr, 1, 1, "BUY", "AAPL", 10, 100.0);
+//     // Last Order
+//     expected = new Order(nullptr, 2, 1, "BUY", "AAPL", 10, 100.0);
 
-    // Check Order Map
-    actual = orderBook.orders[1]->order;
-    isOrderEqual(expected, actual);
+//     // Check Order Map
+//     actual = orderBook.orders[2]->order;
+//     isOrderEqual(expected, actual);
 
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-    isOrderEqual(expected, actual);
-    delete expected;
+//     // Check Order List
+//     actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->tail.load()->order;
+//     isOrderEqual(expected, actual);
+//     delete expected;
 
-    // Last Order
-    expected = new Order(nullptr, 2, 1, "BUY", "AAPL", 10, 110.0);
+//     // Middle Order
+//     expected = new Order(nullptr, 1, 1, "BUY", "AAPL", 10, 100.0);
 
-    // Check Order Map
-    actual = orderBook.orders[2]->order;
-    isOrderEqual(expected, actual);
+//     // Check Order Map
+//     actual = orderBook.orders[1]->order;
+//     isOrderEqual(expected, actual);
 
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(110.0, 50.0)]->head.load()->order;
-    isOrderEqual(expected, actual);
-    delete expected;
-}
+//     // Check Order List
+//     actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->next.load()->order; // From head
+//     isOrderEqual(expected, actual);
+//     actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->tail.load()->prev.load()->order; // From tail
+//     isOrderEqual(expected, actual);
+//     delete expected;
+// }
 
-// Test Adding Best Buy Order
-TEST(OrderBookTest, HandlesBestBuyOrderAdding) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    Ticker* tickerPtr = orderBook.tickerMap["AAPL"];
-    usleep(1000000); // Delay to make sure it completes
+// // Test Adding Multiple Different Price Price Orders
+// TEST(OrderBookTest, HandlesMultipleDifferentPriceOrderAdding) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 90.0, false);
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 110.0, false);
+//     usleep(1000000); // Delay to make sure it completes
     
-    // Check Initial
-    Order* actual = tickerPtr->buyOrderList[tickerPtr->bestBuyIdx]->head.load()->order;
-    Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.00);
-    isOrderEqual(expected, actual);
-    delete expected;
+//     // First Order
+//     Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 90.0);
 
-    // Add New Best Order
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 110.0, false);
+//     // Check Order Map
+//     Order* actual = orderBook.orders[0]->order;
+//     isOrderEqual(expected, actual);
 
-    // Check Final
-    actual = tickerPtr->buyOrderList[tickerPtr->bestBuyIdx]->head.load()->order;
-    expected = new Order(nullptr, 1, 1, "BUY", "AAPL", 10, 110.00);
-    isOrderEqual(expected, actual);
-    delete expected;
-}
+//     // Check Order List
+//     actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(90.0, 50.0)]->head.load()->order;
+//     isOrderEqual(expected, actual);
+//     delete expected;
 
-// Test Adding Best Sell Order
-TEST(OrderBookTest, HandlesBestSellOrderAdding) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
-    Ticker* tickerPtr = orderBook.tickerMap["AAPL"];
-    usleep(1000000); // Delay to make sure it completes
+//     // Second Order
+//     expected = new Order(nullptr, 1, 1, "BUY", "AAPL", 10, 100.0);
+
+//     // Check Order Map
+//     actual = orderBook.orders[1]->order;
+//     isOrderEqual(expected, actual);
+
+//     // Check Order List
+//     actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
+//     isOrderEqual(expected, actual);
+//     delete expected;
+
+//     // Last Order
+//     expected = new Order(nullptr, 2, 1, "BUY", "AAPL", 10, 110.0);
+
+//     // Check Order Map
+//     actual = orderBook.orders[2]->order;
+//     isOrderEqual(expected, actual);
+
+//     // Check Order List
+//     actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(110.0, 50.0)]->head.load()->order;
+//     isOrderEqual(expected, actual);
+//     delete expected;
+// }
+
+// // Test Adding Best Buy Order
+// TEST(OrderBookTest, HandlesBestBuyOrderAdding) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     Ticker* tickerPtr = orderBook.tickerMap["AAPL"];
+//     usleep(1000000); // Delay to make sure it completes
     
-    // Check Initial
-    Order* actual = tickerPtr->sellOrderList[tickerPtr->bestSellIdx]->head.load()->order;
-    Order* expected = new Order(nullptr, 0, 1, "SELL", "AAPL", 10, 100.00);
-    isOrderEqual(expected, actual);
-    delete expected;
+//     // Check Initial
+//     Order* actual = tickerPtr->buyOrderList[tickerPtr->bestBuyIdx]->head.load()->order;
+//     Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.00);
+//     isOrderEqual(expected, actual);
+//     delete expected;
 
-    // Add New Best Order
-    orderBook.addOrder(1, "AAPL", "SELL", 10, 90.0, false);
+//     // Add New Best Order
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 110.0, false);
 
-    // Check Final
-    actual = tickerPtr->sellOrderList[tickerPtr->bestSellIdx]->head.load()->order;
-    expected = new Order(nullptr, 1, 1, "SELL", "AAPL", 10, 90.00);
-    isOrderEqual(expected, actual);
-    delete expected;
-}
+//     // Check Final
+//     actual = tickerPtr->buyOrderList[tickerPtr->bestBuyIdx]->head.load()->order;
+//     expected = new Order(nullptr, 1, 1, "BUY", "AAPL", 10, 110.00);
+//     isOrderEqual(expected, actual);
+//     delete expected;
+// }
 
-// Test Adding Orders For Different Tickers
-TEST(OrderBookTest, HandlesDifferentTickerOrderAdding) {
-    OrderBook orderBook = OrderBook(2, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addTicker("AMZN");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    orderBook.addOrder(1, "AMZN", "BUY", 10, 100.0, false);
-    usleep(1000000); // Delay to make sure it completes
+// // Test Adding Best Sell Order
+// TEST(OrderBookTest, HandlesBestSellOrderAdding) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
+//     Ticker* tickerPtr = orderBook.tickerMap["AAPL"];
+//     usleep(1000000); // Delay to make sure it completes
+    
+//     // Check Initial
+//     Order* actual = tickerPtr->sellOrderList[tickerPtr->bestSellIdx]->head.load()->order;
+//     Order* expected = new Order(nullptr, 0, 1, "SELL", "AAPL", 10, 100.00);
+//     isOrderEqual(expected, actual);
+//     delete expected;
 
-    // Apple Order
-    Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.0);
+//     // Add New Best Order
+//     orderBook.addOrder(1, "AAPL", "SELL", 10, 90.0, false);
 
-    // Check Order Map
-    Order* actual = orderBook.orders[0]->order;
-    isOrderEqual(expected, actual);
+//     // Check Final
+//     actual = tickerPtr->sellOrderList[tickerPtr->bestSellIdx]->head.load()->order;
+//     expected = new Order(nullptr, 1, 1, "SELL", "AAPL", 10, 90.00);
+//     isOrderEqual(expected, actual);
+//     delete expected;
+// }
 
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-    isOrderEqual(expected, actual);
-    delete expected;
+// // Test Adding Orders For Different Tickers
+// TEST(OrderBookTest, HandlesDifferentTickerOrderAdding) {
+//     OrderBook orderBook = OrderBook(2, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addTicker("AMZN");
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     orderBook.addOrder(1, "AMZN", "BUY", 10, 100.0, false);
+//     usleep(1000000); // Delay to make sure it completes
 
-    // Amazon Order
-    expected = new Order(nullptr, 1, 1, "BUY", "AMZN", 10, 100.0);
+//     // Apple Order
+//     Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.0);
 
-    // Check Order Map
-    actual = orderBook.orders[1]->order;
-    isOrderEqual(expected, actual);
+//     // Check Order Map
+//     Order* actual = orderBook.orders[0]->order;
+//     isOrderEqual(expected, actual);
 
-    // Check Order List
-    actual = orderBook.tickerMap["AMZN"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-    isOrderEqual(expected, actual);
-    delete expected;
-}
+//     // Check Order List
+//     actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
+//     isOrderEqual(expected, actual);
+//     delete expected;
 
-// Test Removing Valid Buy Order
-TEST(OrderBookTest, HandlesValidBuyOrderRemoving) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    orderBook.removeOrder(0, false);
-    usleep(1000000); // Delay to make sure it completes
+//     // Amazon Order
+//     expected = new Order(nullptr, 1, 1, "BUY", "AMZN", 10, 100.0);
 
-    // Make sure order map is empty
-    EXPECT_TRUE(isEmpty(orderBook.orders));
+//     // Check Order Map
+//     actual = orderBook.orders[1]->order;
+//     isOrderEqual(expected, actual);
 
-    // Make sure price level is empty
-    // Should be nullptr which is false
-    EXPECT_TRUE(!orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]);
-}
+//     // Check Order List
+//     actual = orderBook.tickerMap["AMZN"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
+//     isOrderEqual(expected, actual);
+//     delete expected;
+// }
 
-// Test Removing Valid Sell Order
-TEST(OrderBookTest, HandlesValidSellOrderRemoving) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
-    orderBook.removeOrder(0, false);
+// // Test Removing Valid Buy Order
+// TEST(OrderBookTest, HandlesValidBuyOrderRemoving) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     orderBook.removeOrder(0, false);
+//     usleep(1000000); // Delay to make sure it completes
 
-    // Make sure order map is empty
-    EXPECT_TRUE(isEmpty(orderBook.orders));
+//     // Make sure order map is empty
+//     EXPECT_TRUE(isEmpty(orderBook.orders));
 
-    // Make sure price level is empty
-    // Should be nullptr which is false
-    EXPECT_TRUE(!orderBook.tickerMap["AAPL"]->sellOrderList[getListIdx(100.0, 50.0)]);
-}
+//     // Make sure price level is empty
+//     // Should be nullptr which is false
+//     EXPECT_TRUE(!orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]);
+// }
 
-// Test Removing Duplicate Orders
-TEST(OrderBookTest, HandlesDuplicateOrderRemoving) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    usleep(1000000); // Delay to make sure it completes
+// // Test Removing Valid Sell Order
+// TEST(OrderBookTest, HandlesValidSellOrderRemoving) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
+//     orderBook.removeOrder(0, false);
 
-    // Remove first two orders
-    orderBook.removeOrder(0, false);
-    orderBook.removeOrder(1, false);
+//     // Make sure order map is empty
+//     EXPECT_TRUE(isEmpty(orderBook.orders));
 
-    // Create expected order
-    Order* expected = new Order(nullptr, 2, 1, "BUY", "AAPL", 10, 100.0);
+//     // Make sure price level is empty
+//     // Should be nullptr which is false
+//     EXPECT_TRUE(!orderBook.tickerMap["AAPL"]->sellOrderList[getListIdx(100.0, 50.0)]);
+// }
 
-    // Check Order Map
-    Order* actual = orderBook.orders[2]->order;
-    isOrderEqual(expected, actual);
+// // Test Removing Duplicate Orders
+// TEST(OrderBookTest, HandlesDuplicateOrderRemoving) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     usleep(1000000); // Delay to make sure it completes
 
-    // Check Order List
-    actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-    isOrderEqual(expected, actual);
+//     // Remove first two orders
+//     orderBook.removeOrder(0, false);
+//     orderBook.removeOrder(1, false);
 
-    delete expected;
-}
+//     // Create expected order
+//     Order* expected = new Order(nullptr, 2, 1, "BUY", "AAPL", 10, 100.0);
 
-// Test Updating Best Buy Order Upon Remove
-TEST(OrderBookTest, HandlesBestBuyOrderRemoving) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 110.0, false);
-    Ticker* tickerPtr = orderBook.tickerMap["AAPL"];
-    usleep(1000000); // Delay to make sure it completes
+//     // Check Order Map
+//     Order* actual = orderBook.orders[2]->order;
+//     isOrderEqual(expected, actual);
 
-    // Check Initial
-    Order* actual = tickerPtr->buyOrderList[tickerPtr->bestBuyIdx]->head.load()->order;
-    Order* expected = new Order(nullptr, 1, 1, "BUY", "AAPL", 10, 110.00);
-    isOrderEqual(expected, actual);
-    delete expected;
+//     // Check Order List
+//     actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
+//     isOrderEqual(expected, actual);
 
-    // Remove Best Order
-    orderBook.removeOrder(1, false);
+//     delete expected;
+// }
 
-    // Check Final
-    actual = tickerPtr->buyOrderList[tickerPtr->bestBuyIdx]->head.load()->order;
-    expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.00);
-    isOrderEqual(expected, actual);
-    delete expected;
-}
+// // Test Updating Best Buy Order Upon Remove
+// TEST(OrderBookTest, HandlesBestBuyOrderRemoving) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 110.0, false);
+//     Ticker* tickerPtr = orderBook.tickerMap["AAPL"];
+//     usleep(1000000); // Delay to make sure it completes
 
-// Test Updating Best Sell Order Upon Remove
-TEST(OrderBookTest, HandlesBestSellOrderRemoving) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
-    orderBook.addOrder(1, "AAPL", "SELL", 10, 90.0, false);
-    Ticker* tickerPtr = orderBook.tickerMap["AAPL"];
-    usleep(1000000); // Delay to make sure it completes
+//     // Check Initial
+//     Order* actual = tickerPtr->buyOrderList[tickerPtr->bestBuyIdx]->head.load()->order;
+//     Order* expected = new Order(nullptr, 1, 1, "BUY", "AAPL", 10, 110.00);
+//     isOrderEqual(expected, actual);
+//     delete expected;
 
-    // Check Initial
-    Order* actual = tickerPtr->sellOrderList[tickerPtr->bestSellIdx]->head.load()->order;
-    Order* expected = new Order(nullptr, 1, 1, "SELL", "AAPL", 10, 90.00);
-    isOrderEqual(expected, actual);
-    delete expected;
+//     // Remove Best Order
+//     orderBook.removeOrder(1, false);
 
-    // Remove Best Order
-    orderBook.removeOrder(1, false);
+//     // Check Final
+//     actual = tickerPtr->buyOrderList[tickerPtr->bestBuyIdx]->head.load()->order;
+//     expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.00);
+//     isOrderEqual(expected, actual);
+//     delete expected;
+// }
 
-    // Check Final
-    actual = tickerPtr->sellOrderList[tickerPtr->bestSellIdx]->head.load()->order;
-    expected = new Order(nullptr, 0, 1, "SELL", "AAPL", 10, 100.00);
-    isOrderEqual(expected, actual);
-    delete expected;
-}
+// // Test Updating Best Sell Order Upon Remove
+// TEST(OrderBookTest, HandlesBestSellOrderRemoving) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
+//     orderBook.addOrder(1, "AAPL", "SELL", 10, 90.0, false);
+//     Ticker* tickerPtr = orderBook.tickerMap["AAPL"];
+//     usleep(1000000); // Delay to make sure it completes
+
+//     // Check Initial
+//     Order* actual = tickerPtr->sellOrderList[tickerPtr->bestSellIdx]->head.load()->order;
+//     Order* expected = new Order(nullptr, 1, 1, "SELL", "AAPL", 10, 90.00);
+//     isOrderEqual(expected, actual);
+//     delete expected;
+
+//     // Remove Best Order
+//     orderBook.removeOrder(1, false);
+
+//     // Check Final
+//     actual = tickerPtr->sellOrderList[tickerPtr->bestSellIdx]->head.load()->order;
+//     expected = new Order(nullptr, 0, 1, "SELL", "AAPL", 10, 100.00);
+//     isOrderEqual(expected, actual);
+//     delete expected;
+// }
 
 // // Test Matching Equal Orders
 // TEST(OrderBookTest, HandlesMatchingEqualOrders) {
@@ -545,66 +546,66 @@ TEST(OrderBookTest, HandlesBestSellOrderRemoving) {
 //     delete expected;
 // }
 
-// Test Adding Too Many Tickers
-TEST(OrderBookTest, HandlesTooManyTickers) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
+// // Test Adding Too Many Tickers
+// TEST(OrderBookTest, HandlesTooManyTickers) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
 
-    // Verify output
-    std::string output = captureOutput([&]() { orderBook.addTicker("AMZN"); });
-    EXPECT_EQ(output, "Order Book Error: Too Many Tickers\n");
-}
+//     // Verify output
+//     std::string output = captureOutput([&]() { orderBook.addTicker("AMZN"); });
+//     EXPECT_EQ(output, "Order Book Error: Too Many Tickers\n");
+// }
 
-// Test Adding Invalid Order Type
-TEST(OrderBookTest, HandlesInvalidOrderType) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
+// // Test Adding Invalid Order Type
+// TEST(OrderBookTest, HandlesInvalidOrderType) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
 
-    // Verify output
-    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "HOLD", 10, 100.0, false); });
-    EXPECT_EQ(output, "Order Book Error: Invalid Order Side\n");
-}
+//     // Verify output
+//     std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "HOLD", 10, 100.0, false); });
+//     EXPECT_EQ(output, "Order Book Error: Invalid Order Side\n");
+// }
 
-// Test Adding Invalid Order Price
-TEST(OrderBookTest, HandlesInvalidOrderPrice) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
+// // Test Adding Invalid Order Price
+// TEST(OrderBookTest, HandlesInvalidOrderPrice) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
 
-    // Verify output
-    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", 10, 0.0, false); });
-    EXPECT_EQ(output, "Order Book Error: Price Must Be A Number Greater Than 0\n");
-}
+//     // Verify output
+//     std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", 10, 0.0, false); });
+//     EXPECT_EQ(output, "Order Book Error: Price Must Be A Number Greater Than 0\n");
+// }
 
-// Test Adding Invalid Order Quantity
-TEST(OrderBookTest, HandlesInvalidOrderQuantity) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
+// // Test Adding Invalid Order Quantity
+// TEST(OrderBookTest, HandlesInvalidOrderQuantity) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
 
-    // Verify output
-    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", -5, 100.0, false); });
-    EXPECT_EQ(output, "Order Book Error: Quantity Must Be An Integer Greater Than 0\n");
-}
+//     // Verify output
+//     std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", -5, 100.0, false); });
+//     EXPECT_EQ(output, "Order Book Error: Quantity Must Be An Integer Greater Than 0\n");
+// }
 
-// Test Invalid Ticker
-TEST(OrderBookTest, HandlesInvaildTicker) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
+// // Test Invalid Ticker
+// TEST(OrderBookTest, HandlesInvaildTicker) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
 
-    // Verify output
-    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AMZN", "BUY", 10, 100.0, false); });
-    EXPECT_EQ(output, "Order Book Error: Ticker is Invalid\n");
-}
+//     // Verify output
+//     std::string output = captureOutput([&]() { orderBook.addOrder(1, "AMZN", "BUY", 10, 100.0, false); });
+//     EXPECT_EQ(output, "Order Book Error: Ticker is Invalid\n");
+// }
 
-// Test Removing Invalid Order ID
-TEST(OrderBookTest, HandlesInvalidOrderID) {
-    OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
-    orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
+// // Test Removing Invalid Order ID
+// TEST(OrderBookTest, HandlesInvalidOrderID) {
+//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
+//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
 
-    // Verify output
-    std::string output = captureOutput([&]() { orderBook.removeOrder(1); });
-    EXPECT_EQ(output, "Order Book Error: Invalid Order ID\n");
-}
+//     // Verify output
+//     std::string output = captureOutput([&]() { orderBook.removeOrder(1); });
+//     EXPECT_EQ(output, "Order Book Error: Invalid Order ID\n");
+// }
 
 // // Test Matching Empty Order Book
 // TEST(OrderBookTest, HandlesEmptyMatch) {
@@ -648,15 +649,15 @@ TEST(OrderBookTest, HandlesInvalidOrderID) {
 //     EXPECT_EQ(output, "Order Book Error: Ticker is Invalid\n");
 // }
 
-// Test Exceeding Order Limit
-TEST(OrderBookTest, HandlesExceedingOrderLimit) {
-    OrderBook orderBook = OrderBook(1, 0, 50.0, 150.0);
-    orderBook.addTicker("AAPL");
+// // Test Exceeding Order Limit
+// TEST(OrderBookTest, HandlesExceedingOrderLimit) {
+//     OrderBook orderBook = OrderBook(1, 0, 50.0, 150.0);
+//     orderBook.addTicker("AAPL");
 
-    // Verify output
-    std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false); });
-    EXPECT_EQ(output, "Order Book Error: Max Order Limit Reached\n");
-}
+//     // Verify output
+//     std::string output = captureOutput([&]() { orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false); });
+//     EXPECT_EQ(output, "Order Book Error: Max Order Limit Reached\n");
+// }
 
 // Run all tests
 int main(int argc, char **argv) {

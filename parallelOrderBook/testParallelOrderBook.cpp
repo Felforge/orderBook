@@ -30,81 +30,114 @@ void isOrderEqual(Order* expected, Order* actual) {
 
 // Test Adding Valid Buy Order
 TEST(OrderBookTest, HandlesValidBuyOrderAdding) {
-    OrderBook<1, 1, 2, 1> orderBook = OrderBook<1, 1, 2, 1>();
+    OrderBook<1, 1, 8, 1> orderBook = OrderBook<1, 1, 8, 1>();
     SymbolID appleID = orderBook.registerSymbol("AAPL");
     orderBook.addOrder(1, appleID, Side::BUY, 10, 100.0);
     
+    // Add delay to let threads process
+    this_thread::sleep_for(chrono::seconds(1));
+    
+    // Declare expected value
     Order* expected = new Order(nullptr, 0, 1, Side::BUY, appleID, 10, 100.0);
 
-    // // Find order
-    // Order* actual = nullptr;
-    // for (unordered_map<int, Node<Order*>*>* map: orderBook.allOrderMaps) {
-    //     // If key exists set it to actual
-    //     if (map->find(0) != map->end()) {
-    //         actual = (*map)[0]->data;
-    //     }
-    // }
+    // Find order
+    Order* actual = nullptr;
+    for (unordered_map<int, Node<Order*>*>* map: orderBook.allOrderMaps) {
+        // If key exists set it to actual
+        if (map->find(0) != map->end()) {
+            actual = (*map)[0]->data;
+        }
+    }
 
-    // // Make sure item was found
-    // EXPECT_NE(actual, nullptr);
+    // Make sure item was found
+    EXPECT_NE(actual, nullptr);
 
-    // // Make sure orders are equal
-    // isOrderEqual(expected, actual);
+    // Make sure orders are equal
+    isOrderEqual(expected, actual);
 
     delete expected;
 }
 
-// // Test Adding Valid Sell Order
-// TEST(OrderBookTest, HandlesValidSellOrderAdding) {
-//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-//     orderBook.addTicker("AAPL");
-//     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
-//     Order* expected = new Order(nullptr, 0, 1, "SELL", "AAPL", 10, 100.0);
-//     usleep(1000000); // Delay to make sure it completes
+// Test Adding Valid Sell Order
+TEST(OrderBookTest, HandlesValidSellOrderAdding) {
+    OrderBook<1, 1, 8, 1> orderBook = OrderBook<1, 1, 8, 1>();
+    SymbolID appleID = orderBook.registerSymbol("AAPL");
+    orderBook.addOrder(1, appleID, Side::SELL, 10, 100.0);
     
-//     // Check Order Map
-//     Order* actual = orderBook.orders[0]->order;
-//     isOrderEqual(expected, actual);
-
-//     // Check Order List
-//     actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-//     isOrderEqual(expected, actual);
-
-//     delete expected;
-// }
-
-// // Test Adding Valid Buy and Sell Order
-// TEST(OrderBookTest, HandlesValidBuyAndSellOrderAdding) {
-//     OrderBook orderBook = OrderBook(1, 10, 50.0, 150.0);
-//     orderBook.addTicker("AAPL");
-//     orderBook.addOrder(1, "AAPL", "BUY", 10, 100.0, false);
-//     orderBook.addOrder(1, "AAPL", "SELL", 10, 100.0, false);
-//     usleep(1000000); // Delay to make sure it completes
+    // Add delay to let threads process
+    this_thread::sleep_for(chrono::seconds(1));
     
-//     // Check Buy 
-//     Order* expected = new Order(nullptr, 0, 1, "BUY", "AAPL", 10, 100.0);
+    // Declare expected value
+    Order* expected = new Order(nullptr, 0, 1, Side::SELL, appleID, 10, 100.0);
 
-//     // Check Order Map
-//     Order* actual = orderBook.orders[0]->order;
-//     isOrderEqual(expected, actual);
+    // Find order
+    Order* actual = nullptr;
+    for (unordered_map<int, Node<Order*>*>* map: orderBook.allOrderMaps) {
+        // If key exists set it to actual
+        if (map->find(0) != map->end()) {
+            actual = (*map)[0]->data;
+        }
+    }
 
-//     // Check Order List
-//     actual = orderBook.tickerMap["AAPL"]->buyOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-//     isOrderEqual(expected, actual);
-//     delete expected;
+    // Make sure item was found
+    EXPECT_NE(actual, nullptr);
 
-//     // Check Sell
-//     expected = new Order(nullptr, 1, 1, "SELL", "AAPL", 10, 100.0);
+    // Make sure orders are equal
+    isOrderEqual(expected, actual);
 
-//     // Check Order Map
-//     actual = orderBook.orders[1]->order;
-//     isOrderEqual(expected, actual);
+    delete expected;
+}
 
-//     // Check Order List
-//     actual = orderBook.tickerMap["AAPL"]->sellOrderList[getListIdx(100.0, 50.0)]->head.load()->order;
-//     isOrderEqual(expected, actual);
-//     delete expected;
-// }
+// Test Adding Valid Buy and Sell Order
+TEST(OrderBookTest, HandlesValidBuyAndSellOrderAdding) {
+    OrderBook<1, 2, 8, 1> orderBook = OrderBook<1, 2, 8, 1>(false);
+    SymbolID appleID = orderBook.registerSymbol("AAPL");
+    orderBook.addOrder(1, appleID, Side::BUY, 10, 100.0);
+    orderBook.addOrder(1, appleID, Side::SELL, 10, 100.0);
+    
+    // Add delay to let threads process
+    this_thread::sleep_for(chrono::seconds(1));
+    
+    // Declare expected value
+    Order* expected = new Order(nullptr, 0, 1, Side::BUY, appleID, 10, 100.0);
+
+    // Find buy order
+    Order* actual = nullptr;
+    for (unordered_map<int, Node<Order*>*>* map: orderBook.allOrderMaps) {
+        // If key exists set it to actual
+        if (map->find(0) != map->end()) {
+            actual = (*map)[0]->data;
+        }
+    }
+
+    // Make sure item was found
+    EXPECT_NE(actual, nullptr);
+
+    // Make sure orders are equal
+    isOrderEqual(expected, actual);
+
+    delete expected;
+
+    // Declare expected value
+    expected = new Order(nullptr, 1, 1, Side::SELL, appleID, 10, 100.0);
+
+    // Find sell order
+    actual = nullptr;
+    for (unordered_map<int, Node<Order*>*>* map: orderBook.allOrderMaps) {
+        // If key exists set it to actual
+        if (map->find(1) != map->end()) {
+            actual = (*map)[1]->data;
+        }
+    }
+
+    // Make sure item was found
+    EXPECT_NE(actual, nullptr);
+
+    // Make sure orders are equal
+    isOrderEqual(expected, actual);
+
+    delete expected;
+}
 
 // // Test Adding Multiple Same Price Price Orders
 // TEST(OrderBookTest, HandlesMultipleSamePriceOrderAdding) {

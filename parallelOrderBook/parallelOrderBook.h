@@ -185,7 +185,9 @@ class OrderBook {
         
         // Memory pool for MPSC queues
         MemoryPool<sizeof(MPSCQueue<double, maxOrders>), 2 * maxOrders> priceRequestPool;
-        
+
+        // Boolean to control matching
+        bool allowMatching;
 
         // Create and return an order pointer
         // This function is meant to be run on an external thread
@@ -411,7 +413,7 @@ class OrderBook {
 
                 // Match orders if needed
                 // Add if statement to yield if no matches
-                if (symbols[symbol]->bestBid >= symbols[symbol]->bestAsk) {
+                if (allowMatching && symbols[symbol]->bestBid >= symbols[symbol]->bestAsk) {
                     // Cache symbol data and queues references
                     Symbol* symbolData = symbols[symbol];
                     auto& buyQueues = symbolBuyQueues[symbol];
@@ -491,9 +493,13 @@ class OrderBook {
         std::vector<std::unordered_map<int, Node<Order*>*>*> allOrderMaps;
 
         // Constructor
-        OrderBook() {
+        // Set match to false to disable matching
+        OrderBook(bool match = true) {
             // Make sure number of matching and working threads are valid
             static_assert(numThreads > maxSymbols, "Too many tickers for the number of threads");
+
+            // Control matching
+            allowMatching = match;
 
             // Allocate space in allRemovalQueues and allOrderMaps
             allRemovalQueues.resize(WORKERS);
@@ -503,15 +509,15 @@ class OrderBook {
             pendingAddPool = new MemoryPool<sizeof(Node<OrderParams>), maxOrders>();
             pendingRemovePool = new MemoryPool<sizeof(Node<int>), maxOrders>();
 
+            // Allow threads to start
+            running.store(true);
+
             // Launch working threads
             for (int i = 0; i < WORKERS; i++) {
                 threads.emplace_back([&, i]{
                     workerThread(i);
                 });
             }
-
-            // Start threads
-            running.store(true);
         }
 
         // Destructor

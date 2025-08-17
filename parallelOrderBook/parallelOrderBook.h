@@ -14,6 +14,7 @@
 
 // Configuaration Constants
 constexpr size_t DEFAULT_RING_SIZE = 1 << 20;  // Roughly 1M slots for hot symbols
+constexpr size_t PRICE_TABLE_BUCKETS = 16384; // Roughly 16k Available Price Levels
 constexpr uint64_t TICK_PRECISION = 10000;     // 1e-4 precision (0.0001)
 
 // Could be needed later for alignment
@@ -109,7 +110,7 @@ struct PriceLevel {
 template<size_t RingSize = DEFAULT_RING_SIZE>
 class PublishRing {
     private:
-        // Capacity must also be a power of 2 for performance reasons
+        // Capacity must also be a power of 2 for bitmasking (cheaper than mod)
         static_assert((RingSize & (RingSize - 1)) == 0, "RingSize must be power of 2");
 
         // Struct for a solt in the ring
@@ -164,7 +165,7 @@ class PublishRing {
         // Worker function to grab the next available order
         Order* pullNextOrder() {
             // Get the next sequence
-            uint64_t seq = workSeq.fetch_add(1, std::memory_order_acq_rel);
+            uint64_t seq = workSeq.fetch_add(1);
 
             // Check if work is available
             if (seq >= publishSeq.load()) {
@@ -185,6 +186,89 @@ class PublishRing {
 
             // Return the order
             return order;
+        }
+};
+
+// Fixed-size lockless hash table
+// Opened price levels are never cleared
+// In a real system they'd be cleared after a long period of inactivity
+template<size_t NumBuckets = PRICE_TABLE_BUCKETS>
+class PriceTable {
+    private:
+        // Capacity must also be a power of 2 for bitmasking (cheaper than mod)
+        static_assert((NumBuckets & (NumBuckets - 1)) == 0, "NumBuckets must be power of 2");
+
+        // Struct Object for a Price Bucket
+        struct Bucket {
+            atomic<PriceLevel*> level{nullptr};
+        };
+
+        // Fixed size array of buckets
+        Bucket buckets[NumBuckets];
+
+        // Simple has function, could be imrpoved later
+        size_t hash(uint64_t priceTicks) {
+            return priceTicks & (NumBuckets - 1);
+        }
+
+    public:
+        // Install price level using strong CAS
+        // Returns true or false depending on the success of the operation
+        bool installPriceLevel(PriceLevel* level) {
+            // Retrieve index from hash function
+            size_t index = hash(level->priceTicks);
+
+            // Check all buckets
+            // Linear probing is used to check consecutive buckets
+            // O(NumBuckets) Worst Case, O(1) average
+            for (size_t i = 0; i < numBuckets; i++) {
+                // Declare expected value
+                PriceLevel* expected = nullptr;
+
+                // Attempt strong CAS to insert level
+                // Will succeed if the value matched the expected value
+                if (buckets[index].level.compare_exchange_strong(expected, level)) {
+                    // Operation succeeded, return true
+                    return true;
+                }
+
+                // Failed, check if price level already exists, if so return false
+                // If failed expected was previously updated to the real value
+                if (expected->priceTicks == level->priceTicks) {
+                    return false
+                }
+
+                // Update the index using linear probing
+                index = hash(index + 1);
+            }
+
+            // All buckets were full, return false
+            return false;
+        }
+
+        // Lookup price level
+        PriceLevel* lookup(uint64_t priceTicks) {
+            // Retrieve index from hash function
+            size_t index = hash(priceTicks);
+
+            // Check all buckets
+            // Linear probing is used to check consecutive buckets
+            // O(NumBuckets) Worst Case, O(1) average
+            for (size_t i = 0; i < numBuckets; i++) {
+                // Retrieve expected pointer
+                PriceLevel* level = buckets[index].level.load();
+
+                // If level is nullptr (not found) or the level is found return it
+                if (!level || level->priceTicks == priceTicks) {
+                    return level;
+                }
+
+                // Update the index using linear probing
+                index = hash(index + 1);
+            }
+
+            // Price level was not found
+            return nullptr;
         }
 };
 

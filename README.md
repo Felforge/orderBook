@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a research-oriented implementation of a **parallel order book** built in **C++**. The order book is constructed around a **lockless doubly linked deque**, inspired by the design of Sundell and Tsigas. The goal is to explore whether lock-free techniques can improve the speed and efficiency of order book operations compared to traditional approaches.
+This project is a research-oriented implementation of a **parallel order book** built in **C++**. The order book is constructed around a **lockless deque**, inspired by the design of Sundell and Tsigas. The goal is to explore whether lock-free techniques can improve the speed and efficiency of order book operations compared to traditional approaches.
 
 An order book is a data structure used in financial markets to match buy and sell orders. Since performance and low latency are critical in this domain, this project investigates how concurrency and lock-free algorithms can be applied to optimize these systems.
 

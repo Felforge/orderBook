@@ -272,4 +272,11 @@ class PriceTable {
         }
 };
 
+// Memory Allocation Struct
+template<size_t MaxOrders>
+struct ThreadLocalPools {
+    MemoryPool<sizeof(Order), MaxOrders> orderPool;
+    MemoryPool<sizeof(Node<Order*>), MaxOrders> nodePool;
+};
+
 #endif

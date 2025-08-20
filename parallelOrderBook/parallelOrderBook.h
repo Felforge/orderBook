@@ -2,6 +2,10 @@
 #define PARALLELORDERBOOK_H
 
 // Imports
+#include <atomic>
+#include <thread>
+#include <unordered_map>
+#include <map>
 #include "../lockless/queue/queue.h"
 
 // Define SPIN_PAUSE based on architecture
@@ -107,7 +111,7 @@ struct PriceLevel {
 
 // Per-symbol publish ring (lock-free ring buffer)
 // A ring is used to allow slots to be more easily reused, to easier track slots, and for backpressure detection
-template<size_t RingSize = DEFAULT_RING_SIZE>
+template<size_t RingSize>
 class PublishRing {
     private:
         // Capacity must also be a power of 2 for bitmasking (cheaper than mod)
@@ -192,7 +196,7 @@ class PublishRing {
 // Fixed-size lockless hash table
 // Opened price levels are never cleared
 // In a real system they'd be cleared after a long period of inactivity
-template<size_t NumBuckets = PRICE_TABLE_BUCKETS>
+template<size_t NumBuckets>
 class PriceTable {
     private:
         // Capacity must also be a power of 2 for bitmasking (cheaper than mod)
@@ -272,11 +276,215 @@ class PriceTable {
         }
 };
 
-// Memory Allocation Struct
-template<size_t MaxOrders>
-struct ThreadLocalPools {
+// Struct of required memory pools
+template<size_t MaxOrders, size_t NumBuckets>
+struct Pools {
     MemoryPool<sizeof(Order), MaxOrders> orderPool;
     MemoryPool<sizeof(Node<Order*>), MaxOrders> nodePool;
+    MemoryPool<sizeof(PriceLevel), NumBuckets> priceLevelPool;
+    MemoryPool<sizeof(LocklessQueue<Order*>), NumBuckets> queuePool;
+};
+
+// Thread local declaration of Pools
+template<size_t MaxOrders, size_t NumBuckets>
+thread_local Pools<MaxOrders, NumBuckets> myPools;
+
+// Symbol Struct
+template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
+struct Symbol {
+    // Memory on which this struct is allocated
+    void* memoryBlock;
+
+    // ID of this symbol
+    uint16_t symbolID;
+
+    // Name of this symbol
+    std::string symbolName;
+
+    // Publish ring for this symbol
+    PublishRing<RingSize> publishRing;
+
+    // Symbol price tables
+    PriceTable<NumBuckets> buyPrices;
+    PriceLevel<NumBuckets> sellPrices;
+
+    // Best bid/ask tracking
+    std::atomic<uint64_t> bestBidTicks{0};
+    std::atomic<uint64_t> bestAskTicks{UINT64_MAX};
+
+    // Constructor
+    SymbolData(void* memoryBlock, uint16_t symbolID, std::string symbolName) :
+        memoryBlock(memoryBlock), symbolID(symbolID), symbolName(symbolName) {}
+};
+
+// Struct for worker thread
+template<size_t MaxOrders, size_t RingSize = DEFAULT_RING_SIZE, size_t NumBuckets = PRICE_TABLE_BUCKETS>
+class Worker {
+    private:
+        // ID of current thread
+        uint16_t workerID;
+
+        // ID of symbol being matched
+        uint16_t symbolID;
+
+        // Pointer to symbol data
+        Symbol<RingSize, MaxOrders>* symbol;
+
+        // Bool to control the thread
+        std::atomic<bool>* running;
+
+        // Make sure order and symbolID are as expected
+        bool validateOrder(Order* order) {
+            return order && order->symbolID == symbolID;
+        }
+
+        // Function to process order
+        void processOrder(Order* order) {
+            switch (order->type) {
+                case OrderType::ADD:
+                    insertOrder(order);
+                case OrderType::CANCEL:
+                    cancelOrder(order);
+                break;
+            }
+        }
+
+        // Function to insert order
+        Node<Order*>* insertOrder(Order* order) {
+            // Get or create price level
+            PriceLevel* level = getOrCreatePriceLevel(order->priceTicks, order->side);
+
+            // Price level could not be created, delete the order
+            if (!level) {
+                myPools<MaxOrders, NumBuckets>.orderPool.deallocate(order->memoryBlock);
+                return;
+            }
+
+            // Insert into price level queue
+            Node<Order*>* node = level->queue->pushRight(order, &myPools<MaxOrders, NumBuckets>.nodePool);
+
+            // If node was successfully created increment numOrders
+            if (node) {
+                level->numOrders.fetch_add(1);
+            }
+
+            // Update best prices
+            updateBestPrices(order->priceTicks, order->side);
+        }
+
+        // Function to cancel a given order node
+        void cancelOrder(Node<Order*>* node) {
+            // Retrieve order from node
+            Order* order = node->data;
+
+            // Get price level
+            PriceLevel* level = getOrCreatePriceLevel(order->priceTicks, order->side);
+
+            // Price level should exist, if not delete order and return
+            if (!level) {
+                myPools<MaxOrders, NumBuckets>.orderPool.deallocate(order->memoryBlock);
+                return;
+            }
+
+            // Remove order from level
+            level->queue->removeNode(node);
+
+            // Delete order
+            myPools<MaxOrders, NumBuckets>.orderPool.deallocate(order->memoryBlock);
+        }
+
+        PriceLevel* getOrCreatePriceLevel(uint64_t priceTicks, Side side) {
+            // Retrieve table based on side
+            PriceTable<NumBuckets>& table = (side == Side::Buy) ? 
+                symbol->buyPrices : symbol->sellPrices;
+
+            // Attempt to retrieve price level
+            PriceLevel* level = table.lookup(priceTicks);
+
+            // If the price level exists return it
+            if (level) {
+                return level;
+            }
+
+            // Else, create new price level
+
+            // Allocater for price level
+            void* levelBlock = myPools.priceLevelPool.allocate();
+
+            // Could not allocate, return
+            if (!levelBlock) {
+                return nullptr;
+            }
+
+            // Allocate for queue
+            void* queueBlock = myPools->queuePool.allocate();
+
+            // Could not allocate, return
+            if (!queueBlock) {
+                return nullptr;
+            }
+
+            // Create queue and price level
+            LocklessQueue<Order*>* queue = new (queueMemory) LocklessQueue<Order*>();
+            level = new (levelMemory) PriceLevel(levelMemory, priceTicks, queue);
+
+            // Price level has been concurrently created elsewhere
+            if (!table.installPriceLevel(level)) {
+                myPools->queuePool.deallocate(queueBlock);
+                symbol->priceLevelPool.deallocate(levelBlock);
+                return table.lookup(priceTicks);
+            }
+
+            // Return completed price level
+            return level;
+        }
+
+        // Function to update best bid and ask prices
+        void updateBestPrices(uint64_t priceTicks, Side side) {
+            if (side == Side::BUY) {
+                // Start retry loop
+                while (running.load()) {
+                    // Retrieve current best price level
+                    uint64_t current = symbol->bestBidTicks.load();
+
+                    // If priceTicks is less than or equal to current or CAS succeeds return
+                    if (priceTicks <= current || symbol->bestBidTicks.compare_exchange_strong(current, priceTicks)) {
+                        return;
+                    }
+                }
+            } else {
+                // Start retry loop
+                while (running.load()) {
+                    // Retrieve current best price level
+                    uint64_t current = symbol->bestAskTicks.load();
+
+                    // If priceTicks is greater than or equal to current or CAS succeeds return
+                    if (priceTicks >= current || symbol->bestBidTicks.compare_exchange_strong(current, priceTicks)) {
+                        return;
+                    }
+                }
+            }
+        }
+
+    public:
+        // Constructor
+        Worker(uint16_t workerID, uint16_t symbolID, Symbol<RingSize, MaxOrders>* symbol, std::atomic<bool>* running)
+            : workerID(workerID), symbolID(symbolID), symbol(symbol), running(running) {}
+
+        // Function to run the worker
+        void run() {
+            while (running->load()) {
+                // Pull next available order
+                Order* order = symbol->publishRing.pullNextOrder();
+
+                // If order is valid process it, else yield
+                if (validateOrder(order)) {
+                    processOrder(order);
+                } else {
+                    std::this_thread::yield();
+                }
+            }
+        }
 };
 
 #endif

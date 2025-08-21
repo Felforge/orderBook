@@ -75,6 +75,9 @@ struct Order {
     // Symbol ID
     uint16_t symbolID;
 
+    // Store the node it is kept in
+    Node<Order*>* node;
+
     // Create orderID from symbol and sequence
     static uint64_t createOrderID(uint16_t symbolID, uint64_t localSeq) {
         return (static_cast<uint64_t>(symbolID) << 48) | localSeq;
@@ -87,7 +90,7 @@ struct Order {
     Order(void* memoryBlock, uint64_t orderID, uint32_t userID, Side side, 
         uint16_t symbolID, uint32_t quantity, uint64_t price, OrderType type)
         : memoryBlock(memoryBlock), orderID(orderID), userID(userID), quantity(quantity), 
-        priceTicks(price), side(side), type(type), symbolID(symbolID) {}
+        priceTicks(price), side(side), type(type), symbolID(symbolID), node(nullptr) {}
 };
 
 // Price Level struct
@@ -205,7 +208,7 @@ class PriceTable {
 
         // Struct Object for a Price Bucket
         struct Bucket {
-            atomic<PriceLevel*> level{nullptr};
+            std::atomic<PriceLevel*> level{nullptr};
         };
 
         // Fixed size array of buckets
@@ -219,14 +222,14 @@ class PriceTable {
     public:
         // Install price level using strong CAS
         // Returns true or false depending on the success of the operation
-        bool installPriceLevel(PriceLevel* level) {
+        bool installPriceLevel(PriceLevel* level) override {
             // Retrieve index from hash function
             size_t index = hash(level->priceTicks);
 
             // Check all buckets
             // Linear probing is used to check consecutive buckets
             // O(NumBuckets) Worst Case, O(1) average
-            for (size_t i = 0; i < numBuckets; i++) {
+            for (size_t i = 0; i < NumBuckets; i++) {
                 // Declare expected value
                 PriceLevel* expected = nullptr;
 
@@ -240,7 +243,7 @@ class PriceTable {
                 // Failed, check if price level already exists, if so return false
                 // If failed expected was previously updated to the real value
                 if (expected->priceTicks == level->priceTicks) {
-                    return false
+                    return false;
                 }
 
                 // Update the index using linear probing
@@ -252,14 +255,14 @@ class PriceTable {
         }
 
         // Lookup price level
-        PriceLevel* lookup(uint64_t priceTicks) {
+        PriceLevel* lookup(uint64_t priceTicks) override {
             // Retrieve index from hash function
             size_t index = hash(priceTicks);
 
             // Check all buckets
             // Linear probing is used to check consecutive buckets
             // O(NumBuckets) Worst Case, O(1) average
-            for (size_t i = 0; i < numBuckets; i++) {
+            for (size_t i = 0; i < NumBuckets; i++) {
                 // Retrieve expected pointer
                 PriceLevel* level = buckets[index].level.load();
 
@@ -307,14 +310,14 @@ struct Symbol {
 
     // Symbol price tables
     PriceTable<NumBuckets> buyPrices;
-    PriceLevel<NumBuckets> sellPrices;
+    PriceTable<NumBuckets> sellPrices;
 
     // Best bid/ask tracking
     std::atomic<uint64_t> bestBidTicks{0};
     std::atomic<uint64_t> bestAskTicks{UINT64_MAX};
 
     // Constructor
-    SymbolData(void* memoryBlock, uint16_t symbolID, std::string symbolName) :
+    Symbol(void* memoryBlock, uint16_t symbolID, std::string symbolName) :
         memoryBlock(memoryBlock), symbolID(symbolID), symbolName(symbolName) {}
 };
 
@@ -329,18 +332,19 @@ class Worker {
         std::atomic<bool>* running;
 
         // Function to process order
-        void processOrder(Symbol<RingSize, MaxOrders>* symbol, Order* order) {
+        void processOrder(Symbol<MaxOrders, RingSize, Order* order) {
             switch (order->type) {
                 case OrderType::ADD:
-                    insertOrder(symbol, order);
+                    insertOrder(order);
+                    break;
                 case OrderType::CANCEL:
-                    cancelOrder(symbol, order);
-                break;
+                    cancelOrder(order);
+                    break;
             }
         }
 
         // Function to insert order
-        Node<Order*>* insertOrder(Symbol<RingSize, MaxOrders>* symbol, Order* order) {
+        void insertOrder(Symbol<MaxOrders, RingSize, NumBuckets>* symbol, Order* order) {
             // Get or create price level
             PriceLevel* level = getOrCreatePriceLevel(order->priceTicks, order->side);
 
@@ -353,6 +357,9 @@ class Worker {
             // Insert into price level queue
             Node<Order*>* node = level->queue->pushRight(order, &myPools<MaxOrders, NumBuckets>.nodePool);
 
+            // Store node pointer in order
+            order->node = node;
+
             // If node was successfully created increment numOrders
             if (node) {
                 level->numOrders.fetch_add(1);
@@ -363,9 +370,9 @@ class Worker {
         }
 
         // Function to cancel a given order node
-        void cancelOrder(Symbol<RingSize, MaxOrders>* symbol, Node<Order*>* node) {
-            // Retrieve order from node
-            Order* order = node->data;
+        void cancelOrder(Symbol<RingSize, MaxOrders>* symbol, Order* order) {
+            // Retrieve node from order
+            Node<Order*>* node = order->node;
 
             // Get price level
             PriceLevel* level = getOrCreatePriceLevel(order->priceTicks, order->side);

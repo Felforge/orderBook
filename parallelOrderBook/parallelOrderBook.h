@@ -6,6 +6,7 @@
 #include <thread>
 #include <unordered_map>
 #include <map>
+#include <vector>
 #include "../lockless/queue/queue.h"
 
 // Define SPIN_PAUSE based on architecture
@@ -318,39 +319,28 @@ struct Symbol {
 };
 
 // Struct for worker thread
-template<size_t MaxOrders, size_t RingSize = DEFAULT_RING_SIZE, size_t NumBuckets = PRICE_TABLE_BUCKETS>
+template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
 class Worker {
     private:
         // ID of current thread
         uint16_t workerID;
 
-        // ID of symbol being matched
-        uint16_t symbolID;
-
-        // Pointer to symbol data
-        Symbol<RingSize, MaxOrders>* symbol;
-
         // Bool to control the thread
         std::atomic<bool>* running;
 
-        // Make sure order and symbolID are as expected
-        bool validateOrder(Order* order) {
-            return order && order->symbolID == symbolID;
-        }
-
         // Function to process order
-        void processOrder(Order* order) {
+        void processOrder(Symbol<RingSize, MaxOrders>* symbol, Order* order) {
             switch (order->type) {
                 case OrderType::ADD:
-                    insertOrder(order);
+                    insertOrder(symbol, order);
                 case OrderType::CANCEL:
-                    cancelOrder(order);
+                    cancelOrder(symbol, order);
                 break;
             }
         }
 
         // Function to insert order
-        Node<Order*>* insertOrder(Order* order) {
+        Node<Order*>* insertOrder(Symbol<RingSize, MaxOrders>* symbol, Order* order) {
             // Get or create price level
             PriceLevel* level = getOrCreatePriceLevel(order->priceTicks, order->side);
 
@@ -369,11 +359,11 @@ class Worker {
             }
 
             // Update best prices
-            updateBestPrices(order->priceTicks, order->side);
+            updateBestPrices(symbol, order->priceTicks, order->side);
         }
 
         // Function to cancel a given order node
-        void cancelOrder(Node<Order*>* node) {
+        void cancelOrder(Symbol<RingSize, MaxOrders>* symbol, Node<Order*>* node) {
             // Retrieve order from node
             Order* order = node->data;
 
@@ -393,7 +383,7 @@ class Worker {
             myPools<MaxOrders, NumBuckets>.orderPool.deallocate(order->memoryBlock);
         }
 
-        PriceLevel* getOrCreatePriceLevel(uint64_t priceTicks, Side side) {
+        PriceLevel* getOrCreatePriceLevel(Symbol<RingSize, MaxOrders>* symbol, uint64_t priceTicks, Side side) {
             // Retrieve table based on side
             PriceTable<NumBuckets>& table = (side == Side::Buy) ? 
                 symbol->buyPrices : symbol->sellPrices;
@@ -440,7 +430,7 @@ class Worker {
         }
 
         // Function to update best bid and ask prices
-        void updateBestPrices(uint64_t priceTicks, Side side) {
+        void updateBestPrices(Symbol<RingSize, MaxOrders>* symbol, uint64_t priceTicks, Side side) {
             if (side == Side::BUY) {
                 // Start retry loop
                 while (running.load()) {
@@ -467,9 +457,14 @@ class Worker {
         }
 
     public:
+        // Hold memory block on which this item is allocated
+        void* memoryBlock;
+
         // Constructor
-        Worker(uint16_t workerID, uint16_t symbolID, Symbol<RingSize, MaxOrders>* symbol, std::atomic<bool>* running)
-            : workerID(workerID), symbolID(symbolID), symbol(symbol), running(running) {}
+        Worker(void* block, uint16_t workerID, Symbol<RingSize, MaxOrders>* symbol, std::atomic<bool>* running)
+            : workerID(workerID), symbol(symbol), symbolID(symbol->symbolID), running(running) {
+                memoryBlock = block;
+            }
 
         // Function to run the worker
         void run() {
@@ -478,12 +473,143 @@ class Worker {
                 Order* order = symbol->publishRing.pullNextOrder();
 
                 // If order is valid process it, else yield
-                if (validateOrder(order)) {
+                if (order) {
                     processOrder(order);
                 } else {
                     std::this_thread::yield();
                 }
             }
+        }
+};
+
+// Worker Pool Management Struct
+template<size_t NumWorkers, size_t MaxOrders, size_t RingSize, size_t NumBuckets>
+class WorkerPool {
+    private:
+        // Create pointer to hold memory pool for worker allocation
+        // This is done on the host
+        GenericMemoryPool* alocPool;
+
+        // Hold all workers with capacity numWorkers
+        std::vector<Worker<MaxOrders, RingSize, NumBuckets>> workers(numWorkers);
+
+        // Hold all threads
+        std::vector<std::thread> workerThreads;
+
+        // To control threads
+        std::atomic<bool> running{false};
+
+    public:
+        // Pass generic pool so that capacity does not need to be specified
+        WorkerPool(GenericMemoryPool* pool) {
+            alocPool = pool;
+        }
+
+        // Make destructor call stop
+        ~WorkerPool() {
+            stopWorkers();
+        }
+
+        // Function to start all worker threads
+        void startWorkers(Symbol<RingSize, MaxOrders>* symbol) {
+            // Toggle running on
+            running.store(true);
+
+            // Create and start worker threads
+            for (uint16_t i = 0; i < numWorkers; i++) {
+                // Allocate from pool
+                void* block = alocPool->allocate;
+
+                // Create worker
+                workers[i] = new (block) Worker<MaxOrders, RingSize, NumBuckets>(block, i, symbol, &running);
+
+                // Launch thread
+                workerThreads.emplace_back([this, i]() {
+                    workers[i]->run();
+                });
+            }
+        }
+
+        // Function to stop all worker threads
+        void stopWorkers() {
+            // Set running flag to false
+            running.store(false);
+
+            // Wait for all worker threads to finish
+            for (auto& thread : workerThreads) {
+                thread.join();
+            }
+
+            // Clear worker thread vector
+            workerThreads.clear();
+
+            // Deallocate all workers
+            for (auto& ptr: workers) {
+                alocPool->deallocate(ptr->memoryBlock);
+            }
+        }
+};
+
+// Main Order Book Struct
+template<size_t NumWorkers, size_t MaxSymbols, size_t MaxOrders, size_t RingSize = DEFAULT_RING_SIZE, size_t NumBuckets = PRICE_TABLE_BUCKETS>
+class OrderBook {
+    private:
+        // Symbol Management
+        std::unordered_map<std::string, uint16_t> symbolNameToID;
+        std::unordered_map<uint16_t, Symbol<RingSize, MaxOrders>*> symbols;
+        std::atomic<uint16_t> nextSymbolID{0};
+
+        // Global memory pool for symbol data
+        MemoryPool<sizeof(Symbol<RingSize, MaxOrders, NumBuckets>), MaxSymbols> symbolPool;
+
+        // Global Worker Memory Pool
+        MemoryPool<sizeof(Worker<MaxOrders, RingSize, NumBuckets>), NumWorkers> workerMemPool;
+
+        // Worker Thread Pool
+        WorkerPool<NumWorkers, MaxOrders, RingSize, NumBuckets>(&workerMemPool);
+
+    public:
+        // Constructor
+        OrderBook() {
+            // Make sure max symbols is valid
+            static_assert(MaxSymbols <= UINT16_MAX, "MaxSymbols exceeds uint16_t range");
+        }
+
+        // Function to register symbol
+        uint16_t registerSymbol(std::string& symbolName) {
+            // Max number of symbols exceeded, throw errror
+            if (symbols.size() >= MaxSymbols) {
+                throw std::runtime_error("Maximum symbols exceeded");
+            }
+
+            // Check if already registered
+            auto it = symbolNameToID.find(symbolName)
+
+            // If symbol exists return it
+            if (it != symbikNameToID.end()) {
+                return it->second;
+            }
+
+            // Increment symbol ID
+            uint16_t symbolID = nextSymbolID.fetch_add(1);
+
+            // Allocate memory for symbol
+            void* block = symbolPool.allocate();
+            
+            // Make sure mmemory is valid
+            if (!block) {
+                throw std::runtime_error("Failed to allocate symbol memory");
+            }
+            
+            // Create symbol pointer
+            Symbol<RingSize, MaxOrders, NumBuckets>* symbol = new (block) Symbol<RingSize, MaxOrders, NumBuckets>(block, symbolID, symbolName);
+
+            // Store in maps
+            symbolNameToID[symbolName] = symbolID;
+            symbols[symbolID] = symbol;
+
+            // Return the symbol ID
+            return symbolID;
         }
 };
 

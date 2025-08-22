@@ -50,6 +50,10 @@ inline double ticksToPrice(uint64_t ticks) {
     return static_cast<double>(ticks) / TICK_PRECISION;
 }
 
+// Forward declarations
+template<size_t RingSize, size_t NumBuckets>
+struct Symbol;
+
 // Order struct
 // Alligned to CACHE_LINE_SIZE 
 template<size_t RingSize, size_t NumBuckets>
@@ -94,7 +98,7 @@ struct Order {
 
     // Regular constructor
     Order(void* memoryBlock, uint64_t orderID, uint32_t userID, Side side, uint16_t symbolID, 
-        Symbol<RingSize, NumBuckets>* symbol uint32_t quantity, uint64_t price, OrderType type)
+        Symbol<RingSize, NumBuckets>* symbol, uint32_t quantity, uint64_t price, OrderType type)
         : memoryBlock(memoryBlock), orderID(orderID), userID(userID), quantity(quantity), 
         priceTicks(price), side(side), type(type), symbolID(symbolID), symbol(symbol), node(nullptr) {}
 };
@@ -122,7 +126,7 @@ struct PriceLevel {
 
 // Per-symbol publish ring (lock-free ring buffer)
 // A ring is used to allow slots to be more easily reused, to easier track slots, and for backpressure detection
-template<size_t RingSize>
+template<size_t RingSize, size_t NumBuckets>
 class PublishRing {
     private:
         // Capacity must also be a power of 2 for bitmasking (cheaper than mod)
@@ -198,7 +202,7 @@ class PublishRing {
 // Fixed-size lockless hash table
 // Opened price levels are never cleared
 // In a real system they'd be cleared after a long period of inactivity
-template<isze_t RingSize, size_t NumBuckets>
+template<size_t RingSize, size_t NumBuckets>
 class PriceTable {
     private:
         // Capacity must also be a power of 2 for bitmasking (cheaper than mod)
@@ -206,7 +210,7 @@ class PriceTable {
 
         // Struct Object for a Price Bucket
         struct Bucket {
-            std::atomic<PriceLevel*> level{nullptr};
+            std::atomic<PriceLevel<RingSize, NumBuckets>*> level{nullptr};
         };
 
         // Fixed size array of buckets
@@ -220,7 +224,7 @@ class PriceTable {
     public:
         // Install price level using strong CAS
         // Returns true or false depending on the success of the operation
-        bool installPriceLevel(PriceLevel* level) {
+        bool installPriceLevel(PriceLevel<RingSize, NumBuckets>* level) {
             // Retrieve index from hash function
             size_t index = hash(level->priceTicks);
 
@@ -229,7 +233,7 @@ class PriceTable {
             // O(NumBuckets) Worst Case, O(1) average
             for (size_t i = 0; i < NumBuckets; i++) {
                 // Declare expected value
-                PriceLevel* expected = nullptr;
+                PriceLevel<RingSize, NumBuckets>* expected = nullptr;
 
                 // Attempt strong CAS to insert level
                 // Will succeed if the value matched the expected value
@@ -253,7 +257,7 @@ class PriceTable {
         }
 
         // Lookup price level
-        PriceLevel* lookup(uint64_t priceTicks) {
+        PriceLevel<RingSize, NumBuckets>* lookup(uint64_t priceTicks) {
             // Retrieve index from hash function
             size_t index = hash(priceTicks);
 
@@ -262,7 +266,7 @@ class PriceTable {
             // O(NumBuckets) Worst Case, O(1) average
             for (size_t i = 0; i < NumBuckets; i++) {
                 // Retrieve expected pointer
-                PriceLevel* level = buckets[index].level.load();
+                PriceLevel<RingSize, NumBuckets>* level = buckets[index].level.load();
 
                 // If level is nullptr (not found) or the level is found return it
                 if (!level || level->priceTicks == priceTicks) {
@@ -281,15 +285,15 @@ class PriceTable {
 // Struct of required memory pools
 template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
 struct Pools {
-    MemoryPool<sizeof(Order), MaxOrders> orderPool;
-    MemoryPool<sizeof(Node<Order*>), MaxOrders> nodePool;
-    MemoryPool<sizeof(PriceLevel), NumBuckets> priceLevelPool;
-    MemoryPool<sizeof(LocklessQueue<Order*>), NumBuckets> queuePool;
+    MemoryPool<sizeof(Order<RingSize, NumBuckets>), MaxOrders> orderPool;
+    MemoryPool<sizeof(Node<Order<RingSize, NumBuckets>*>), MaxOrders> nodePool;
+    MemoryPool<sizeof(PriceLevel<RingSize, NumBuckets>), NumBuckets> priceLevelPool;
+    MemoryPool<sizeof(LocklessQueue<Order<RingSize, NumBuckets>*>), NumBuckets> queuePool;
 };
 
 // Thread local declaration of Pools
-template<size_t MaxOrders, size_t NumBuckets>
-thread_local Pools<MaxOrders, NumBuckets> myPools;
+template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
+thread_local Pools<MaxOrders, RingSize, NumBuckets> myPools;
 
 // Symbol Struct
 template<size_t RingSize, size_t NumBuckets>
@@ -304,11 +308,11 @@ struct Symbol {
     std::string symbolName;
 
     // Publish ring for this symbol
-    PublishRing<RingSize> publishRing;
+    PublishRing<RingSize, NumBuckets> publishRing;
 
     // Symbol price tables
-    PriceTable<NumBuckets> buyPrices;
-    PriceTable<NumBuckets> sellPrices;
+    PriceTable<RingSize, NumBuckets> buyPrices;
+    PriceTable<RingSize, NumBuckets> sellPrices;
 
     // Best bid/ask tracking
     std::atomic<uint64_t> bestBidTicks{0};
@@ -330,7 +334,7 @@ class Worker {
         std::atomic<bool>* running;
 
         // Function to process order
-        void processOrder(Order* order) {
+        void processOrder(Order<RingSize, NumBuckets>* order) {
             switch (order->type) {
                 case OrderType::ADD:
                     insertOrder(order);
@@ -342,21 +346,21 @@ class Worker {
         }
 
         // Function to insert order
-        void insertOrder(Order* order) {
+        void insertOrder(Order<RingSize, NumBuckets>* order) {
             // Retrieve symbol pointer
-            GenericSymbol* symbol = order->symbol; 
+            Symbol<RingSize, NumBuckets>* symbol = order->symbol; 
 
             // Get or create price level
-            PriceLevel* level = getOrCreatePriceLevel(symbol, order->priceTicks, order->side);
+            PriceLevel<RingSize, NumBuckets>* level = getOrCreatePriceLevel(symbol, order->priceTicks, order->side);
 
             // Price level could not be created, delete the order
             if (!level) {
-                myPools<MaxOrders, NumBuckets>.orderPool.deallocate(order->memoryBlock);
+                myPools<MaxOrders, RingSize, NumBuckets>.orderPool.deallocate(order->memoryBlock);
                 return;
             }
 
             // Insert into price level queue
-            Node<Order*>* node = level->queue->pushRight(order, &myPools<MaxOrders, NumBuckets>.nodePool);
+            Node<Order<RingSize, NumBuckets>*>* node = level->queue->pushRight(order, &myPools<MaxOrders, RingSize, NumBuckets>.nodePool);
 
             // Store node pointer in order
             order->node = node;
@@ -374,19 +378,19 @@ class Worker {
         }
 
         // Function to cancel a given order node
-        void cancelOrder(Order* order) {
+        void cancelOrder(Order<RingSize, NumBuckets>* order) {
             // Retrieve symbol pointer
-            GenericSymbol* symbol = order->symbol; 
+            Symbol<RingSize, NumBuckets>* symbol = order->symbol; 
 
             // Retrieve node from order
-            Node<Order*>* node = order->node;
+            Node<Order<RingSize, NumBuckets>*>* node = order->node;
 
             // Get price level
-            PriceLevel* level = getOrCreatePriceLevel(symbol, order->priceTicks, order->side);
+            PriceLevel<RingSize, NumBuckets>* level = getOrCreatePriceLevel(symbol, order->priceTicks, order->side);
 
             // Price level should exist, if not delete order and return
             if (!level) {
-                myPools<MaxOrders, NumBuckets>.orderPool.deallocate(order->memoryBlock);
+                myPools<MaxOrders, RingSize, NumBuckets>.orderPool.deallocate(order->memoryBlock);
                 return;
             }
 
@@ -394,16 +398,16 @@ class Worker {
             level->queue->removeNode(node);
 
             // Delete order
-            myPools<MaxOrders, NumBuckets>.orderPool.deallocate(order->memoryBlock);
+            myPools<MaxOrders, RingSize, NumBuckets>.orderPool.deallocate(order->memoryBlock);
         }
 
-        PriceLevel* getOrCreatePriceLevel(GenericSymbol* symbol, uint64_t priceTicks, Side side) {
+        PriceLevel<RingSize, NumBuckets>* getOrCreatePriceLevel(Symbol<RingSize, NumBuckets>* symbol, uint64_t priceTicks, Side side) {
             // Retrieve table based on side
-            PriceTable<NumBuckets>& table = (side == Side::Buy) ? 
+            PriceTable<RingSize, NumBuckets>& table = (side == Side::BUY) ? 
                 symbol->buyPrices : symbol->sellPrices;
 
             // Attempt to retrieve price level
-            PriceLevel* level = table.lookup(priceTicks);
+            PriceLevel<RingSize, NumBuckets>* level = table.lookup(priceTicks);
 
             // If the price level exists return it
             if (level) {
@@ -413,7 +417,7 @@ class Worker {
             // Else, create new price level
 
             // Allocater for price level
-            void* levelBlock = myPools.priceLevelPool.allocate();
+            void* levelBlock = myPools<MaxOrders, RingSize, NumBuckets>.priceLevelPool.allocate();
 
             // Could not allocate, return
             if (!levelBlock) {
@@ -421,7 +425,7 @@ class Worker {
             }
 
             // Allocate for queue
-            void* queueBlock = myPools->queuePool.allocate();
+            void* queueBlock = myPools<MaxOrders, RingSize, NumBuckets>.queuePool.allocate();
 
             // Could not allocate, return
             if (!queueBlock) {
@@ -429,13 +433,13 @@ class Worker {
             }
 
             // Create queue and price level
-            LocklessQueue<Order*>* queue = new (queueMemory) LocklessQueue<Order*>();
-            level = new (levelMemory) PriceLevel(levelMemory, priceTicks, queue);
+            LocklessQueue<Order<RingSize, NumBuckets>*>* queue = new (queueBlock) LocklessQueue<Order<RingSize, NumBuckets>*>();
+            level = new (levelBlock) PriceLevel<RingSize, NumBuckets>(levelBlock, priceTicks, queue);
 
             // Price level has been concurrently created elsewhere
             if (!table.installPriceLevel(level)) {
-                myPools->queuePool.deallocate(queueBlock);
-                symbol->priceLevelPool.deallocate(levelBlock);
+                myPools<MaxOrders, RingSize, NumBuckets>.queuePool.deallocate(queueBlock);
+                myPools<MaxOrders, RingSize, NumBuckets>.priceLevelPool.deallocate(levelBlock);
                 return table.lookup(priceTicks);
             }
 
@@ -444,10 +448,10 @@ class Worker {
         }
 
         // Function to update best bid and ask prices
-        void updateBestPrices(Symbol<RingSize, MaxOrders, NumBuckets>* symbol, uint64_t priceTicks, Side side) {
+        void updateBestPrices(Symbol<RingSize, NumBuckets>* symbol, uint64_t priceTicks, Side side) {
             if (side == Side::BUY) {
                 // Start retry loop
-                while (running.load()) {
+                while (running->load()) {
                     // Retrieve current best price level
                     uint64_t current = symbol->bestBidTicks.load();
 
@@ -458,7 +462,7 @@ class Worker {
                 }
             } else {
                 // Start retry loop
-                while (running.load()) {
+                while (running->load()) {
                     // Retrieve current best price level
                     uint64_t current = symbol->bestAskTicks.load();
 
@@ -476,9 +480,7 @@ class Worker {
 
         // Constructor
         Worker(void* block, uint16_t workerID, std::atomic<bool>* running)
-            : workerID(workerID), symbol(symbol), symbolID(symbol->symbolID), running(running) {
-                memoryBlock = block;
-            }
+            : memoryBlock(block), workerID(workerID), running(running) {}
 
         // Function to run the worker
         void run() {

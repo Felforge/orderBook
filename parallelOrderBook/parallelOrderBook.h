@@ -307,9 +307,6 @@ struct Symbol {
     // Name of this symbol
     std::string symbolName;
 
-    // Publish ring for this symbol
-    PublishRing<RingSize, NumBuckets> publishRing;
-
     // Symbol price tables
     PriceTable<RingSize, NumBuckets> buyPrices;
     PriceTable<RingSize, NumBuckets> sellPrices;
@@ -483,10 +480,10 @@ class Worker {
             : memoryBlock(block), workerID(workerID), running(running) {}
 
         // Function to run the worker
-        void run() {
+        void run(PublishRing<RingSize, NumBuckets>* publishRing) {
             while (running->load()) {
                 // Pull next available order
-                Order* order = symbol->publishRing.pullNextOrder();
+                Order* order = publishRing.pullNextOrder();
 
                 // If order is valid process it, else yield
                 if (order) {
@@ -515,10 +512,17 @@ class WorkerPool {
         // To control threads
         std::atomic<bool> running{false};
 
+        // Pointer to publish ring
+        PublishRing<RingSize, NumBuckets>* publishRing;
+
     public:
+        // Default constructor
+        WorkerPool() = default;
+
         // Pass generic pool so that capacity does not need to be specified
-        WorkerPool(GenericMemoryPool* pool) {
+        WorkerPool(GenericMemoryPool* pool, PublishRing<RingSize, NumBuckets>* publishRingPtr) {
             alocPool = pool;
+            publishRing = publishRingPtr;
         }
 
         // Make destructor call stop
@@ -541,7 +545,7 @@ class WorkerPool {
 
                 // Launch thread
                 workerThreads.emplace_back([this, i]() {
-                    workers[i]->run();
+                    workers[i]->run(publishRing);
                 });
             }
         }
@@ -575,6 +579,9 @@ class OrderBook {
         std::unordered_map<uint16_t, Symbol<RingSize, MaxOrders>*> symbols;
         std::atomic<uint16_t> nextSymbolID{0};
 
+        // Universal Publish Ring
+        PublishRing<RingSize, NumBuckets> publishRing();
+
         // Global memory pool for symbol data
         MemoryPool<sizeof(Symbol<RingSize, MaxOrders, NumBuckets>), MaxSymbols> symbolPool;
 
@@ -582,7 +589,7 @@ class OrderBook {
         MemoryPool<sizeof(Worker<MaxOrders, RingSize, NumBuckets>), NumWorkers> workerMemPool;
 
         // Worker Thread Pool
-        WorkerPool<NumWorkers, MaxOrders, RingSize, NumBuckets> workerPool(&workerMemPool);
+        WorkerPool<NumWorkers, MaxOrders, RingSize, NumBuckets> workerPool;
 
         // Thread local sequence (counter)
         // Used for order ID generation
@@ -593,6 +600,9 @@ class OrderBook {
         OrderBook() {
             // Make sure max symbols is valid
             static_assert(MaxSymbols <= UINT16_MAX, "MaxSymbols exceeds uint16_t range");
+
+            // Create worker pool
+            workerPool = WorkerPool<NumWorkers, MaxOrders, RingSize, NumBuckets>(&workerMemPool, &publishRing);
         }
 
         // Order Book Destructor

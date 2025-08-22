@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <map>
 #include <vector>
+#include <utility>
+#include <optional>
 #include "../lockless/queue/queue.h"
 
 // Define SPIN_PAUSE based on architecture
@@ -575,6 +577,10 @@ class OrderBook {
         // Worker Thread Pool
         WorkerPool<NumWorkers, MaxOrders, RingSize, NumBuckets>(&workerMemPool);
 
+        // Thread local sequence (counter)
+        // Used for order ID generation
+        thread_local std::atomic<uint64_t> threadLocalSeq;
+
     public:
         // Constructor
         OrderBook() {
@@ -617,6 +623,19 @@ class OrderBook {
 
             // Return the symbol ID
             return symbolID;
+        }
+
+        // Submit a new order
+        // Returns optional of pair of order ID and order pointer
+        // Optional will have no value if order could not be submitted
+        std::optional<std::pair<uint16_t, Order*>> submitOrder(uint32_t userID, uint16_t symbolID, Side side, uint32_t quantity, double price) {
+            // If symbol could not be found return empty
+            if (symbols.find(symbolID); == symbols.end()) {
+                return;
+            }
+
+            // Convert price to ticks
+            uint64_t priceTicks = priceToTicks(price);
         }
 };
 

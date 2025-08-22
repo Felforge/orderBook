@@ -149,8 +149,7 @@ class PublishRing {
 
     public:
         // Producer function: acquire sequence and publish order
-        // Returns updated sequence number
-        uint64_t publish(Order* order) {
+        void publish(Order* order) {
             // Increment and retrieve sequence
             uint64_t seq = publishSeq.fetch_add(1);
 
@@ -162,14 +161,6 @@ class PublishRing {
             while (!ring[index].order.compare_exchange_strong(expected, order)) {
                 spinBackoff();
             }
-
-            // Return the sequence number
-            return seq;
-        }
-
-        // Get current publish sequence
-        uint64_t getPublishSeq() const {
-            return publishSeq.load();
         }
 
         // Worker function to grab the next available order
@@ -361,6 +352,9 @@ class Worker {
 
             // Store node pointer in order
             order->node = node;
+
+            // Ammend order type to cancel so the user is able to cancel it
+            order->type = OrderType::CANCEL;
 
             // If node was successfully created increment numOrders
             if (node) {
@@ -629,13 +623,72 @@ class OrderBook {
         // Returns optional of pair of order ID and order pointer
         // Optional will have no value if order could not be submitted
         std::optional<std::pair<uint16_t, Order*>> submitOrder(uint32_t userID, uint16_t symbolID, Side side, uint32_t quantity, double price) {
-            // If symbol could not be found return empty
-            if (symbols.find(symbolID); == symbols.end()) {
+            // Try to retrieve symbol
+            auto symbolIt = symbols.find(symbolID);
+
+            // If symbol could not be found return
+            if (symbolIt == symbols.end()) {
                 return;
             }
 
+            // Retrieve symbol out of iterator
+            Symbol<MaxOrders, RingSize, NumBuckets>* symbol = symbolIt.second;
+
             // Convert price to ticks
             uint64_t priceTicks = priceToTicks(price);
+
+            // Generate unique order ID
+            uint64_t localSeq = threadLocalSeq.fetch_add(1);
+            uint64_t orderID = Order::createOrderID(symbolID, localSeq);
+
+            // Allocate memory for order
+            void* orderBlock = myPools<MaxOrders, NumBuckets>.orderPool.allocate();
+
+            // Make sure memory is valid, if not return
+            if (!orderBlock) {
+                return;
+            }
+
+            // Create order
+            Order* order = new (orderBlock) Order(orderBlock, orderID, userID, side, symbolID, quantity, priceTicks, OrderType::ADD);
+
+            // Publish to symbol's ring
+            symbol->publishRing.publish(order);
+
+            // Return to the user the Order ID and Pointer
+            // The Order Type is ammended to Cancel once added so the user can cancel it
+            return std::pair<orderID, order>;
+        }
+
+        // Cancel an order
+        // Needs to take that order's pointer
+        // Return true if the operation succeeds, otherwise return false
+        // Type should have already been switched to Cancel, if not false will be returned
+        bool cancelOrder(Order* order) {
+            // Make sure type is cancel, if not return false
+            if (order->type != OrderType::CANCEL) {
+                return false;
+            }
+
+            // Retrieve symbol ID
+            uint16_t symbolID = order->symbolID;
+
+            // Try to retrieve symbol
+            auto symbolIt = symbols.find(symbolID);
+
+            // If symbol could not be found return
+            if (symbolIt == symbols.end()) {
+                return;
+            }
+
+            // Retrieve symbol out of iterator
+            Symbol<MaxOrders, RingSize, NumBuckets>* symbol = symbolIt.second;
+
+            // Publish to symbol's ring
+            symbol->publishRing.publish(order);
+
+            // Return true
+            return true;
         }
 };
 

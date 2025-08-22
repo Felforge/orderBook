@@ -52,6 +52,7 @@ inline double ticksToPrice(uint64_t ticks) {
 
 // Order struct
 // Alligned to CACHE_LINE_SIZE 
+template<size_t RingSize, size_t NumBuckets>
 struct Order {
     // Memory block where this order is allocated
     void* memoryBlock;
@@ -77,6 +78,9 @@ struct Order {
     // Symbol ID
     uint16_t symbolID;
 
+    // Generic Symbol Pointer
+    Symbol<RingSize, NumBuckets>* symbol;
+
     // Store the node it is kept in
     Node<Order*>* node;
 
@@ -89,14 +93,15 @@ struct Order {
     Order() = default;
 
     // Regular constructor
-    Order(void* memoryBlock, uint64_t orderID, uint32_t userID, Side side, 
-        uint16_t symbolID, uint32_t quantity, uint64_t price, OrderType type)
+    Order(void* memoryBlock, uint64_t orderID, uint32_t userID, Side side, uint16_t symbolID, 
+        Symbol<RingSize, NumBuckets>* symbol uint32_t quantity, uint64_t price, OrderType type)
         : memoryBlock(memoryBlock), orderID(orderID), userID(userID), quantity(quantity), 
-        priceTicks(price), side(side), type(type), symbolID(symbolID), node(nullptr) {}
+        priceTicks(price), side(side), type(type), symbolID(symbolID), symbol(symbol), node(nullptr) {}
 };
 
 // Price Level struct
 // Alligned to CACHE_LINE_SIZE 
+template<size_t RingSize, size_t NumBuckets>
 struct PriceLevel {
     // Memory block where this price level is allocated
     void* memoryBlock;
@@ -105,13 +110,13 @@ struct PriceLevel {
     uint64_t priceTicks;
 
     // Per price order queue
-    LocklessQueue<Order*>* queue;
+    LocklessQueue<Order<RingSize, NumBuckets>*>* queue;
 
     // Current number of orders held
     std::atomic<uint32_t> numOrders;
 
     // Concstructor
-    PriceLevel(void* memoryBlock, uint64_t priceTicks, LocklessQueue<Order*>* queue)
+    PriceLevel(void* memoryBlock, uint64_t priceTicks, LocklessQueue<Order<RingSize, NumBuckets>*>* queue)
         : memoryBlock(memoryBlock), priceTicks(priceTicks), queue(queue), numOrders(0) {}
 };
 
@@ -125,7 +130,7 @@ class PublishRing {
 
         // Struct for a solt in the ring
         struct Slot {
-            std::atomic<Order*> order{nullptr};
+            std::atomic<Order<RingSize, NumBuckets>*> order{nullptr};
         };
 
         // Used to track the next slot where producers will write
@@ -149,7 +154,7 @@ class PublishRing {
 
     public:
         // Producer function: acquire sequence and publish order
-        void publish(Order* order) {
+        void publish(Order<RingSize, NumBuckets>* order) {
             // Increment and retrieve sequence
             uint64_t seq = publishSeq.fetch_add(1);
 
@@ -157,14 +162,14 @@ class PublishRing {
             size_t index = seq & (RingSize - 1);
 
             // Loop to update ring with strong CAS
-            Order* expected = nullptr;
+            Order<RingSize, NumBuckets>* expected = nullptr;
             while (!ring[index].order.compare_exchange_strong(expected, order)) {
                 spinBackoff();
             }
         }
 
         // Worker function to grab the next available order
-        Order* pullNextOrder() {
+        Order<RingSize, NumBuckets>* pullNextOrder() {
             // Get the next sequence
             uint64_t seq = workSeq.fetch_add(1);
 
@@ -177,7 +182,7 @@ class PublishRing {
             size_t index = seq & (RingSize - 1);
 
             // Retrieve order at the sequence
-            Order* order = ring[index].order.load();
+            Order<RingSize, NumBuckets>* order = ring[index].order.load();
 
             // if the order exists
             if (order) {
@@ -193,7 +198,7 @@ class PublishRing {
 // Fixed-size lockless hash table
 // Opened price levels are never cleared
 // In a real system they'd be cleared after a long period of inactivity
-template<size_t NumBuckets>
+template<isze_t RingSize, size_t NumBuckets>
 class PriceTable {
     private:
         // Capacity must also be a power of 2 for bitmasking (cheaper than mod)
@@ -274,7 +279,7 @@ class PriceTable {
 };
 
 // Struct of required memory pools
-template<size_t MaxOrders, size_t NumBuckets>
+template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
 struct Pools {
     MemoryPool<sizeof(Order), MaxOrders> orderPool;
     MemoryPool<sizeof(Node<Order*>), MaxOrders> nodePool;
@@ -287,7 +292,7 @@ template<size_t MaxOrders, size_t NumBuckets>
 thread_local Pools<MaxOrders, NumBuckets> myPools;
 
 // Symbol Struct
-template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
+template<size_t RingSize, size_t NumBuckets>
 struct Symbol {
     // Memory on which this struct is allocated
     void* memoryBlock;
@@ -325,7 +330,7 @@ class Worker {
         std::atomic<bool>* running;
 
         // Function to process order
-        void processOrder(Symbol<MaxOrders, RingSize, Order* order) {
+        void processOrder(Order* order) {
             switch (order->type) {
                 case OrderType::ADD:
                     insertOrder(order);
@@ -337,9 +342,12 @@ class Worker {
         }
 
         // Function to insert order
-        void insertOrder(Symbol<MaxOrders, RingSize, NumBuckets>* symbol, Order* order) {
+        void insertOrder(Order* order) {
+            // Retrieve symbol pointer
+            GenericSymbol* symbol = order->symbol; 
+
             // Get or create price level
-            PriceLevel* level = getOrCreatePriceLevel(order->priceTicks, order->side);
+            PriceLevel* level = getOrCreatePriceLevel(symbol, order->priceTicks, order->side);
 
             // Price level could not be created, delete the order
             if (!level) {
@@ -366,12 +374,15 @@ class Worker {
         }
 
         // Function to cancel a given order node
-        void cancelOrder(Symbol<RingSize, MaxOrders>* symbol, Order* order) {
+        void cancelOrder(Order* order) {
+            // Retrieve symbol pointer
+            GenericSymbol* symbol = order->symbol; 
+
             // Retrieve node from order
             Node<Order*>* node = order->node;
 
             // Get price level
-            PriceLevel* level = getOrCreatePriceLevel(order->priceTicks, order->side);
+            PriceLevel* level = getOrCreatePriceLevel(symbol, order->priceTicks, order->side);
 
             // Price level should exist, if not delete order and return
             if (!level) {
@@ -386,7 +397,7 @@ class Worker {
             myPools<MaxOrders, NumBuckets>.orderPool.deallocate(order->memoryBlock);
         }
 
-        PriceLevel* getOrCreatePriceLevel(Symbol<RingSize, MaxOrders>* symbol, uint64_t priceTicks, Side side) {
+        PriceLevel* getOrCreatePriceLevel(GenericSymbol* symbol, uint64_t priceTicks, Side side) {
             // Retrieve table based on side
             PriceTable<NumBuckets>& table = (side == Side::Buy) ? 
                 symbol->buyPrices : symbol->sellPrices;
@@ -433,7 +444,7 @@ class Worker {
         }
 
         // Function to update best bid and ask prices
-        void updateBestPrices(Symbol<RingSize, MaxOrders>* symbol, uint64_t priceTicks, Side side) {
+        void updateBestPrices(Symbol<RingSize, MaxOrders, NumBuckets>* symbol, uint64_t priceTicks, Side side) {
             if (side == Side::BUY) {
                 // Start retry loop
                 while (running.load()) {
@@ -464,7 +475,7 @@ class Worker {
         void* memoryBlock;
 
         // Constructor
-        Worker(void* block, uint16_t workerID, Symbol<RingSize, MaxOrders>* symbol, std::atomic<bool>* running)
+        Worker(void* block, uint16_t workerID, std::atomic<bool>* running)
             : workerID(workerID), symbol(symbol), symbolID(symbol->symbolID), running(running) {
                 memoryBlock = block;
             }
@@ -514,7 +525,7 @@ class WorkerPool {
         }
 
         // Function to start all worker threads
-        void startWorkers(Symbol<RingSize, MaxOrders>* symbol) {
+        void startWorkers() {
             // Toggle running on
             running.store(true);
 
@@ -524,7 +535,7 @@ class WorkerPool {
                 void* block = alocPool->allocate;
 
                 // Create worker
-                workers[i] = new (block) Worker<MaxOrders, RingSize, NumBuckets>(block, i, symbol, &running);
+                workers[i] = new (block) Worker<MaxOrders, RingSize, NumBuckets>(block, i, &running);
 
                 // Launch thread
                 workerThreads.emplace_back([this, i]() {
@@ -569,7 +580,7 @@ class OrderBook {
         MemoryPool<sizeof(Worker<MaxOrders, RingSize, NumBuckets>), NumWorkers> workerMemPool;
 
         // Worker Thread Pool
-        WorkerPool<NumWorkers, MaxOrders, RingSize, NumBuckets>(&workerMemPool);
+        WorkerPool<NumWorkers, MaxOrders, RingSize, NumBuckets> workerPool(&workerMemPool);
 
         // Thread local sequence (counter)
         // Used for order ID generation
@@ -580,6 +591,21 @@ class OrderBook {
         OrderBook() {
             // Make sure max symbols is valid
             static_assert(MaxSymbols <= UINT16_MAX, "MaxSymbols exceeds uint16_t range");
+        }
+
+        // Order Book Destructor
+        ~OrderBook() {
+            shutdown();
+        }
+
+        // Start the Order Book's system
+        void start() {
+            workerPool.startWorkers();
+        }
+
+        // Shut down the Order Book's system
+        void shutdown() {
+            workerPool.stopWorkers();
         }
 
         // Function to register symbol

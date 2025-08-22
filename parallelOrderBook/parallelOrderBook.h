@@ -215,7 +215,7 @@ class PriceTable {
     public:
         // Install price level using strong CAS
         // Returns true or false depending on the success of the operation
-        bool installPriceLevel(PriceLevel* level) override {
+        bool installPriceLevel(PriceLevel* level) {
             // Retrieve index from hash function
             size_t index = hash(level->priceTicks);
 
@@ -248,7 +248,7 @@ class PriceTable {
         }
 
         // Lookup price level
-        PriceLevel* lookup(uint64_t priceTicks) override {
+        PriceLevel* lookup(uint64_t priceTicks) {
             // Retrieve index from hash function
             size_t index = hash(priceTicks);
 

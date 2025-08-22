@@ -483,7 +483,7 @@ class Worker {
         void run(PublishRing<RingSize, NumBuckets>* publishRing) {
             while (running->load()) {
                 // Pull next available order
-                Order* order = publishRing.pullNextOrder();
+                Order<RingSize, NumBuckets>* order = publishRing->pullNextOrder();
 
                 // If order is valid process it, else yield
                 if (order) {
@@ -501,10 +501,10 @@ class WorkerPool {
     private:
         // Create pointer to hold memory pool for worker allocation
         // This is done on the host
-        GenericMemoryPool* alocPool;
+        MemoryPool<sizeof(Worker<MaxOrders, RingSize, NumBuckets>), NumWorkers>* alocPool;
 
         // Hold all workers with capacity numWorkers
-        std::vector<Worker<MaxOrders, RingSize, NumBuckets>> workers(numWorkers);
+        std::vector<Worker<MaxOrders, RingSize, NumBuckets>> workers;
 
         // Hold all threads
         std::vector<std::thread> workerThreads;
@@ -520,7 +520,7 @@ class WorkerPool {
         WorkerPool() = default;
 
         // Pass generic pool so that capacity does not need to be specified
-        WorkerPool(GenericMemoryPool* pool, PublishRing<RingSize, NumBuckets>* publishRingPtr) {
+        WorkerPool(MemoryPool<sizeof(Worker<MaxOrders, RingSize, NumBuckets>), NumWorkers>* pool, PublishRing<RingSize, NumBuckets>* publishRingPtr) {
             alocPool = pool;
             publishRing = publishRingPtr;
         }
@@ -536,16 +536,16 @@ class WorkerPool {
             running.store(true);
 
             // Create and start worker threads
-            for (uint16_t i = 0; i < numWorkers; i++) {
+            for (uint16_t i = 0; i < NumWorkers; i++) {
                 // Allocate from pool
-                void* block = alocPool->allocate;
+                void* block = alocPool->allocate();
 
                 // Create worker
-                workers[i] = new (block) Worker<MaxOrders, RingSize, NumBuckets>(block, i, &running);
+                workers.emplace_back(block, i, &running);
 
                 // Launch thread
                 workerThreads.emplace_back([this, i]() {
-                    workers[i]->run(publishRing);
+                    workers[i].run(publishRing);
                 });
             }
         }
@@ -564,9 +564,10 @@ class WorkerPool {
             workerThreads.clear();
 
             // Deallocate all workers
-            for (auto& ptr: workers) {
-                alocPool->deallocate(ptr->memoryBlock);
+            for (auto& worker : workers) {
+                alocPool->deallocate(worker.memoryBlock);
             }
+            workers.clear();
         }
 };
 
@@ -576,14 +577,14 @@ class OrderBook {
     private:
         // Symbol Management
         std::unordered_map<std::string, uint16_t> symbolNameToID;
-        std::unordered_map<uint16_t, Symbol<RingSize, MaxOrders>*> symbols;
+        std::unordered_map<uint16_t, Symbol<RingSize, NumBuckets>*> symbols;
         std::atomic<uint16_t> nextSymbolID{0};
 
         // Universal Publish Ring
-        PublishRing<RingSize, NumBuckets> publishRing();
+        PublishRing<RingSize, NumBuckets> publishRing;
 
         // Global memory pool for symbol data
-        MemoryPool<sizeof(Symbol<RingSize, MaxOrders, NumBuckets>), MaxSymbols> symbolPool;
+        MemoryPool<sizeof(Symbol<RingSize, NumBuckets>), MaxSymbols> symbolPool;
 
         // Global Worker Memory Pool
         MemoryPool<sizeof(Worker<MaxOrders, RingSize, NumBuckets>), NumWorkers> workerMemPool;
@@ -593,7 +594,8 @@ class OrderBook {
 
         // Thread local sequence (counter)
         // Used for order ID generation
-        thread_local std::atomic<uint64_t> threadLocalSeq;
+        // static required because thread_local cannot be a non-static class member
+        static thread_local std::atomic<uint64_t> threadLocalSeq;
 
     public:
         // Constructor
@@ -628,10 +630,10 @@ class OrderBook {
             }
 
             // Check if already registered
-            auto it = symbolNameToID.find(symbolName)
+            auto it = symbolNameToID.find(symbolName);
 
             // If symbol exists return it
-            if (it != symbikNameToID.end()) {
+            if (it != symbolNameToID.end()) {
                 return it->second;
             }
 
@@ -647,7 +649,7 @@ class OrderBook {
             }
             
             // Create symbol pointer
-            Symbol<RingSize, MaxOrders, NumBuckets>* symbol = new (block) Symbol<RingSize, MaxOrders, NumBuckets>(block, symbolID, symbolName);
+            Symbol<RingSize, NumBuckets>* symbol = new (block) Symbol<RingSize, NumBuckets>(block, symbolID, symbolName);
 
             // Store in maps
             symbolNameToID[symbolName] = symbolID;
@@ -660,49 +662,49 @@ class OrderBook {
         // Submit a new order
         // Returns optional of pair of order ID and order pointer
         // Optional will have no value if order could not be submitted
-        std::optional<std::pair<uint16_t, Order*>> submitOrder(uint32_t userID, uint16_t symbolID, Side side, uint32_t quantity, double price) {
+        std::optional<std::pair<uint64_t, Order<RingSize, NumBuckets>*>> submitOrder(uint32_t userID, uint16_t symbolID, Side side, uint32_t quantity, double price) {
             // Try to retrieve symbol
             auto symbolIt = symbols.find(symbolID);
 
             // If symbol could not be found return
             if (symbolIt == symbols.end()) {
-                return;
+                return std::nullopt;
             }
 
             // Retrieve symbol out of iterator
-            Symbol<MaxOrders, RingSize, NumBuckets>* symbol = symbolIt.second;
+            Symbol<RingSize, NumBuckets>* symbol = symbolIt->second;
 
             // Convert price to ticks
             uint64_t priceTicks = priceToTicks(price);
 
             // Generate unique order ID
             uint64_t localSeq = threadLocalSeq.fetch_add(1);
-            uint64_t orderID = Order::createOrderID(symbolID, localSeq);
+            uint64_t orderID = Order<RingSize, NumBuckets>::createOrderID(symbolID, localSeq);
 
             // Allocate memory for order
-            void* orderBlock = myPools<MaxOrders, NumBuckets>.orderPool.allocate();
+            void* orderBlock = myPools<MaxOrders, RingSize, NumBuckets>.orderPool.allocate();
 
             // Make sure memory is valid, if not return
             if (!orderBlock) {
-                return;
+                return std::nullopt;
             }
 
             // Create order
-            Order* order = new (orderBlock) Order(orderBlock, orderID, userID, side, symbolID, quantity, priceTicks, OrderType::ADD);
+            Order<RingSize, NumBuckets>* order = new (orderBlock) Order<RingSize, NumBuckets>(orderBlock, orderID, userID, side, symbolID, symbol, quantity, priceTicks, OrderType::ADD);
 
-            // Publish to symbol's ring
-            symbol->publishRing.publish(order);
+            // Publish to universal ring
+            publishRing.publish(order);
 
             // Return to the user the Order ID and Pointer
             // The Order Type is ammended to Cancel once added so the user can cancel it
-            return std::pair<orderID, order>;
+            return std::make_pair(orderID, order);
         }
 
         // Cancel an order
         // Needs to take that order's pointer
         // Return true if the operation succeeds, otherwise return false
         // Type should have already been switched to Cancel, if not false will be returned
-        bool cancelOrder(Order* order) {
+        bool cancelOrder(Order<RingSize, NumBuckets>* order) {
             // Make sure type is cancel, if not return false
             if (order->type != OrderType::CANCEL) {
                 return false;
@@ -716,14 +718,14 @@ class OrderBook {
 
             // If symbol could not be found return
             if (symbolIt == symbols.end()) {
-                return;
+                return false;
             }
 
             // Retrieve symbol out of iterator
-            Symbol<MaxOrders, RingSize, NumBuckets>* symbol = symbolIt.second;
+            Symbol<RingSize, NumBuckets>* symbol = symbolIt->second;
 
-            // Publish to symbol's ring
-            symbol->publishRing.publish(order);
+            // Publish to universal ring
+            publishRing.publish(order);
 
             // Return true
             return true;

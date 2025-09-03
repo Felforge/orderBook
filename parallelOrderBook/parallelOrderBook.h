@@ -280,6 +280,21 @@ class PriceTable {
             // Price level was not found
             return nullptr;
         }
+
+        // Checks if a price level exists and if it has orders within it
+        // Return true if both conditions are true
+        bool isActive(uint64_t priceTicks) {
+            // Retrieve price level
+            PriceLevel<RingSize, NumBuckets>* level = lookup(priceTicks);
+
+            // Price level was not found, return false
+            if (!level) {
+                return false;
+            }
+
+            // Make sure it has orders
+            return level->numOrders.load() > 0;
+        }
 };
 
 // Struct of required memory pools
@@ -342,36 +357,49 @@ class Worker {
             }
         }
 
+        // Matching go here
+        // New best price level can be found in O(N) going backwards
+        // This can be done because the shfits should be so small
+
         // Function to insert order
         void insertOrder(Order<RingSize, NumBuckets>* order) {
             // Retrieve symbol pointer
             Symbol<RingSize, NumBuckets>* symbol = order->symbol; 
 
-            // Get or create price level
-            PriceLevel<RingSize, NumBuckets>* level = getOrCreatePriceLevel(symbol, order->priceTicks, order->side);
+            // Try to match the order first
+            matchOrder(order);
 
-            // Price level could not be created, delete the order
-            if (!level) {
+            // If order still has quantity, insert into book
+            if (order->quantity > 0) {
+                // Get or create price level
+                PriceLevel<RingSize, NumBuckets>* level = getOrCreatePriceLevel(symbol, order->priceTicks, order->side);
+
+                // Price level could not be created, delete the order
+                if (!level) {
+                    myPools<MaxOrders, RingSize, NumBuckets>.orderPool.deallocate(order->memoryBlock);
+                    return;
+                }
+
+                // Insert into price level queue
+                Node<Order<RingSize, NumBuckets>*>* node = level->queue->pushRight(order, &myPools<MaxOrders, RingSize, NumBuckets>.nodePool);
+
+                // Store node pointer in order
+                order->node = node;
+
+                // Ammend order type to cancel so the user is able to cancel it
+                order->type = OrderType::CANCEL;
+
+                // If node was successfully created increment numOrders
+                if (node) {
+                    level->numOrders.fetch_add(1);
+                }
+
+                // Update best prices
+                updateBestPrices(symbol, order->priceTicks, order->side);
+            } else {
+                // Order fully matched, deallocate
                 myPools<MaxOrders, RingSize, NumBuckets>.orderPool.deallocate(order->memoryBlock);
-                return;
             }
-
-            // Insert into price level queue
-            Node<Order<RingSize, NumBuckets>*>* node = level->queue->pushRight(order, &myPools<MaxOrders, RingSize, NumBuckets>.nodePool);
-
-            // Store node pointer in order
-            order->node = node;
-
-            // Ammend order type to cancel so the user is able to cancel it
-            order->type = OrderType::CANCEL;
-
-            // If node was successfully created increment numOrders
-            if (node) {
-                level->numOrders.fetch_add(1);
-            }
-
-            // Update best prices
-            updateBestPrices(symbol, order->priceTicks, order->side);
         }
 
         // Function to cancel a given order node
@@ -393,6 +421,9 @@ class Worker {
 
             // Remove order from level
             level->queue->removeNode(node);
+
+            // Decrease order count in level
+            level->numOrders.fetch_sub(order->quantity);
 
             // Delete order
             myPools<MaxOrders, RingSize, NumBuckets>.orderPool.deallocate(order->memoryBlock);

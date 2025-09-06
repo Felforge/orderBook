@@ -357,9 +357,27 @@ class Worker {
             }
         }
 
-        // Matching go here
+        // Helper function to check if an order can be matched
+        bool canMatch(uint64_t oppTicks, Order<RingSize, NumBuckets>* order) {
+            // Base case, nothing to be matched
+            if (oppTicks == UINT64_MAX || oppTicks == 0) {
+                return false;
+            }
+
+            // Buy case
+            if (order->side == Side::BUY) {
+                return order->priceTicks >= oppTicks;
+            }
+
+            // Else it is the sell case
+            return order->priceTicks <= oppTicks;
+        }
+
         // New best price level can be found in O(N) going backwards
         // This can be done because the shfits should be so small
+        void matchOrder(Order<RingSize, NumBuckets>* order) {
+            
+        }
 
         // Function to insert order
         void insertOrder(Order<RingSize, NumBuckets>* order) {
@@ -474,6 +492,50 @@ class Worker {
             // Return completed price level
             return level;
         }
+
+        // Backtrack price level till a new best active one is found
+        // If the price level no longer equal prev we can assume it was already udpated by someone else and exit
+        void backtrackPriceLevel(Symbol<RingSize, NumBuckets>* symbol, Side side, uint64_t prev) {
+            // Direction will be different depending on the side so that must be seperated
+            // It can deifnietly be combined but the code would be impossible to read
+            if (side == Side::BUY) {
+                // Loop through possibel levels
+                for (uint64_t i = prev - 1; i > 0; i--) {
+                    // If price is no longer equal to prev or prev is again active we can return
+                    if (symbol->bestBidTicks.load() != prev || symbol->buyPrices.isActive(prev)) {
+                        return;
+                    }
+
+                    // Else, attempt CAS if price level is active
+                    if (symbol->buyPrices.isActive(i)) {
+                        // We can return after attempting the CAS once as it will only fail if bestBidTicks is no longer prev
+                        symbol->bestBidTicks.compare_exchange_strong(prev, i);
+                        return;
+                    }
+                }
+
+                // Nothing is found, attempt to CAS reset the price level
+                symbol->bestBidTicks.compare_exchange_strong(prev, 0);
+            } else { // side == Side::SELL
+                // Loop through possibel levels
+                for (uint64_t i = prev + 1; i < UINT64_MAX; i++) {
+                    // If price is no longer equal to prev or prev is again active we can return
+                    if (symbol->bestAskTicks.load() != prev || symbol->sellPrices.isActive(prev)) {
+                        return;
+                    }
+
+                    // Else, attempt CAS if price level is active
+                    if (symbol->sellPrices.isActive(i)) {
+                        // We can return after attempting the CAS once as it will only fail if bestAskTicks is no longer prev
+                        symbol->bestAskTicks.compare_exchange_strong(prev, i);
+                        return;
+                    }
+                }
+
+                // Nothing is found, attempt to CAS reset the price level
+                symbol->bestAskTicks.compare_exchange_strong(prev, UINT64_MAX);
+            }
+        } 
 
         // Function to update best bid and ask prices
         void updateBestPrices(Symbol<RingSize, NumBuckets>* symbol, uint64_t priceTicks, Side side) {

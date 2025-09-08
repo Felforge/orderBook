@@ -68,7 +68,7 @@ struct Order {
     uint32_t userID;
 
     // Quantity (remaining) of order
-    uint32_t quantity;
+    std::atomic<uint32_t> quantity;
 
     // Order price in integer ticks
     uint64_t priceTicks;
@@ -373,10 +373,92 @@ class Worker {
             return order->priceTicks <= oppTicks;
         }
 
+        // Match a given order and price level
+        void matchAtPriceLevel(Order<RingSize, NumBuckets>* order, PriceLevel<RingSize, NumBuckets>* level) {
+            // Loop while order and level has quantity remaining
+            while (order->quantity.load() > 0 && level->numOrders.load() > 0) {
+                // Try to pop order from queue
+                auto optMatch = level->queue->popLeft();
+
+                // Queue is empty
+                if (!optMatch.has_value()) {
+                    break;
+                }
+                
+                // Retrieve matched order pointer
+                Order<RingSize, NumBuckets>* match = optMatch.value();
+
+                // Match orders
+                if (order->quantity >= match->quantity) {
+                    // Get Match quantity
+                    uint32_t matchQuant = match->quantity.load();
+
+                    // Subtract amount from order
+                    order->quantity.fetch_sub(matchQuant);
+
+                    // Subtract from level->numOrdrs
+                    level->numOrders.fetch_sub(1);
+                } else { // match->quantity > order->quantity
+                    // Get Match quantity
+                    uint32_t matchQuant = order->quantity.load();
+
+                    // Subtract amount from order
+                    match->quantity.fetch_sub(matchQuant);
+
+                    // Set order->quantity to 0
+                    order->quantity.store(0);
+
+                    // Add back remaining match directly to the left
+                    level->queue->pushLeft(match, &myPools<MaxOrders, RingSize, NumBuckets>.nodePool);
+                }
+            }
+        }
+
         // New best price level can be found in O(N) going backwards
         // This can be done because the shfits should be so small
         void matchOrder(Order<RingSize, NumBuckets>* order) {
-            
+            // Retrieve symbol
+            Symbol<RingSize, NumBuckets>* symbol = order->symbol;
+
+            // Get opposite side
+            Side opp = (order->side == Side::BUY) ? Side::SELL : Side::BUY;
+
+            // Get opposing price table
+            PriceTable<RingSize, NumBuckets>& oppTable = (opp == Side::BUY) ?
+                symbol->buyPrices : symbol->sellPrices;
+
+            // Loop while the order has quantity remaining
+            while (order->quantity.load() > 0) {
+                // Get best opposing price level
+                uint64_t bestMatch = (opp == Side::BUY) ?
+                    symbol->bestBidTicks.load() : symbol->bestAskTicks.load();
+
+                // If there is no match return
+                if (!canMatch(bestMatch, order)) {
+                    return;
+                }
+
+                // Look up the price level
+                PriceLevel<RingSize, NumBuckets>* level = oppTable.lookup(bestMatch);
+
+                // Handle the case that the price level is inactive
+                if (!oppTable.isActive(bestMatch)) {
+                    // Backtrack price level
+                    backtrackPriceLevel(symbol, opp, bestMatch);
+
+                    // Loop again
+                    continue;
+                }
+
+                // Match at this price level
+                matchAtPriceLevel(order, level);
+
+                // If match price level is exhausted backtrack it
+                if (!oppTable.isActive(bestMatch)) {
+                    // Backtrack price level
+                    backtrackPriceLevel(symbol, opp, bestMatch);
+                }
+            }
         }
 
         // Function to insert order
@@ -692,12 +774,9 @@ class OrderBook {
 
     public:
         // Constructor
-        OrderBook() {
+        OrderBook() : workerPool(&workerMemPool, &publishRing) {
             // Make sure max symbols is valid
             static_assert(MaxSymbols <= UINT16_MAX, "MaxSymbols exceeds uint16_t range");
-
-            // Create worker pool
-            workerPool = WorkerPool<NumWorkers, MaxOrders, RingSize, NumBuckets>(&workerMemPool, &publishRing);
         }
 
         // Order Book Destructor

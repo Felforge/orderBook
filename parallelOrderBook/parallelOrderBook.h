@@ -904,8 +904,4 @@ class OrderBook {
         }
 };
 
-// To-Do:
-// Implement matching engine
-// Add client side handling for order pointers
-
 #endif

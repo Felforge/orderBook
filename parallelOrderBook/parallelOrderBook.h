@@ -20,7 +20,7 @@
 #endif
 
 // Configuaration Constants
-constexpr size_t DEFAULT_RING_SIZE = 1 << 20;  // Roughly 1M slots for hot symbols
+constexpr size_t DEFAULT_RING_SIZE = 1 << 12;  // 4K slots (reduced from 1M for stack safety)
 constexpr size_t PRICE_TABLE_BUCKETS = 16384; // Roughly 16k Available Price Levels
 constexpr uint64_t TICK_PRECISION = 10000;     // 1e-4 precision (0.0001)
 
@@ -903,5 +903,9 @@ class OrderBook {
             return true;
         }
 };
+
+// Define the static thread_local member
+template<size_t NumWorkers, size_t MaxSymbols, size_t MaxOrders, size_t RingSize, size_t NumBuckets>
+thread_local std::atomic<uint64_t> OrderBook<NumWorkers, MaxSymbols, MaxOrders, RingSize, NumBuckets>::threadLocalSeq{0};
 
 #endif

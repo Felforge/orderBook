@@ -28,3 +28,5 @@ go.work.sum
 
 old/
 hide/
+
+*/.DS_Store

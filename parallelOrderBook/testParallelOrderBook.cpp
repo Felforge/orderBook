@@ -8,7 +8,7 @@ using namespace std;
 #define OrderExt Order<DEFAULT_RING_SIZE, PRICE_TABLE_BUCKETS>
 
 // Check if two order pointers are equal in values
-void isOrderEqual(Order<DEFAULT_RING_SIZE, PRICE_TABLE_BUCKETS>* expected, Order<DEFAULT_RING_SIZE, PRICE_TABLE_BUCKETS>* actual) {
+void isOrderEqual(OrderExt* expected, OrderExt* actual) {
     EXPECT_EQ(expected->orderID, actual->orderID);
     EXPECT_EQ(expected->userID, actual->userID);
     EXPECT_EQ(expected->priceTicks, actual->priceTicks);
@@ -18,19 +18,30 @@ void isOrderEqual(Order<DEFAULT_RING_SIZE, PRICE_TABLE_BUCKETS>* expected, Order
 }
 
 // Helper function to wait for order processing
-void waitForProcessing() {
-    this_thread::sleep_for(std::chrono::milliseconds(100));
+void waitForProcessing(int numMil = 100) {
+    this_thread::sleep_for(std::chrono::milliseconds(numMil));
 }
 
-// Test registering a symbol and submitting a buy order
-TEST(OrderBookTest, HandlesValidBuyOrderSubmission) {
-    // Create Order Book
+// Test fixture for Single Thread OrderBook tests
+// Automatically sets up, starts and shuts down the order book
+class OrderBookTestSingleThread : public ::testing::Test {
+protected:
+    void SetUp() override {
+        // Start the order book system
+        orderBook.start();
+    }
+    
+    void TearDown() override {
+        // Shutdown the order book system
+        orderBook.shutdown();
+    }
+    
     // Template parameters: NumWorkers=1, MaxSymbols=10, MaxOrders=1000
     OrderBook<1, 10, 1000> orderBook;
+};
 
-    // Start the order book system
-    orderBook.start();
-
+// Test registering a symbol and submitting a buy order
+TEST_F(OrderBookTestSingleThread, HandlesValidBuyOrderSubmission) {
     // Register symbol
     string symbolName = "AAPL";
     uint16_t symbolID = orderBook.registerSymbol(symbolName);
@@ -46,13 +57,761 @@ TEST(OrderBookTest, HandlesValidBuyOrderSubmission) {
     EXPECT_NE(result->second, nullptr);
     
     // Create expected orders to compare against
-    OrderExt expected1(nullptr, result->first, 1, Side::BUY, symbolID, nullptr, 100, priceToTicks(150.0), OrderType::ADD);
+    OrderExt expected(nullptr, result->first, 1, Side::BUY, symbolID, nullptr, 100, priceToTicks(150.0), OrderType::ADD);
     
     // Verify order details using isOrderEqual
-    isOrderEqual(&expected1, result->second);
+    isOrderEqual(&expected, result->second);
+}
 
-    // Shutdown the order book system
-    orderBook.shutdown();
+// Test registering a symbol and submitting a sell order
+TEST_F(OrderBookTestSingleThread, HandlesValidSellOrderSubmission) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit first buy order
+    auto result = orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+    
+    // Create expected orders to compare against
+    OrderExt expected(nullptr, result->first, 1, Side::SELL, symbolID, nullptr, 100, priceToTicks(150.0), OrderType::ADD);
+    
+    // Verify order details using isOrderEqual
+    isOrderEqual(&expected, result->second);
+}
+
+// Test order ID progression for same price orders
+TEST_F(OrderBookTestSingleThread, HandlesOrderIDProgressionSamePrice) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit three buy orders
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result3 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_TRUE(result3.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
+    EXPECT_NE(result3->second, nullptr);
+    
+    // Verify order ID progression
+    EXPECT_EQ(1, result2->second->orderID - result1->second->orderID);
+    EXPECT_EQ(1, result3->second->orderID - result2->second->orderID);
+}
+
+// Test order ID progression for different price orders
+TEST_F(OrderBookTestSingleThread, HandlesOrderIDProgressionDifferentPrice) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit three buy orders
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 160.0);
+    auto result3 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 170.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_TRUE(result3.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
+    EXPECT_NE(result3->second, nullptr);
+    
+    // Verify order ID progression
+    EXPECT_EQ(1, result2->second->orderID - result1->second->orderID);
+    EXPECT_EQ(1, result3->second->orderID - result2->second->orderID);
+}
+
+// Test multiple symbol registration
+TEST_F(OrderBookTestSingleThread, HandlesMultipleSymbols) {
+    // Register symbol
+    string symbolName1 = "AAPL";
+    uint16_t symbolID1 = orderBook.registerSymbol(symbolName1);
+    
+    // Register another symbol
+    string symbolName2 = "AMZN";
+    uint16_t symbolID2 = orderBook.registerSymbol(symbolName2);
+
+    // Make sure ID progesses
+    EXPECT_EQ(1, symbolID2 - symbolID1);
+}
+
+// Test duplicate symbol registration
+TEST_F(OrderBookTestSingleThread, HandlesDuplicateSymbols) {
+    // Register symbol
+    string symbolName1 = "AAPL";
+    uint16_t symbolID1 = orderBook.registerSymbol(symbolName1);
+    
+    // Register the same symbol
+    string symbolName2 = "AAPL";
+    uint16_t symbolID2 = orderBook.registerSymbol(symbolName2);
+
+    // Make sure IDs are equal
+    EXPECT_EQ(symbolID1, symbolID2);
+}
+
+// Test invalid symbol order submission
+TEST_F(OrderBookTestSingleThread, HandlesInvalidSymbolOrder) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit order to invalid symbol
+    auto result = orderBook.submitOrder(1, symbolID+1, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Verify expected result
+    EXPECT_FALSE(result.has_value());
+}
+
+// Test price tick precision
+TEST_F(OrderBookTestSingleThread, HandlesPriceTickPrecision) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit first buy order
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0001);
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    
+    // Create expected order to compare against
+    OrderExt expected1(nullptr, result1->first, 1, Side::BUY, symbolID, nullptr, 100, priceToTicks(150.0001), OrderType::ADD);
+    
+    // Verify order details using isOrderEqual
+    isOrderEqual(&expected1, result1->second);
+
+    // Submit first buy order
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.00009);
+
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_NE(result2->second, nullptr);
+
+    // Create expected order to compare against
+    OrderExt expected2(nullptr, result2->first, 1, Side::BUY, symbolID, nullptr, 100, priceToTicks(150.0001), OrderType::ADD);
+    
+    // Verify order details using isOrderEqual
+    isOrderEqual(&expected2, result2->second);
+}
+
+// Test order ID encoding by symbol
+TEST_F(OrderBookTestSingleThread, HandlesOrderIDEncoding) {
+    // Register symbols
+    string symbolName1 = "AAPL";
+    uint16_t symbolID1 = orderBook.registerSymbol(symbolName1);
+    string symbolName2 = "AMZN";
+    uint16_t symbolID2 = orderBook.registerSymbol(symbolName2);
+    
+    // Submit three buy orders
+    auto result1 = orderBook.submitOrder(1, symbolID1, Side::BUY, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID2, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
+    
+    // Verify order ID encding
+    EXPECT_EQ(symbolID1, result1->second->orderID >> 48);
+    EXPECT_EQ(symbolID2, result2->second->orderID >> 48);
+    EXPECT_NE(result1->second->orderID >> 48, result2->second->orderID >> 48);
+}
+
+// Test zero price order sumbission
+TEST_F(OrderBookTestSingleThread, HandlesZeroPriceOrder) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit order to invalid symbol
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 0.0);
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Verify expected result
+    EXPECT_FALSE(result.has_value());
+}
+
+// Test negative price order sumbission
+TEST_F(OrderBookTestSingleThread, HandlesNegativePriceOrder) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit order to invalid symbol
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, -10.0);
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Verify expected result
+    EXPECT_FALSE(result.has_value());
+}
+
+// Test zero quantity order sumbission
+TEST_F(OrderBookTestSingleThread, HandlesZeroQuantityOrder) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit order to invalid symbol
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 0, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Verify expected result
+    EXPECT_FALSE(result.has_value());
+}
+
+// Test negtaive quantity order sumbission
+TEST_F(OrderBookTestSingleThread, HandlesNegativeQuantityOrder) {
+    // Create Order Book
+    // Template parameters: NumWorkers=1, MaxSymbols=10, MaxOrders=1000
+    OrderBook<1, 10, 1000> orderBook;
+
+    // Start the order book system
+    orderBook.start();
+
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit order to invalid symbol
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, -10, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Verify expected result
+    EXPECT_FALSE(result.has_value());
+}
+
+// Test node assignment and order type transition
+TEST_F(OrderBookTestSingleThread, HandlesNodeAssignmentAndTypeTransition) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit first buy order
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    
+    // Order should initially be ADD type
+    EXPECT_EQ(OrderType::ADD, result->second->type);
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+    
+    // After processing, order type should change to CANCEL
+    EXPECT_EQ(OrderType::CANCEL, result->second->type);
+    
+    // Check node assignment
+    EXPECT_NE(result->second->node, nullptr);
+    
+    // If node exists, check its memory block
+    if (result->second->node != nullptr) {
+        EXPECT_NE(result->second->node->memoryBlock, nullptr);
+    }
+}
+
+// Test removing a single order
+TEST_F(OrderBookTestSingleThread, HandlesSingleOrderRemoval) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit first buy order
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve order
+    OrderExt* order = result->second;
+
+    // Retrieve price level
+    auto priceLevel = order->symbol->buyPrices.lookup(1500000);
+    
+    // Verify that price level has an order
+    EXPECT_EQ(priceLevel->numOrders.load(), 1);
+
+    // Cancel order
+    bool wasRemoved = orderBook.cancelOrder(order);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that order was successfuly removed
+    EXPECT_TRUE(wasRemoved);
+
+    // Verify that price level no longer has this order
+    EXPECT_EQ(priceLevel->numOrders.load(), 0);
+}
+
+// Test removing a single order
+TEST_F(OrderBookTestSingleThread, HandlesInProccessRemoval) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit first buy order
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+    // Retrieve order
+    OrderExt* order = result->second;
+    
+    // Attempt to remove order without waiting
+    bool wasRemoved = orderBook.cancelOrder(order);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that order was successfuly removed
+    EXPECT_FALSE(wasRemoved);
+}
+
+// Test removing a null order
+TEST_F(OrderBookTestSingleThread, HandlesNullRemoval) {
+    // Attempt to remove a nullptr
+    bool wasRemoved = orderBook.cancelOrder(nullptr);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that order was successfuly removed
+    EXPECT_FALSE(wasRemoved);
+}
+
+// Test removing multiple orders on the same price level
+TEST_F(OrderBookTestSingleThread, HandlesMultipleOrderRemovalSameLevel) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit all orders
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result3 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve orders
+    OrderExt* order1 = result1->second;
+    OrderExt* order2 = result2->second;
+    OrderExt* order3 = result3->second;
+
+    // Retrieve price level
+    auto priceLevel = order1->symbol->buyPrices.lookup(1500000);
+    
+    // Verify that price level has all orders
+    EXPECT_EQ(priceLevel->numOrders.load(), 3);
+
+    // Cancel first order
+    bool wasRemoved = orderBook.cancelOrder(order1);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that order was successfuly removed
+    EXPECT_TRUE(wasRemoved);
+
+    // Verify that price level no longer has this order
+    EXPECT_EQ(priceLevel->numOrders.load(), 2);
+
+    // Cancel second order
+    wasRemoved = orderBook.cancelOrder(order2);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that order was successfuly removed
+    EXPECT_TRUE(wasRemoved);
+
+    // Verify that price level no longer has this order
+    EXPECT_EQ(priceLevel->numOrders.load(), 1);
+
+    // Cancel third order
+    wasRemoved = orderBook.cancelOrder(order3);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that order was successfuly removed
+    EXPECT_TRUE(wasRemoved);
+
+    // Verify that price level no longer has this order
+    EXPECT_EQ(priceLevel->numOrders.load(), 0);
+}
+
+// Test removing multiple orders on different price levels
+TEST_F(OrderBookTestSingleThread, HandlesMultipleOrderRemovalDiffLevel) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit all orders
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 140.0);
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result3 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 160.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve orders
+    OrderExt* order1 = result1->second;
+    OrderExt* order2 = result2->second;
+    OrderExt* order3 = result3->second;
+
+    // Retrieve price levels
+    auto priceLevel1 = order1->symbol->buyPrices.lookup(1400000);
+    auto priceLevel2 = order1->symbol->buyPrices.lookup(1500000);
+    auto priceLevel3 = order1->symbol->buyPrices.lookup(1600000);
+    
+    // Verify expected info
+    EXPECT_EQ(priceLevel1->numOrders.load(), 1);
+    EXPECT_EQ(priceLevel2->numOrders.load(), 1);
+    EXPECT_EQ(priceLevel3->numOrders.load(), 1);
+
+    // Cancel first order
+    bool wasRemoved = orderBook.cancelOrder(order1);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that order was successfuly removed
+    EXPECT_TRUE(wasRemoved);
+
+    // Verify expected info
+    EXPECT_EQ(priceLevel1->numOrders.load(), 0);
+    EXPECT_EQ(priceLevel2->numOrders.load(), 1);
+    EXPECT_EQ(priceLevel3->numOrders.load(), 1);
+
+    // Cancel second order
+    wasRemoved = orderBook.cancelOrder(order2);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that order was successfuly removed
+    EXPECT_TRUE(wasRemoved);
+
+    // Verify expected info
+    EXPECT_EQ(priceLevel1->numOrders.load(), 0);
+    EXPECT_EQ(priceLevel2->numOrders.load(), 0);
+    EXPECT_EQ(priceLevel3->numOrders.load(), 1);
+
+    // Cancel third order
+    wasRemoved = orderBook.cancelOrder(order3);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that order was successfuly removed
+    EXPECT_TRUE(wasRemoved);
+
+    // Verify expected info
+    EXPECT_EQ(priceLevel1->numOrders.load(), 0);
+    EXPECT_EQ(priceLevel2->numOrders.load(), 0);
+    EXPECT_EQ(priceLevel3->numOrders.load(), 0);
+}
+
+// Test reassigning best bid with no fall back price level
+TEST_F(OrderBookTestSingleThread, HandlesReassignBestBidNoFallback) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit all orders
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve order
+    OrderExt* order = result->second;
+
+    // Retrieve symbol
+    auto symbol = order->symbol;
+    
+    // Verify expected info
+    EXPECT_EQ(symbol->bestBidTicks.load(), 1500000);
+
+    // Cancel order
+    orderBook.cancelOrder(order);
+
+    // Add sell order to reset best buy price
+    // Needs to be at a price that would have matched
+    orderBook.submitOrder(1, symbolID, Side::SELL, 100, 140.0);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected info
+    // Expected to fall back all the way to 0
+    EXPECT_EQ(symbol->bestBidTicks.load(), 0);
+}
+
+// Test reassigning best bid with one fallbacks
+TEST_F(OrderBookTestSingleThread, HandlesReassignBestBidWithFallback) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit all orders
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 149.95);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve orders
+    OrderExt* order1 = result1->second;
+    OrderExt* order2 = result2->second;
+
+    // Retrieve symbol
+    auto symbol = order1->symbol;
+    
+    // Verify expected info
+    EXPECT_EQ(symbol->bestBidTicks.load(), 1500000);
+
+    // Cancel first order
+    orderBook.cancelOrder(order1);
+
+    // Add sell order to reset best buy price
+    // Needs to be at a price that would have matched
+    auto sellOrder = orderBook.submitOrder(1, symbolID, Side::SELL, 100, 149.99);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected info
+    EXPECT_EQ(symbol->bestBidTicks.load(), 1499500);
+}
+
+// Test reassigning best ask with no fall back price level
+TEST_F(OrderBookTestSingleThread, HandlesReassignBestAskNoFallback) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit all orders
+    auto result = orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve order
+    OrderExt* order = result->second;
+
+    // Retrieve symbol
+    auto symbol = order->symbol;
+    
+    // Verify expected info
+    EXPECT_EQ(symbol->bestAskTicks.load(), 1500000);
+
+    // Cancel order
+    orderBook.cancelOrder(order);
+
+    // Add sell order to reset best buy price
+    // Needs to be at a price that would have matched
+    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 160.0);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected info
+    // Expected to fall back all the way to UINT64_MAX
+    EXPECT_EQ(symbol->bestAskTicks.load(), UINT64_MAX);
+}
+
+// Test reassigning best ask with one fallbacks
+TEST_F(OrderBookTestSingleThread, HandlesReassignBestAskWithFallback) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit all orders
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.05);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve orders
+    OrderExt* order1 = result1->second;
+    OrderExt* order2 = result2->second;
+
+    // Retrieve symbol
+    auto symbol = order1->symbol;
+    
+    // Verify expected info
+    EXPECT_EQ(symbol->bestAskTicks.load(), 1500000);
+
+    // Cancel first order
+    orderBook.cancelOrder(order1);
+
+    // Add sell order to reset best buy price
+    // Needs to be at a price that would have matched
+    auto sellOrder = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.01);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected info
+    EXPECT_EQ(symbol->bestAskTicks.load(), 1500500);
+}
+
+// Test removing orders across symbols
+TEST_F(OrderBookTestSingleThread, HandlesDuplicateOrderRemoval) {
+    // Register first symbol
+    string symbolName1 = "AAPL";
+    uint16_t symbolID1 = orderBook.registerSymbol(symbolName1);
+
+    // Register second symbol
+    string symbolName2 = "AMZN";
+    uint16_t symbolID2 = orderBook.registerSymbol(symbolName2);
+    
+    // Submit buy orders
+    auto result1 = orderBook.submitOrder(1, symbolID1, Side::BUY, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID2, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve orders
+    OrderExt* order1 = result1->second;
+    OrderExt* order2 = result2->second;
+
+    // Retrieve price levels
+    auto priceLevel1 = order1->symbol->buyPrices.lookup(1500000);
+    auto priceLevel2 = order2->symbol->buyPrices.lookup(1500000);
+
+    // Verify expected state
+    EXPECT_EQ(priceLevel1->numOrders.load(), 1);
+    EXPECT_EQ(priceLevel2->numOrders.load(), 1);
+
+    // Cancel first order
+    bool wasRemoved = orderBook.cancelOrder(order1);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that order was successfuly removed
+    EXPECT_TRUE(wasRemoved);
+
+    // Verify expected state
+    EXPECT_EQ(priceLevel1->numOrders.load(), 0);
+    EXPECT_EQ(priceLevel2->numOrders.load(), 1);
+
+    // Cancel second order
+    wasRemoved = orderBook.cancelOrder(order2);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify that order was successfuly removed
+    EXPECT_TRUE(wasRemoved);
+
+    // Verify expected state
+    EXPECT_EQ(priceLevel1->numOrders.load(), 0);
+    EXPECT_EQ(priceLevel2->numOrders.load(), 0);
+}
+
+// Test reassigning best bids across symbols
+// Basically ensuring that it is isolated between symbols
+TEST_F(OrderBookTestSingleThread, HandlesBestBidCrossSymbol) {
+    // Register symbol
+    string symbolName1 = "AAPL";
+    uint16_t symbolID1 = orderBook.registerSymbol(symbolName1);
+
+    // Register symbol
+    string symbolName2 = "AMZN";
+    uint16_t symbolID2 = orderBook.registerSymbol(symbolName2);
+    
+    // Submit all orders
+    auto result1 = orderBook.submitOrder(1, symbolID1, Side::BUY, 100, 100.0);
+    auto result2 = orderBook.submitOrder(1, symbolID2, Side::BUY, 100, 150.0);
+    orderBook.submitOrder(1, symbolID1, Side::BUY, 100, 99.95);
+    orderBook.submitOrder(1, symbolID2, Side::BUY, 100, 149.95);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve orders
+    OrderExt* order1 = result1->second;
+    OrderExt* order2 = result2->second;
+
+    // Retrieve symbol
+    auto symbol1 = order1->symbol;
+    auto symbol2 = order2->symbol;
+    
+    // Verify expected info
+    EXPECT_EQ(symbol1->bestBidTicks.load(), 1000000);
+    EXPECT_EQ(symbol2->bestBidTicks.load(), 1500000);
+
+    // Cancel first order
+    orderBook.cancelOrder(order1);
+
+    // Add sell order to reset best buy price on Symbol 1
+    // Needs to be at a price that would have matched
+    orderBook.submitOrder(1, symbolID1, Side::SELL, 100, 99.99);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected info
+    EXPECT_EQ(symbol1->bestBidTicks.load(), 999500);
+    EXPECT_EQ(symbol2->bestBidTicks.load(), 1500000);
+
+    // Cancel second order
+    orderBook.cancelOrder(order2);
+
+    // Add sell order to reset best buy price on Symbol 2
+    // Needs to be at a price that would have matched
+    orderBook.submitOrder(1, symbolID2, Side::SELL, 100, 149.99);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected info
+    EXPECT_EQ(symbol1->bestBidTicks.load(), 999500);
+    EXPECT_EQ(symbol2->bestBidTicks.load(), 1499500);
 }
 
 // Run all tests

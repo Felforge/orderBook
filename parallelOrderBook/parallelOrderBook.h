@@ -42,7 +42,7 @@ enum class OrderType : uint8_t {
 // Convert price to integer ticks to avoid failiures do to float precision
 // Inline is needed for those granular optimizations
 inline uint64_t priceToTicks(double price) {
-    return static_cast<uint64_t>(price * TICK_PRECISION);
+    return static_cast<uint64_t>(round(price * TICK_PRECISION));
 }
 
 // Convert back to float price
@@ -174,11 +174,11 @@ class PublishRing {
 
         // Worker function to grab the next available order
         Order<RingSize, NumBuckets>* pullNextOrder() {
-            // Get the next sequence
-            uint64_t seq = workSeq.fetch_add(1);
+            // Get the current sequence number
+            uint64_t seq = workSeq.load();
 
-            // Check if work is available
-            if (seq >= publishSeq.load()) {
+            // If no work is available at this seq return
+            if (seq >= publishSeq.load() || !workSeq.compare_exchange_strong(seq, seq + 1)) {
                 return nullptr;
             }
 
@@ -519,11 +519,11 @@ class Worker {
                 return;
             }
 
+            // Decrease order count in level
+            level->numOrders.fetch_sub(1);
+
             // Remove order from level
             level->queue->removeNode(node);
-
-            // Decrease order count in level
-            level->numOrders.fetch_sub(order->quantity);
 
             // Delete order
             myPools<MaxOrders, RingSize, NumBuckets>.orderPool.deallocate(order->memoryBlock);
@@ -577,12 +577,13 @@ class Worker {
 
         // Backtrack price level till a new best active one is found
         // If the price level no longer equal prev we can assume it was already udpated by someone else and exit
+        // Will only backtrack to within 10 cents - on a high volume system this is more than enough
         void backtrackPriceLevel(Symbol<RingSize, NumBuckets>* symbol, Side side, uint64_t prev) {
             // Direction will be different depending on the side so that must be seperated
             // It can deifnietly be combined but the code would be impossible to read
             if (side == Side::BUY) {
-                // Loop through possibel levels
-                for (uint64_t i = prev - 1; i > 0; i--) {
+                // Loop through 100 possibel levels
+                for (uint64_t i = prev - 1; i >= prev - 1000; i--) {
                     // If price is no longer equal to prev or prev is again active we can return
                     if (symbol->bestBidTicks.load() != prev || symbol->buyPrices.isActive(prev)) {
                         return;
@@ -599,8 +600,8 @@ class Worker {
                 // Nothing is found, attempt to CAS reset the price level
                 symbol->bestBidTicks.compare_exchange_strong(prev, 0);
             } else { // side == Side::SELL
-                // Loop through possibel levels
-                for (uint64_t i = prev + 1; i < UINT64_MAX; i++) {
+                // Loop through 100 possibel levels
+                for (uint64_t i = prev + 1; i <= prev + 1000; i++) {
                     // If price is no longer equal to prev or prev is again active we can return
                     if (symbol->bestAskTicks.load() != prev || symbol->sellPrices.isActive(prev)) {
                         return;
@@ -639,7 +640,7 @@ class Worker {
                     uint64_t current = symbol->bestAskTicks.load();
 
                     // If priceTicks is greater than or equal to current or CAS succeeds return
-                    if (priceTicks >= current || symbol->bestBidTicks.compare_exchange_strong(current, priceTicks)) {
+                    if (priceTicks >= current || symbol->bestAskTicks.compare_exchange_strong(current, priceTicks)) {
                         return;
                     }
                 }
@@ -838,8 +839,8 @@ class OrderBook {
             // Try to retrieve symbol
             auto symbolIt = symbols.find(symbolID);
 
-            // If symbol could not be found return
-            if (symbolIt == symbols.end()) {
+            // If symbol could not be found or price is invalid or quantity is invalid return
+            if (symbolIt == symbols.end() || price <= 0.0 || static_cast<int>(quantity) <= 0) {
                 return std::nullopt;
             }
 
@@ -877,8 +878,8 @@ class OrderBook {
         // Return true if the operation succeeds, otherwise return false
         // Type should have already been switched to Cancel, if not false will be returned
         bool cancelOrder(Order<RingSize, NumBuckets>* order) {
-            // Make sure type is cancel, if not return false
-            if (order->type != OrderType::CANCEL) {
+            // Make sure order is valid and type is cancel, if not return false
+            if (!order || order->type != OrderType::CANCEL) {
                 return false;
             }
 

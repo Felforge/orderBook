@@ -1,0 +1,3 @@
+Potential Problems:
+
+Two matching orders sent concurrently usually will not match. But, with continuous order flow they will be filled anyway soon threreafter. Does this go against FIFO ordering? Well, depends on how you look at it. These matching orders may not be matched to eachother but they are still matched to the next matching one that comes in. But - the difference will never be large and likely does not matter in a proof-of-concept system such as this.

@@ -777,7 +777,7 @@ TEST_F(OrderBookTestSingleThread, HandlesBestBidCrossSymbol) {
     OrderExt* order1 = result1->second;
     OrderExt* order2 = result2->second;
 
-    // Retrieve symbol
+    // Retrieve symbols
     auto symbol1 = order1->symbol;
     auto symbol2 = order2->symbol;
     
@@ -812,6 +812,441 @@ TEST_F(OrderBookTestSingleThread, HandlesBestBidCrossSymbol) {
     // Verify expected info
     EXPECT_EQ(symbol1->bestBidTicks.load(), 999500);
     EXPECT_EQ(symbol2->bestBidTicks.load(), 1499500);
+}
+
+// Test a match at the same price and quantity with buy being submitted first and then sell
+TEST_F(OrderBookTestSingleThread, HandlesSimpleEqualMatchBuySell) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit buy order
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve symbol
+    auto symbol = result->second->symbol;
+    
+    // Submit matching sell order
+    orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+
+    // Wait for processing
+    waitForProcessing();
+    
+    // Retrieve price levels
+    auto buyLevel = symbol->buyPrices.lookup(1500000);
+    auto sellLevel = symbol->sellPrices.lookup(1500000);
+
+    // Verify expected results
+    // Buy Level is expected to have 0 orders
+    EXPECT_EQ(buyLevel->numOrders.load(), 0);
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(sellLevel, nullptr);
+}
+
+// Test a match at the same price and quantity with sell being submitted first and then buy
+TEST_F(OrderBookTestSingleThread, HandlesSimpleEqualMatchSellBuy) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit buy order
+    auto result = orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve symbol
+    auto symbol = result->second->symbol;
+    
+    // Submit matching sell order
+    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+    // Wait for processing
+    waitForProcessing();
+    
+    // Retrieve price levels
+    auto buyLevel = symbol->buyPrices.lookup(1500000);
+    auto sellLevel = symbol->sellPrices.lookup(1500000);
+
+    // Verify expected results
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(buyLevel, nullptr);
+    // Buy Level is expected to have 0 orders
+    EXPECT_EQ(sellLevel->numOrders, 0);
+}
+
+// Test a match at the same price buy higher buy qauntity
+TEST_F(OrderBookTestSingleThread, HandlesMoreBuyEqualMatch) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit buy order
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 125, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve buy order
+    OrderExt* order = result->second;
+
+    // Retrieve symbol
+    auto symbol = order->symbol;
+    
+    // Submit matching sell order
+    orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+
+    // Wait for processing
+    waitForProcessing();
+    
+    // Retrieve price levels
+    auto buyLevel = symbol->buyPrices.lookup(1500000);
+    auto sellLevel = symbol->sellPrices.lookup(1500000);
+
+    // Verify expected results
+    // Buy Level is expected to have 1 order
+    // The order should have not gotten deleted
+    EXPECT_EQ(buyLevel->numOrders.load(), 1);
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(sellLevel, nullptr);
+    // Make sure the order's quantity decreased
+    EXPECT_EQ(order->quantity, 25);
+}
+
+// Test a match at the same price buy higher sell qauntity
+TEST_F(OrderBookTestSingleThread, HandlesMoreSellEqualMatch) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit buy order
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Submit matching sell order
+    result = orderBook.submitOrder(1, symbolID, Side::SELL, 125, 150.0);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve sell order
+    OrderExt* order = result->second;
+
+    // Retrieve symbol
+    auto symbol = order->symbol;
+    
+    // Retrieve price levels
+    auto buyLevel = symbol->buyPrices.lookup(1500000);
+    auto sellLevel = symbol->sellPrices.lookup(1500000);
+
+    // Verify expected results
+    // Buy Level is expected to have 0 orders
+    EXPECT_EQ(buyLevel->numOrders.load(), 0);
+    // Sell Level should have gotten created and should have retained one order
+    // This is because the order only got partially matched
+    EXPECT_EQ(sellLevel->numOrders.load(), 1);
+    // Make sure the sell order's quantity decreased
+    EXPECT_EQ(order->quantity, 25);
+}
+
+// Test a match at a different price and the same quantity
+TEST_F(OrderBookTestSingleThread, HandlesSimplePriceCrossMatch) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit buy order
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 160.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve symbol
+    auto symbol = result->second->symbol;
+    
+    // Submit matching sell order
+    orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+
+    // Wait for processing
+    waitForProcessing();
+    
+    // Retrieve price levels
+    auto buyLevel = symbol->buyPrices.lookup(1600000);
+    auto sellLevel = symbol->sellPrices.lookup(1500000);
+
+    // Verify expected results
+    // Buy Level is expected to have 0 orders
+    EXPECT_EQ(buyLevel->numOrders.load(), 0);
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(sellLevel, nullptr);
+    // Order should have been matched at 150, but there is no good way to check this
+}
+
+// Test a match at the same price and three orders matching the other's quantity
+TEST_F(OrderBookTestSingleThread, HandlesMultipleEqualMatch) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit buy order
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve symbol
+    auto symbol = result->second->symbol;
+    
+    // Submit matching sell order
+    orderBook.submitOrder(1, symbolID, Side::SELL, 300, 150.0);
+
+    // Wait for processing
+    waitForProcessing();
+    
+    // Retrieve price levels
+    auto buyLevel = symbol->buyPrices.lookup(1500000);
+    auto sellLevel = symbol->sellPrices.lookup(1500000);
+
+    // Verify expected results
+    // Buy Level is expected to have 0 orders
+    EXPECT_EQ(buyLevel->numOrders.load(), 0);
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(sellLevel, nullptr);
+}
+
+// Test a match at the same price and three orders exceeding the other's quantity
+TEST_F(OrderBookTestSingleThread, HandlesMultiplePartialMatch) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit buy order
+    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve 3rd buy order
+    OrderExt* order = result->second;
+
+    // Retrieve symbol
+    auto symbol = order->symbol;
+    
+    // Submit matching sell order
+    orderBook.submitOrder(1, symbolID, Side::SELL, 250, 150.0);
+
+    // Wait for processing
+    waitForProcessing();
+    
+    // Retrieve price levels
+    auto buyLevel = symbol->buyPrices.lookup(1500000);
+    auto sellLevel = symbol->sellPrices.lookup(1500000);
+
+    // Verify expected results
+    // Buy Level is expected to have 1 order
+    EXPECT_EQ(buyLevel->numOrders.load(), 1);
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(sellLevel, nullptr);
+    // Make sure the 3rd buy order's quantity decreased
+    EXPECT_EQ(order->quantity, 50);
+}
+
+// Verify FIFO ordering on the buy side
+TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingBuy) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit buy orders
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve orders
+    OrderExt* order1 = result1->second;
+    OrderExt* order2 = result2->second;
+
+    // Retrieve symbol
+    auto symbol = order1->symbol;
+
+    // Retrieve price levels
+    auto buyLevel = symbol->buyPrices.lookup(1500000);
+    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    
+    // Submit matching sell order
+    orderBook.submitOrder(1, symbolID, Side::SELL, 50, 150.0);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    // Buy Level is expected to have 2 orders
+    EXPECT_EQ(buyLevel->numOrders.load(), 2);
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(sellLevel, nullptr);
+    // Make sure the 1st buy order's quantity decreased
+    EXPECT_EQ(order1->quantity, 50);
+
+    // Submit matching sell order
+    orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    // Buy Level is expected to have 1 order
+    EXPECT_EQ(buyLevel->numOrders.load(), 1);
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(sellLevel, nullptr);
+    // Make sure the 2nd buy order's quantity decreased
+    EXPECT_EQ(order2->quantity, 50);
+}
+
+// Verify that price change can break FIFO ordering
+TEST_F(OrderBookTestSingleThread, HandlesPriceChangeBreaksFIFO) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit buy orders
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 149.9);
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 149.95);
+    auto result3 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve orders
+    OrderExt* order1 = result1->second;
+    OrderExt* order2 = result2->second;
+    OrderExt* order3 = result3->second;
+
+    // Retrieve symbol
+    auto symbol = order1->symbol;
+
+    // Retrieve price levels
+    auto buyLevel1 = symbol->buyPrices.lookup(1499000);
+    auto buyLevel2 = symbol->buyPrices.lookup(1499500);
+    auto buyLevel3 = symbol->buyPrices.lookup(1500000);
+    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    
+    // Submit matching sell order
+    orderBook.submitOrder(1, symbolID, Side::SELL, 50, 140.0);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    // First Buy Level is expected to have 1 order
+    EXPECT_EQ(buyLevel1->numOrders.load(), 1);
+    // Second Buy Level is expected to have 1 order
+    EXPECT_EQ(buyLevel2->numOrders.load(), 1);
+    // Third Buy Level is expected to have 1 order
+    EXPECT_EQ(buyLevel3->numOrders.load(), 1);
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(sellLevel, nullptr);
+    // Make sure the 3rd buy order's quantity decreased
+    EXPECT_EQ(order3->quantity, 50);
+
+    // Submit matching sell order
+    orderBook.submitOrder(1, symbolID, Side::SELL, 100, 140.0);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    // First Buy Level is expected to have 1 order
+    EXPECT_EQ(buyLevel1->numOrders.load(), 1);
+    // Second Buy Level is expected to have 1 order
+    EXPECT_EQ(buyLevel2->numOrders.load(), 1);
+    // Third Buy Level is expected to have 0 orders
+    EXPECT_EQ(buyLevel3->numOrders.load(), 0);
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(sellLevel, nullptr);
+    // Make sure the 1st buy order's quantity decreased
+    EXPECT_EQ(order2->quantity, 50);
+
+    // Submit matching sell order
+    orderBook.submitOrder(1, symbolID, Side::SELL, 100, 140.0);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    // First Buy Level is expected to have 1 order
+    EXPECT_EQ(buyLevel1->numOrders.load(), 1);
+    // Second Buy Level is expected to have 1 order
+    EXPECT_EQ(buyLevel2->numOrders.load(), 0);
+    // Third Buy Level is expected to have 0 orders
+    EXPECT_EQ(buyLevel3->numOrders.load(), 0);
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(sellLevel, nullptr);
+    // Make sure the 2nd buy order's quantity decreased
+    EXPECT_EQ(order1->quantity, 50);
+}
+
+// Verify FIFO ordering on the sell side
+TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingSell) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit sell orders
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve orders
+    OrderExt* order1 = result1->second;
+    OrderExt* order2 = result2->second;
+
+    // Retrieve symbol
+    auto symbol = order1->symbol;
+
+    // Retrieve price levels
+    auto buyLevel = symbol->buyPrices.lookup(1500000);
+    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    
+    // Submit matching buy order
+    orderBook.submitOrder(1, symbolID, Side::BUY, 50, 150.0);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(buyLevel, nullptr);
+    // Buy Level is expected to have 2 orders
+    EXPECT_EQ(sellLevel->numOrders.load(), 2);
+    // Make sure the 1st sell order's quantity decreased
+    EXPECT_EQ(order1->quantity, 50);
+
+    // Submit matching buy order
+    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    // Sell Level is expected to be nullptr as it never got created
+    EXPECT_EQ(buyLevel, nullptr);
+    // Buy Level is expected to have 2 orders
+    EXPECT_EQ(sellLevel->numOrders.load(), 1);
+    // Make sure the 2nd sell order's quantity decreased
+    EXPECT_EQ(order2->quantity, 50);
 }
 
 // Run all tests

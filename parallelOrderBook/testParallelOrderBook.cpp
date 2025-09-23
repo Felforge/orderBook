@@ -1267,6 +1267,31 @@ TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingSell) {
     EXPECT_EQ(order2->quantity, 50);
 }
 
+// Test submitting 100 orders concurrently
+TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmission) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit first order
+    // This is done to be able to get the price level pointer
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+    // Submit 99 more orders
+    for (int i = 0; i < 99; i++) {
+        orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    }
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Retrieve Price Level
+    auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel->numOrders.load(), 100);
+}
+
 // Run all tests
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

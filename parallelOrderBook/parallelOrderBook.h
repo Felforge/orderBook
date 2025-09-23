@@ -9,6 +9,7 @@
 #include <vector>
 #include <utility>
 #include <optional>
+#include <cmath>
 #include "../lockless/queue/queue.h"
 
 // Define SPIN_PAUSE based on architecture
@@ -42,7 +43,7 @@ enum class OrderType : uint8_t {
 // Convert price to integer ticks to avoid failiures do to float precision
 // Inline is needed for those granular optimizations
 inline uint64_t priceToTicks(double price) {
-    return static_cast<uint64_t>(round(price * TICK_PRECISION));
+    return static_cast<uint64_t>(std::round(price * TICK_PRECISION));
 }
 
 // Convert back to float price

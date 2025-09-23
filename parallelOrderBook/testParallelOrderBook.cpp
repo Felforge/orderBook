@@ -40,6 +40,24 @@ protected:
     OrderBook<1, 10, 1000> orderBook;
 };
 
+// Test fixture for Four Thread OrderBook tests
+// Automatically sets up, starts and shuts down the order book
+class OrderBookTestFourThread : public ::testing::Test {
+protected:
+    void SetUp() override {
+        // Start the order book system
+        orderBook.start();
+    }
+    
+    void TearDown() override {
+        // Shutdown the order book system
+        orderBook.shutdown();
+    }
+    
+    // Template parameters: NumWorkers=1, MaxSymbols=10, MaxOrders=1000
+    OrderBook<4, 10, 1000> orderBook;
+};
+
 // Test registering a symbol and submitting a buy order
 TEST_F(OrderBookTestSingleThread, HandlesValidBuyOrderSubmission) {
     // Register symbol

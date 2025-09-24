@@ -25,37 +25,37 @@ void waitForProcessing(int numMil = 100) {
 // Test fixture for Single Thread OrderBook tests
 // Automatically sets up, starts and shuts down the order book
 class OrderBookTestSingleThread : public ::testing::Test {
-protected:
-    void SetUp() override {
-        // Start the order book system
-        orderBook.start();
-    }
+    protected:
+        void SetUp() override {
+            // Start the order book system
+            orderBook.start();
+        }
     
-    void TearDown() override {
-        // Shutdown the order book system
-        orderBook.shutdown();
-    }
+        void TearDown() override {
+            // Shutdown the order book system
+            orderBook.shutdown();
+        }
     
-    // Template parameters: NumWorkers=1, MaxSymbols=10, MaxOrders=1000
-    OrderBook<1, 10, 1000> orderBook;
+        // Template parameters: NumWorkers=1, MaxSymbols=10, MaxOrders=1000
+        OrderBook<1, 10, 1000> orderBook;
 };
 
 // Test fixture for Four Thread OrderBook tests
 // Automatically sets up, starts and shuts down the order book
 class OrderBookTestFourThread : public ::testing::Test {
-protected:
-    void SetUp() override {
-        // Start the order book system
-        orderBook.start();
-    }
+    protected:
+        void SetUp() override {
+            // Start the order book system
+            orderBook.start();
+        }
     
-    void TearDown() override {
-        // Shutdown the order book system
-        orderBook.shutdown();
-    }
+        void TearDown() override {
+            // Shutdown the order book system
+            orderBook.shutdown();
+        }
     
-    // Template parameters: NumWorkers=1, MaxSymbols=10, MaxOrders=1000
-    OrderBook<4, 10, 1000> orderBook;
+        // Template parameters: NumWorkers=1, MaxSymbols=10, MaxOrders=1000
+        OrderBook<4, 10, 1000> orderBook;
 };
 
 // Test registering a symbol and submitting a buy order

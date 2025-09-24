@@ -356,14 +356,15 @@ TEST_F(OrderBookTestSingleThread, HandlesNodeAssignmentAndTypeTransition) {
     EXPECT_NE(result->second, nullptr);
     
     // After processing, order type should change to CANCEL
-    EXPECT_EQ(OrderType::CANCEL, result->second->type);
+    EXPECT_EQ(OrderType::CANCEL, result->second->type.load());
     
     // Check node assignment
-    EXPECT_NE(result->second->node, nullptr);
+    EXPECT_NE(result->second->node.load(), nullptr);
     
     // If node exists, check its memory block
-    if (result->second->node != nullptr) {
-        EXPECT_NE(result->second->node->memoryBlock, nullptr);
+    auto nodePtr = result->second->node.load();
+    if (nodePtr != nullptr) {
+        EXPECT_NE(nodePtr->memoryBlock, nullptr);
     }
 }
 

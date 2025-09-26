@@ -1294,7 +1294,7 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmission) {
 }
 
 // Test cancelling 100 orders concurrently
-TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmission) {
+TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderCancellation) {
     // Register symbol
     string symbolName = "AAPL";
     uint16_t symbolID = orderBook.registerSymbol(symbolName);
@@ -1325,6 +1325,9 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmission) {
     for (OrderExt* order : orders) {
         orderBook.cancelOrder(order);
     }
+
+    // Wait for processing
+    waitForProcessing();
 
     // Verify expected results
     EXPECT_EQ(buyLevel->numOrders.load(), 0);

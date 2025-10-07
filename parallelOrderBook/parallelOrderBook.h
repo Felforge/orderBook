@@ -9,6 +9,7 @@
 #include <vector>
 #include <utility>
 #include <optional>
+#include <cmath>
 #include "../lockless/queue/queue.h"
 
 // Define SPIN_PAUSE based on architecture

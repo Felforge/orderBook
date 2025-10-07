@@ -1267,12 +1267,13 @@ TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingSell) {
     EXPECT_EQ(order2->quantity, 50);
 }
 
+
 // Test submitting 100 orders concurrently
 TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmission) {
     // Register symbol
     string symbolName = "AAPL";
     uint16_t symbolID = orderBook.registerSymbol(symbolName);
-    
+
     // Submit first order
     // This is done to be able to get the price level pointer
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
@@ -1281,10 +1282,10 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmission) {
     for (int i = 0; i < 99; i++) {
         orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
     }
-    
+
     // Wait for processing
     waitForProcessing();
-    
+
     // Retrieve Price Level
     auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
 
@@ -1353,6 +1354,312 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderCancellation) {
         orderBook.cancelOrder(order);
     }
 
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel->numOrders.load(), 0);
+}
+
+// Test matching 200 orders concurrently
+TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderMatching) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit first order
+    // This is done to be able to get the price level pointer
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+    // Submit and store 99 more orders
+    for (int i = 0; i < 99; i++) {
+        orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    }
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Retrieve Price Level
+    auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel->numOrders.load(), 100);
+
+    // Submit and store 100 sell orders
+    for (int i = 0; i < 100; i++) {
+        orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+    }
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel->numOrders.load(), 0);
+}
+
+// Test matching 200 orders concurrently on different price levels
+TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderMatchingDiffPrice) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit first order
+    // This is done to be able to get the price level pointer
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+    // Submit and store 99 more orders
+    for (int i = 0; i < 99; i++) {
+        orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    }
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Retrieve Price Level
+    auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel->numOrders.load(), 100);
+
+    // Submit and store 100 sell orders
+    for (double i = 0.0; i < 100.0; i++) {
+        orderBook.submitOrder(1, symbolID, Side::SELL, 100, 50.0 + i);
+    }
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel->numOrders.load(), 0);
+}
+
+// Simultaneously: submit orders, cancel orders, and match orders
+TEST_F(OrderBookTestFourThread, HandlesMixedConcurrentOperations) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+
+    // Create vector to hold orders
+    vector<OrderExt*> orders;
+
+    // Submit first order
+    // This is done to be able to get the price level pointer
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+    // Store order
+    orders.push_back(result->second);
+
+    // Submit the other 49 orders
+    for (int i = 1; i < 50; i++) {
+        result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+        orders.push_back(result->second);
+    }
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve symbol
+    auto symbol = result->second->symbol;
+
+    // Verify state
+    auto buyLevel150 = symbol->buyPrices.lookup(1500000);
+    EXPECT_EQ(buyLevel150->numOrders.load(), 50);
+
+    // Submit orders at 148.0 (safe to cancel - won't be matched)
+    vector<OrderExt*> safeOrders;
+    for (int i = 0; i < 25; i++) {
+        result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 148.0);
+        safeOrders.push_back(result->second);
+    }
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify state
+    auto buyLevel148 = symbol->buyPrices.lookup(1480000);
+    auto buyLevel150 = symbol->buyPrices.lookup(1500000);
+    EXPECT_EQ(buyLevel148->numOrders.load(), 25);
+    EXPECT_EQ(buyLevel150->numOrders.load(), 50);
+
+    // Mixed operations - submit new orders, cancel old ones, and match
+    // Cancel safe orders (148.0 - won't be matched)
+    for (int i = 0; i < 25; i++) {
+        // Add to 149
+        result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 149.0);
+        orders.push_back(result->second);
+
+        // Cancel an order from 148
+        orderBook.cancelOrder(safeOrders[i]);
+
+        // Send two matches (we need 50)
+        orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+        orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+    }
+
+    // Wait for all mixed operations to complete
+    waitForProcessing();
+
+    // Verify final state
+    auto buyLevel149 = symbol->buyPrices.lookup(1490000);
+    EXPECT_EQ(buyLevel148->numOrders.load(), 0);
+    EXPECT_EQ(buyLevel149->numOrders.load(), 25);
+    EXPECT_EQ(buyLevel150->numOrders.load(), 0);
+}
+
+// Submit until pools are nearly full, then cancel all
+// Submit again to verify memory was properly reclaimed
+TEST_F(OrderBookTestFourThread, HandlesMemoryPoolStress) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+
+    // Create vector to hold orders
+    vector<OrderExt*> orders;
+
+    // Submit first order
+    // This is done to be able to get the price level pointer
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+    // Store order
+    orders.push_back(result->second);
+
+    // Submit the other 999 orders to fill up memory pool
+    for (int i = 1; i < 1000; i++) {
+        result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+        orders.push_back(result->second);
+    }
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve Price Level
+    auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel->numOrders.load(), 1000);
+    
+    // Make sure pool is full
+    EXPECT_THROW(orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0), bad_alloc);
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel->numOrders.load(), 1000);
+
+    // Remove all 1000 orders
+    for (OrderExt* order : orders) {
+        orderBook.cancelOrder(order);
+    }
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel->numOrders.load(), 0);
+
+    // Drain the pool again
+    for (int i = 0; i < 1000; i++) {
+        orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    }
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel->numOrders.load(), 1000);
+}
+
+// Heavy trading on 3 different symbols simultaneously
+// Verify symbol isolation (no cross-contamination)
+TEST_F(OrderBookTestFourThread, HandlesMultipleSymbolsConcurrent) {
+    // Register symbols
+    string symbolName1 = "AAPL";
+    uint16_t symbolID1 = orderBook.registerSymbol(symbolName1);
+    string symbolName2 = "AMZN";
+    uint16_t symbolID2 = orderBook.registerSymbol(symbolName2);
+    string symbolName3 = "MSFT";
+    uint16_t symbolID3 = orderBook.registerSymbol(symbolName3);
+
+    // Create vector to hold orders
+    vector<OrderExt*> orders;
+    
+    // Submit first order for each
+    // This is done to be able to get the price level pointer
+    auto result1 = orderBook.submitOrder(1, symbolID1, Side::BUY, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID2, Side::BUY, 100, 150.0);
+    auto result3 = orderBook.submitOrder(1, symbolID3, Side::BUY, 100, 150.0);
+
+    // Store orders
+    orders.push_back(result1->second);
+    orders.push_back(result2->second);
+    orders.push_back(result3->second);
+
+    // Submit and store 99 more orders for each
+    for (int i = 0; i < 99; i++) {
+        result1 = orderBook.submitOrder(1, symbolID1, Side::BUY, 100, 150.0);
+        orders.push_back(result1->second);
+        result2 = orderBook.submitOrder(1, symbolID2, Side::BUY, 100, 150.0);
+        orders.push_back(result2->second);
+        result3 = orderBook.submitOrder(1, symbolID3, Side::BUY, 100, 150.0);
+        orders.push_back(result3->second);
+    }
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Retrieve Price Levels
+    auto buyLevel1 = result1->second->symbol->buyPrices.lookup(1500000);
+    auto buyLevel2 = result2->second->symbol->buyPrices.lookup(1500000);
+    auto buyLevel3 = result3->second->symbol->buyPrices.lookup(1500000);
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel1->numOrders.load(), 100);
+    EXPECT_EQ(buyLevel2->numOrders.load(), 100);
+    EXPECT_EQ(buyLevel3->numOrders.load(), 100);
+
+    // Remove all 300 orders
+    for (OrderExt* order : orders) {
+        orderBook.cancelOrder(order);
+    }
+
+    // Wait for processing
+    waitForProcessing();
+
+    // Verify expected results
+    EXPECT_EQ(buyLevel1->numOrders.load(), 0);
+    EXPECT_EQ(buyLevel2->numOrders.load(), 0);
+    EXPECT_EQ(buyLevel3->numOrders.load(), 0);
+}
+
+// Submit orders at different prices concurrently
+// Match with one order and verify highest price wins
+TEST_F(OrderBookTestFourThread, HandlesPriceTimePriority) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit first order
+    // This is done to be able to get the price level pointer
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+    // Submit and store 99 more orders
+    for (double i = 1.0; i < 100.0; i++) {
+        result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 - i);
+    }
+    
+    // Wait for processing
+    waitForProcessing();
+
+    // Retrieve Symbol
+    auto symbol = result->second->symbol;
+    
+    // Retrieve Price Level
+    auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
+
+    // Verify expected results
+    for (int i = 0; i < 100; i++)
+    EXPECT_EQ(buyLevel->numOrders.load(), 1);
+
+    // Submit and store 100 sell orders
+    for (int i = 0; i < 100; i++) {
+        result = orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+    }
+    
     // Wait for processing
     waitForProcessing();
 

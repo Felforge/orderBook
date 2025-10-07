@@ -12,7 +12,7 @@ void isOrderEqual(OrderExt* expected, OrderExt* actual) {
     EXPECT_EQ(expected->orderID, actual->orderID);
     EXPECT_EQ(expected->userID, actual->userID);
     EXPECT_EQ(expected->priceTicks, actual->priceTicks);
-    EXPECT_EQ(expected->quantity.load(), actual->quantity.load());
+    EXPECT_EQ(expected->quantity, actual->quantity);
     EXPECT_EQ(expected->side, actual->side);
     EXPECT_EQ(expected->symbolID, actual->symbolID);
 }
@@ -356,15 +356,14 @@ TEST_F(OrderBookTestSingleThread, HandlesNodeAssignmentAndTypeTransition) {
     EXPECT_NE(result->second, nullptr);
     
     // After processing, order type should change to CANCEL
-    EXPECT_EQ(OrderType::CANCEL, result->second->type.load());
+    EXPECT_EQ(OrderType::CANCEL, result->second->type);
     
     // Check node assignment
-    EXPECT_NE(result->second->node.load(), nullptr);
+    EXPECT_NE(result->second->node, nullptr);
     
     // If node exists, check its memory block
-    auto nodePtr = result->second->node.load();
-    if (nodePtr != nullptr) {
-        EXPECT_NE(nodePtr->memoryBlock, nullptr);
+    if (result->second->node != nullptr) {
+        EXPECT_NE(result->second->node->memoryBlock, nullptr);
     }
 }
 
@@ -1291,6 +1290,34 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmission) {
 
     // Verify expected results
     EXPECT_EQ(buyLevel->numOrders.load(), 100);
+}
+
+// Test submitting 100 orders concurrently to different price levels
+TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmissionDiffPrice) {
+    // Register symbol
+    string symbolName = "AAPL";
+    uint16_t symbolID = orderBook.registerSymbol(symbolName);
+    
+    // Submit first order
+    // This is done to be able to get the symbol pointer
+    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+    // Submit 99 more orders
+    for (double i = 1.0; i < 100.0; i++) {
+        orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 + i);
+    }
+    
+    // Wait for processing
+    waitForProcessing();
+    
+    // Retrieve Symbol
+    auto symbol = result->second->symbol;
+
+    // Check all price levels
+    for (int i = 0; i < 100; i++) {
+        auto buyLevel = symbol->buyPrices.lookup(1500000 + 10000 * i);
+        EXPECT_EQ(buyLevel->numOrders.load(), 1);
+    }
 }
 
 // Test cancelling 100 orders concurrently

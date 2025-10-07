@@ -9,7 +9,6 @@
 #include <vector>
 #include <utility>
 #include <optional>
-#include <cmath>
 #include "../lockless/queue/queue.h"
 
 // Define SPIN_PAUSE based on architecture
@@ -43,7 +42,7 @@ enum class OrderType : uint8_t {
 // Convert price to integer ticks to avoid failiures do to float precision
 // Inline is needed for those granular optimizations
 inline uint64_t priceToTicks(double price) {
-    return static_cast<uint64_t>(std::round(price * TICK_PRECISION));
+    return static_cast<uint64_t>(round(price * TICK_PRECISION));
 }
 
 // Convert back to float price
@@ -78,7 +77,7 @@ struct Order {
     Side side;
 
     // Add/Cancel
-    std::atomic<OrderType> type;
+    OrderType type;
 
     // Symbol ID
     uint16_t symbolID;
@@ -87,7 +86,7 @@ struct Order {
     Symbol<RingSize, NumBuckets>* symbol;
 
     // Store the node it is kept in
-    std::atomic<Node<Order<RingSize, NumBuckets>*>*> node;
+    Node<Order*>* node;
 
     // Create orderID from symbol and sequence
     static uint64_t createOrderID(uint16_t symbolID, uint64_t localSeq) {
@@ -101,10 +100,7 @@ struct Order {
     Order(void* memoryBlock, uint64_t orderID, uint32_t userID, Side side, uint16_t symbolID, 
         Symbol<RingSize, NumBuckets>* symbol, uint32_t quantity, uint64_t price, OrderType type)
         : memoryBlock(memoryBlock), orderID(orderID), userID(userID), quantity(quantity), 
-        priceTicks(price), side(side), symbolID(symbolID), symbol(symbol) {
-        this->type.store(type);
-        this->node.store(nullptr);
-    }
+        priceTicks(price), side(side), type(type), symbolID(symbolID), symbol(symbol), node(nullptr) {}
 };
 
 // Price Level struct
@@ -351,7 +347,7 @@ class Worker {
 
         // Function to process order
         void processOrder(Order<RingSize, NumBuckets>* order) {
-            switch (order->type.load()) {
+            switch (order->type) {
                 case OrderType::ADD:
                     insertOrder(order);
                     break;
@@ -488,10 +484,10 @@ class Worker {
                 Node<Order<RingSize, NumBuckets>*>* node = level->queue->pushRight(order, &myPools<MaxOrders, RingSize, NumBuckets>.nodePool);
 
                 // Store node pointer in order
-                order->node.store(node);
+                order->node = node;
 
                 // Ammend order type to cancel so the user is able to cancel it
-                order->type.store(OrderType::CANCEL);
+                order->type = OrderType::CANCEL;
 
                 // If node was successfully created increment numOrders
                 if (node) {
@@ -512,7 +508,7 @@ class Worker {
             Symbol<RingSize, NumBuckets>* symbol = order->symbol; 
 
             // Retrieve node from order
-            Node<Order<RingSize, NumBuckets>*>* node = order->node.load();
+            Node<Order<RingSize, NumBuckets>*>* node = order->node;
 
             // Get price level
             PriceLevel<RingSize, NumBuckets>* level = getOrCreatePriceLevel(symbol, order->priceTicks, order->side);
@@ -715,11 +711,7 @@ class WorkerPool {
             // Toggle running on
             running.store(true);
 
-            // Reserve space to avoid reallocation during concurrent access
-            workers.reserve(NumWorkers);
-            workerThreads.reserve(NumWorkers);
-
-            // Create workers first
+            // Create worker threads
             for (uint16_t i = 0; i < NumWorkers; i++) {
                 // Allocate from pool
                 void* block = alocPool->allocate();
@@ -728,7 +720,7 @@ class WorkerPool {
                 workers.emplace_back(block, i, &running);
             }
 
-            // Then start threads after all workers are created
+            // Start worker threads
             for (uint16_t i = 0; i < NumWorkers; i++) {
                 // Launch thread
                 workerThreads.emplace_back([this, i]() {
@@ -890,7 +882,7 @@ class OrderBook {
         // Type should have already been switched to Cancel, if not false will be returned
         bool cancelOrder(Order<RingSize, NumBuckets>* order) {
             // Make sure order is valid and type is cancel, if not return false
-            if (!order || order->type.load() != OrderType::CANCEL) {
+            if (!order || order->type != OrderType::CANCEL) {
                 return false;
             }
 

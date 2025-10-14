@@ -89,6 +89,10 @@ struct Order {
     // Store the node it is kept in
     Node<Order*>* node;
 
+    // Owner memory pool
+    // Generic reference to MmemoryPool
+    GenericMemoryPool* ownerPool;
+
     // Create orderID from symbol and sequence
     static uint64_t createOrderID(uint16_t symbolID, uint64_t localSeq) {
         return (static_cast<uint64_t>(symbolID) << 48) | localSeq;
@@ -98,9 +102,9 @@ struct Order {
     Order() = default;
 
     // Regular constructor
-    Order(void* memoryBlock, uint64_t orderID, uint32_t userID, Side side, uint16_t symbolID, 
-        Symbol<RingSize, NumBuckets>* symbol, uint32_t quantity, uint64_t price, OrderType type)
-        : memoryBlock(memoryBlock), orderID(orderID), userID(userID), quantity(quantity), 
+    Order(void* memoryBlock, GenericMemoryPool* ownerPool, uint64_t orderID, uint32_t userID, Side side, 
+        uint16_t symbolID, Symbol<RingSize, NumBuckets>* symbol, uint32_t quantity, uint64_t price, OrderType type)
+        : memoryBlock(memoryBlock), ownerPool(ownerPool), orderID(orderID), userID(userID), quantity(quantity), 
         priceTicks(price), side(side), type(type), symbolID(symbolID), symbol(symbol), node(nullptr) {}
 };
 
@@ -399,6 +403,9 @@ class Worker {
 
                     // Subtract from level->numOrdrs
                     level->numOrders.fetch_sub(1);
+
+                    // Deallocate the fully matched existing order
+                    match->ownerPool->deallocate(match->memoryBlock);
                 } else { // match->quantity > order->quantity
                     // Get Match quantity
                     uint32_t matchQuant = order->quantity.load();
@@ -477,7 +484,7 @@ class Worker {
 
                 // Price level could not be created, delete the order
                 if (!level) {
-                    myPools<MaxOrders, RingSize, NumBuckets>.orderPool.deallocate(order->memoryBlock);
+                    order->ownerPool->deallocate(order->memoryBlock);
                     return;
                 }
 
@@ -499,7 +506,7 @@ class Worker {
                 updateBestPrices(symbol, order->priceTicks, order->side);
             } else {
                 // Order fully matched, deallocate
-                myPools<MaxOrders, RingSize, NumBuckets>.orderPool.deallocate(order->memoryBlock);
+                order->ownerPool->deallocate(order->memoryBlock);
             }
         }
 
@@ -516,7 +523,7 @@ class Worker {
 
             // Price level should exist, if not delete order and return
             if (!level) {
-                myPools<MaxOrders, RingSize, NumBuckets>.orderPool.deallocate(order->memoryBlock);
+                order->ownerPool->deallocate(order->memoryBlock);
                 return;
             }
 
@@ -527,7 +534,7 @@ class Worker {
             level->queue->removeNode(node);
 
             // Delete order
-            myPools<MaxOrders, RingSize, NumBuckets>.orderPool.deallocate(order->memoryBlock);
+            order->ownerPool->deallocate(order->memoryBlock);
         }
 
         PriceLevel<RingSize, NumBuckets>* getOrCreatePriceLevel(Symbol<RingSize, NumBuckets>* symbol, uint64_t priceTicks, Side side) {
@@ -867,7 +874,7 @@ class OrderBook {
             }
 
             // Create order
-            Order<RingSize, NumBuckets>* order = new (orderBlock) Order<RingSize, NumBuckets>(orderBlock, orderID, userID, side, symbolID, symbol, quantity, priceTicks, OrderType::ADD);
+            Order<RingSize, NumBuckets>* order = new (orderBlock) Order<RingSize, NumBuckets>(orderBlock, &myPools<MaxOrders, RingSize, NumBuckets>.orderPool, orderID, userID, side, symbolID, symbol, quantity, priceTicks, OrderType::ADD);
 
             // Publish to universal ring
             publishRing.publish(order);

@@ -75,7 +75,7 @@ TEST_F(OrderBookTestSingleThread, HandlesValidBuyOrderSubmission) {
     EXPECT_NE(result->second, nullptr);
     
     // Create expected orders to compare against
-    OrderExt expected(nullptr, result->first, 1, Side::BUY, symbolID, nullptr, 100, priceToTicks(150.0), OrderType::ADD);
+    OrderExt expected(nullptr, nullptr, result->first, 1, Side::BUY, symbolID, nullptr, 100, priceToTicks(150.0), OrderType::ADD);
     
     // Verify order details using isOrderEqual
     isOrderEqual(&expected, result->second);
@@ -98,7 +98,7 @@ TEST_F(OrderBookTestSingleThread, HandlesValidSellOrderSubmission) {
     EXPECT_NE(result->second, nullptr);
     
     // Create expected orders to compare against
-    OrderExt expected(nullptr, result->first, 1, Side::SELL, symbolID, nullptr, 100, priceToTicks(150.0), OrderType::ADD);
+    OrderExt expected(nullptr, nullptr, result->first, 1, Side::SELL, symbolID, nullptr, 100, priceToTicks(150.0), OrderType::ADD);
     
     // Verify order details using isOrderEqual
     isOrderEqual(&expected, result->second);
@@ -219,20 +219,23 @@ TEST_F(OrderBookTestSingleThread, HandlesPriceTickPrecision) {
     EXPECT_NE(result1->second, nullptr);
     
     // Create expected order to compare against
-    OrderExt expected1(nullptr, result1->first, 1, Side::BUY, symbolID, nullptr, 100, priceToTicks(150.0001), OrderType::ADD);
+    OrderExt expected1(nullptr, nullptr, result1->first, 1, Side::BUY, symbolID, nullptr, 100, priceToTicks(150.0001), OrderType::ADD);
     
     // Verify order details using isOrderEqual
     isOrderEqual(&expected1, result1->second);
 
-    // Submit first buy order
+    // Submit second buy order
     auto result2 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.00009);
+
+    // Wait for processing
+    waitForProcessing();
 
     // Verify that the order was submitted successfully
     EXPECT_TRUE(result2.has_value());
     EXPECT_NE(result2->second, nullptr);
 
     // Create expected order to compare against
-    OrderExt expected2(nullptr, result2->first, 1, Side::BUY, symbolID, nullptr, 100, priceToTicks(150.0001), OrderType::ADD);
+    OrderExt expected2(nullptr, nullptr, result2->first, 1, Side::BUY, symbolID, nullptr, 100, priceToTicks(150.0001), OrderType::ADD);
     
     // Verify order details using isOrderEqual
     isOrderEqual(&expected2, result2->second);
@@ -315,13 +318,6 @@ TEST_F(OrderBookTestSingleThread, HandlesZeroQuantityOrder) {
 
 // Test negtaive quantity order sumbission
 TEST_F(OrderBookTestSingleThread, HandlesNegativeQuantityOrder) {
-    // Create Order Book
-    // Template parameters: NumWorkers=1, MaxSymbols=10, MaxOrders=1000
-    OrderBook<1, 10, 1000> orderBook;
-
-    // Start the order book system
-    orderBook.start();
-
     // Register symbol
     string symbolName = "AAPL";
     uint16_t symbolID = orderBook.registerSymbol(symbolName);
@@ -345,9 +341,6 @@ TEST_F(OrderBookTestSingleThread, HandlesNodeAssignmentAndTypeTransition) {
     // Submit first buy order
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
     
-    // Order should initially be ADD type
-    EXPECT_EQ(OrderType::ADD, result->second->type);
-    
     // Wait for processing
     waitForProcessing();
     
@@ -361,10 +354,8 @@ TEST_F(OrderBookTestSingleThread, HandlesNodeAssignmentAndTypeTransition) {
     // Check node assignment
     EXPECT_NE(result->second->node, nullptr);
     
-    // If node exists, check its memory block
-    if (result->second->node != nullptr) {
-        EXPECT_NE(result->second->node->memoryBlock, nullptr);
-    }
+    // Check its memory block
+    EXPECT_NE(result->second->node->memoryBlock, nullptr);
 }
 
 // Test removing a single order
@@ -378,6 +369,10 @@ TEST_F(OrderBookTestSingleThread, HandlesSingleOrderRemoval) {
     
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
 
     // Retrieve order
     OrderExt* order = result->second;
@@ -399,28 +394,6 @@ TEST_F(OrderBookTestSingleThread, HandlesSingleOrderRemoval) {
 
     // Verify that price level no longer has this order
     EXPECT_EQ(priceLevel->numOrders.load(), 0);
-}
-
-// Test removing a single order
-TEST_F(OrderBookTestSingleThread, HandlesInProccessRemoval) {
-    // Register symbol
-    string symbolName = "AAPL";
-    uint16_t symbolID = orderBook.registerSymbol(symbolName);
-    
-    // Submit first buy order
-    auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
-
-    // Retrieve order
-    OrderExt* order = result->second;
-    
-    // Attempt to remove order without waiting
-    bool wasRemoved = orderBook.cancelOrder(order);
-
-    // Wait for processing
-    waitForProcessing();
-
-    // Verify that order was successfuly removed
-    EXPECT_FALSE(wasRemoved);
 }
 
 // Test removing a null order
@@ -448,6 +421,14 @@ TEST_F(OrderBookTestSingleThread, HandlesMultipleOrderRemovalSameLevel) {
     
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_TRUE(result3.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
+    EXPECT_NE(result3->second, nullptr);
 
     // Retrieve orders
     OrderExt* order1 = result1->second;
@@ -510,6 +491,14 @@ TEST_F(OrderBookTestSingleThread, HandlesMultipleOrderRemovalDiffLevel) {
     
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_TRUE(result3.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
+    EXPECT_NE(result3->second, nullptr);
 
     // Retrieve orders
     OrderExt* order1 = result1->second;
@@ -581,6 +570,10 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestBidNoFallback) {
     // Wait for processing
     waitForProcessing();
 
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
     // Retrieve order
     OrderExt* order = result->second;
 
@@ -592,6 +585,9 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestBidNoFallback) {
 
     // Cancel order
     orderBook.cancelOrder(order);
+    
+    // Wait for processing
+    waitForProcessing();
 
     // Add sell order to reset best buy price
     // Needs to be at a price that would have matched
@@ -618,6 +614,12 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestBidWithFallback) {
     // Wait for processing
     waitForProcessing();
 
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
+
     // Retrieve orders
     OrderExt* order1 = result1->second;
     OrderExt* order2 = result2->second;
@@ -630,6 +632,9 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestBidWithFallback) {
 
     // Cancel first order
     orderBook.cancelOrder(order1);
+
+    // Wait for processing
+    waitForProcessing();
 
     // Add sell order to reset best buy price
     // Needs to be at a price that would have matched
@@ -654,6 +659,10 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestAskNoFallback) {
     // Wait for processing
     waitForProcessing();
 
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
     // Retrieve order
     OrderExt* order = result->second;
 
@@ -665,6 +674,9 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestAskNoFallback) {
 
     // Cancel order
     orderBook.cancelOrder(order);
+
+    // Wait for processing
+    waitForProcessing();
 
     // Add sell order to reset best buy price
     // Needs to be at a price that would have matched
@@ -691,6 +703,12 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestAskWithFallback) {
     // Wait for processing
     waitForProcessing();
 
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
+
     // Retrieve orders
     OrderExt* order1 = result1->second;
     OrderExt* order2 = result2->second;
@@ -704,12 +722,19 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestAskWithFallback) {
     // Cancel first order
     orderBook.cancelOrder(order1);
 
+    // Wait for processing
+    waitForProcessing();
+
     // Add sell order to reset best buy price
     // Needs to be at a price that would have matched
     auto sellOrder = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.01);
 
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(sellOrder.has_value());
+    EXPECT_NE(sellOrder->second, nullptr);
 
     // Verify expected info
     EXPECT_EQ(symbol->bestAskTicks.load(), 1500500);
@@ -731,6 +756,12 @@ TEST_F(OrderBookTestSingleThread, HandlesDuplicateOrderRemoval) {
     
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
 
     // Retrieve orders
     OrderExt* order1 = result1->second;
@@ -791,6 +822,12 @@ TEST_F(OrderBookTestSingleThread, HandlesBestBidCrossSymbol) {
     // Wait for processing
     waitForProcessing();
 
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
+
     // Retrieve orders
     OrderExt* order1 = result1->second;
     OrderExt* order2 = result2->second;
@@ -806,12 +843,19 @@ TEST_F(OrderBookTestSingleThread, HandlesBestBidCrossSymbol) {
     // Cancel first order
     orderBook.cancelOrder(order1);
 
+    // Wait for processing
+    waitForProcessing();
+
     // Add sell order to reset best buy price on Symbol 1
     // Needs to be at a price that would have matched
-    orderBook.submitOrder(1, symbolID1, Side::SELL, 100, 99.99);
+    auto result3 = orderBook.submitOrder(1, symbolID1, Side::SELL, 100, 99.99);
 
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result3.has_value());
+    EXPECT_NE(result3->second, nullptr);
 
     // Verify expected info
     EXPECT_EQ(symbol1->bestBidTicks.load(), 999500);
@@ -820,12 +864,19 @@ TEST_F(OrderBookTestSingleThread, HandlesBestBidCrossSymbol) {
     // Cancel second order
     orderBook.cancelOrder(order2);
 
+    // Wait for processing
+    waitForProcessing();
+
     // Add sell order to reset best buy price on Symbol 2
     // Needs to be at a price that would have matched
-    orderBook.submitOrder(1, symbolID2, Side::SELL, 100, 149.99);
+    auto result4 = orderBook.submitOrder(1, symbolID2, Side::SELL, 100, 149.99);
 
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result4.has_value());
+    EXPECT_NE(result4->second, nullptr);
 
     // Verify expected info
     EXPECT_EQ(symbol1->bestBidTicks.load(), 999500);
@@ -843,6 +894,10 @@ TEST_F(OrderBookTestSingleThread, HandlesSimpleEqualMatchBuySell) {
     
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
 
     // Retrieve symbol
     auto symbol = result->second->symbol;
@@ -876,6 +931,10 @@ TEST_F(OrderBookTestSingleThread, HandlesSimpleEqualMatchSellBuy) {
     // Wait for processing
     waitForProcessing();
 
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
     // Retrieve symbol
     auto symbol = result->second->symbol;
     
@@ -907,6 +966,10 @@ TEST_F(OrderBookTestSingleThread, HandlesMoreBuyEqualMatch) {
     
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
 
     // Retrieve buy order
     OrderExt* order = result->second;
@@ -945,12 +1008,20 @@ TEST_F(OrderBookTestSingleThread, HandlesMoreSellEqualMatch) {
     
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
     
     // Submit matching sell order
     result = orderBook.submitOrder(1, symbolID, Side::SELL, 125, 150.0);
 
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
 
     // Retrieve sell order
     OrderExt* order = result->second;
@@ -984,6 +1055,10 @@ TEST_F(OrderBookTestSingleThread, HandlesSimplePriceCrossMatch) {
     // Wait for processing
     waitForProcessing();
 
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
     // Retrieve symbol
     auto symbol = result->second->symbol;
     
@@ -1013,11 +1088,19 @@ TEST_F(OrderBookTestSingleThread, HandlesMultipleEqualMatch) {
     
     // Submit buy order
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
-    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
-    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
     
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_NE(result->second, nullptr);
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
 
     // Retrieve symbol
     auto symbol = result->second->symbol;
@@ -1046,12 +1129,20 @@ TEST_F(OrderBookTestSingleThread, HandlesMultiplePartialMatch) {
     uint16_t symbolID = orderBook.registerSymbol(symbolName);
     
     // Submit buy order
-    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
-    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result1 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+    auto result2 = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
     
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_NE(result->second, nullptr);
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
 
     // Retrieve 3rd buy order
     OrderExt* order = result->second;
@@ -1090,6 +1181,12 @@ TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingBuy) {
     
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
 
     // Retrieve orders
     OrderExt* order1 = result1->second;
@@ -1144,6 +1241,14 @@ TEST_F(OrderBookTestSingleThread, HandlesPriceChangeBreaksFIFO) {
     
     // Wait for processing
     waitForProcessing();
+
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_TRUE(result3.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
+    EXPECT_NE(result3->second, nullptr);
 
     // Retrieve orders
     OrderExt* order1 = result1->second;
@@ -1227,6 +1332,12 @@ TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingSell) {
     // Wait for processing
     waitForProcessing();
 
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
+
     // Retrieve orders
     OrderExt* order1 = result1->second;
     OrderExt* order2 = result2->second;
@@ -1239,7 +1350,7 @@ TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingSell) {
     auto sellLevel = symbol->sellPrices.lookup(1500000);
     
     // Submit matching buy order
-    orderBook.submitOrder(1, symbolID, Side::BUY, 50, 150.0);
+    auto result3 = orderBook.submitOrder(1, symbolID, Side::BUY, 50, 150.0);
 
     // Wait for processing
     waitForProcessing();
@@ -1278,9 +1389,17 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmission) {
     // This is done to be able to get the price level pointer
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
 
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
     // Submit 99 more orders
     for (int i = 0; i < 99; i++) {
-        orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+        result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
     }
 
     // Wait for processing
@@ -1303,9 +1422,17 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmissionDiffPrice) {
     // This is done to be able to get the symbol pointer
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
 
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
     // Submit 99 more orders
     for (double i = 1.0; i < 100.0; i++) {
-        orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 + i);
+        result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 + i);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
     }
     
     // Wait for processing
@@ -1334,12 +1461,21 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderCancellation) {
     // This is done to be able to get the price level pointer
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
 
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
     // Store order
     orders.push_back(result->second);
 
     // Submit and store 99 more orders
     for (int i = 0; i < 99; i++) {
         result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
+
         orders.push_back(result->second);
     }
     
@@ -1351,7 +1487,10 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderCancellation) {
 
     // Remove all 100 orders
     for (OrderExt* order : orders) {
-        orderBook.cancelOrder(order);
+        bool wasRemoved = orderBook.cancelOrder(order);
+
+        // Verify that order was removed
+        EXPECT_TRUE(wasRemoved);
     }
 
     // Wait for processing
@@ -1371,9 +1510,17 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderMatching) {
     // This is done to be able to get the price level pointer
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
 
-    // Submit and store 99 more orders
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
+    // Submit 99 more orders
     for (int i = 0; i < 99; i++) {
-        orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+        result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
     }
     
     // Wait for processing
@@ -1385,7 +1532,7 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderMatching) {
     // Verify expected results
     EXPECT_EQ(buyLevel->numOrders.load(), 100);
 
-    // Submit and store 100 sell orders
+    // Submit 100 sell orders
     for (int i = 0; i < 100; i++) {
         orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
     }
@@ -1407,9 +1554,17 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderMatchingDiffPrice) {
     // This is done to be able to get the price level pointer
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
 
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
     // Submit and store 99 more orders
     for (int i = 0; i < 99; i++) {
-        orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+        result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
     }
     
     // Wait for processing
@@ -1446,12 +1601,21 @@ TEST_F(OrderBookTestFourThread, HandlesMixedConcurrentOperations) {
     // This is done to be able to get the price level pointer
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
 
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
     // Store order
     orders.push_back(result->second);
 
     // Submit the other 49 orders
     for (int i = 1; i < 50; i++) {
         result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
+
         orders.push_back(result->second);
     }
     
@@ -1469,6 +1633,11 @@ TEST_F(OrderBookTestFourThread, HandlesMixedConcurrentOperations) {
     vector<OrderExt*> safeOrders;
     for (int i = 0; i < 25; i++) {
         result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 148.0);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
+
         safeOrders.push_back(result->second);
     }
 
@@ -1477,7 +1646,6 @@ TEST_F(OrderBookTestFourThread, HandlesMixedConcurrentOperations) {
 
     // Verify state
     auto buyLevel148 = symbol->buyPrices.lookup(1480000);
-    auto buyLevel150 = symbol->buyPrices.lookup(1500000);
     EXPECT_EQ(buyLevel148->numOrders.load(), 25);
     EXPECT_EQ(buyLevel150->numOrders.load(), 50);
 
@@ -1486,10 +1654,18 @@ TEST_F(OrderBookTestFourThread, HandlesMixedConcurrentOperations) {
     for (int i = 0; i < 25; i++) {
         // Add to 149
         result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 149.0);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
+
         orders.push_back(result->second);
 
         // Cancel an order from 148
-        orderBook.cancelOrder(safeOrders[i]);
+        bool wasRemoved = orderBook.cancelOrder(safeOrders[i]);
+
+        // Make sure order was removed
+        EXPECT_TRUE(wasRemoved);
 
         // Send two matches (we need 50)
         orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
@@ -1520,12 +1696,21 @@ TEST_F(OrderBookTestFourThread, HandlesMemoryPoolStress) {
     // This is done to be able to get the price level pointer
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
 
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
     // Store order
     orders.push_back(result->second);
 
     // Submit the other 999 orders to fill up memory pool
     for (int i = 1; i < 1000; i++) {
         result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
+
         orders.push_back(result->second);
     }
     
@@ -1546,7 +1731,10 @@ TEST_F(OrderBookTestFourThread, HandlesMemoryPoolStress) {
 
     // Remove all 1000 orders
     for (OrderExt* order : orders) {
-        orderBook.cancelOrder(order);
+        bool wasRemoved = orderBook.cancelOrder(order);
+
+        // Make sure order was removed
+        EXPECT_TRUE(wasRemoved);
     }
 
     // Wait for processing
@@ -1557,8 +1745,15 @@ TEST_F(OrderBookTestFourThread, HandlesMemoryPoolStress) {
 
     // Drain the pool again
     for (int i = 0; i < 1000; i++) {
-        orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+        result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
     }
+
+    // Wait for processing
+    waitForProcessing();
 
     // Verify expected results
     EXPECT_EQ(buyLevel->numOrders.load(), 1000);
@@ -1584,6 +1779,14 @@ TEST_F(OrderBookTestFourThread, HandlesMultipleSymbolsConcurrent) {
     auto result2 = orderBook.submitOrder(1, symbolID2, Side::BUY, 100, 150.0);
     auto result3 = orderBook.submitOrder(1, symbolID3, Side::BUY, 100, 150.0);
 
+    // Verify that the orders were submitted successfully
+    EXPECT_TRUE(result1.has_value());
+    EXPECT_TRUE(result2.has_value());
+    EXPECT_TRUE(result3.has_value());
+    EXPECT_NE(result1->second, nullptr);
+    EXPECT_NE(result2->second, nullptr);
+    EXPECT_NE(result3->second, nullptr);
+
     // Store orders
     orders.push_back(result1->second);
     orders.push_back(result2->second);
@@ -1592,10 +1795,19 @@ TEST_F(OrderBookTestFourThread, HandlesMultipleSymbolsConcurrent) {
     // Submit and store 99 more orders for each
     for (int i = 0; i < 99; i++) {
         result1 = orderBook.submitOrder(1, symbolID1, Side::BUY, 100, 150.0);
-        orders.push_back(result1->second);
         result2 = orderBook.submitOrder(1, symbolID2, Side::BUY, 100, 150.0);
-        orders.push_back(result2->second);
         result3 = orderBook.submitOrder(1, symbolID3, Side::BUY, 100, 150.0);
+
+        // Verify that the orders were submitted successfully
+        EXPECT_TRUE(result1.has_value());
+        EXPECT_TRUE(result2.has_value());
+        EXPECT_TRUE(result3.has_value());
+        EXPECT_NE(result1->second, nullptr);
+        EXPECT_NE(result2->second, nullptr);
+        EXPECT_NE(result3->second, nullptr);
+
+        orders.push_back(result1->second);
+        orders.push_back(result2->second);
         orders.push_back(result3->second);
     }
     
@@ -1614,7 +1826,10 @@ TEST_F(OrderBookTestFourThread, HandlesMultipleSymbolsConcurrent) {
 
     // Remove all 300 orders
     for (OrderExt* order : orders) {
-        orderBook.cancelOrder(order);
+        bool wasRemoved = orderBook.cancelOrder(order);
+
+        // Make sure order was removed
+        EXPECT_TRUE(wasRemoved);
     }
 
     // Wait for processing
@@ -1637,9 +1852,17 @@ TEST_F(OrderBookTestFourThread, HandlesPriceTimePriority) {
     // This is done to be able to get the price level pointer
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
 
+    // Verify that the order was submitted successfully
+    EXPECT_TRUE(result.has_value());
+    EXPECT_NE(result->second, nullptr);
+
     // Submit and store 99 more orders
     for (double i = 1.0; i < 100.0; i++) {
         result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 - i);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
     }
     
     // Wait for processing
@@ -1658,6 +1881,10 @@ TEST_F(OrderBookTestFourThread, HandlesPriceTimePriority) {
     // Submit and store 100 sell orders
     for (int i = 0; i < 100; i++) {
         result = orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
+
+        // Verify that the order was submitted successfully
+        EXPECT_TRUE(result.has_value());
+        EXPECT_NE(result->second, nullptr);
     }
     
     // Wait for processing

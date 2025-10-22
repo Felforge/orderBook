@@ -884,11 +884,14 @@ class OrderBook {
         // Returns optional of pair of order ID and order pointer
         // Optional will have no value if order could not be submitted
         std::optional<std::pair<uint64_t, Order<RingSize, NumBuckets>*>> submitOrder(uint32_t userID, uint16_t symbolID, Side side, uint32_t quantity, double price) {
+            std::cout << "submitOrder called: userID=" << userID << " symbolID=" << symbolID << " side=" << (int)side << " quantity=" << quantity << " price=" << price << std::endl;
+            
             // Try to retrieve symbol
             auto symbolIt = symbols.find(symbolID);
 
             // If symbol could not be found or price is invalid or quantity is invalid return
             if (symbolIt == symbols.end() || price <= 0.0 || static_cast<int>(quantity) <= 0) {
+                std::cout << "submitOrder validation failed" << std::endl;
                 return std::nullopt;
             }
 
@@ -902,19 +905,30 @@ class OrderBook {
             uint64_t localSeq = threadLocalSeq.fetch_add(1);
             uint64_t orderID = Order<RingSize, NumBuckets>::createOrderID(symbolID, localSeq);
 
+            std::cout << "About to allocate from thread-local orderPool" << std::endl;
+            
             // Allocate memory for order
             void* orderBlock = myPools<MaxOrders, RingSize, NumBuckets>.orderPool.allocate();
 
+            std::cout << "orderPool.allocate() returned: " << orderBlock << std::endl;
+
             // Make sure memory is valid, if not return
             if (!orderBlock) {
+                std::cout << "orderBlock allocation failed" << std::endl;
                 return std::nullopt;
             }
+
+            std::cout << "About to create Order object" << std::endl;
 
             // Create order
             Order<RingSize, NumBuckets>* order = new (orderBlock) Order<RingSize, NumBuckets>(orderBlock, &myPools<MaxOrders, RingSize, NumBuckets>.orderPool, orderID, userID, side, symbolID, symbol, quantity, priceTicks, OrderType::ADD);
 
+            std::cout << "Order created successfully, about to publish" << std::endl;
+
             // Publish to universal ring
             publishRing.publish(order);
+
+            std::cout << "Order published successfully" << std::endl;
 
             // Return to the user the Order ID and Pointer
             // The Order Type is ammended to Cancel once added so the user can cancel it

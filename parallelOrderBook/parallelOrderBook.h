@@ -21,7 +21,7 @@
 #endif
 
 // Configuaration Constants
-constexpr size_t DEFAULT_RING_SIZE = 1 << 12;  // 4K slots (reduced from 1M for stack safety)
+constexpr size_t DEFAULT_RING_SIZE = 1 << 20;  // ~1M slots
 constexpr size_t PRICE_TABLE_BUCKETS = 16384; // Roughly 16k Available Price Levels
 constexpr uint64_t TICK_PRECISION = 10000;     // 1e-4 precision (0.0001)
 
@@ -925,7 +925,6 @@ class OrderBook {
             std::cout << "[THREAD " << threadId << "] About to allocate from thread-local orderPool" << std::endl;
             
             // Allocate memory for order
-            auto& pools = getThreadPools<MaxOrders, RingSize, NumBuckets>();
             std::cout << "[THREAD " << threadId << "] orderPool.isDrained()=" << pools.orderPool.isDrained() << " before allocation" << std::endl;
             void* orderBlock = pools.orderPool.allocate();
 
@@ -940,7 +939,7 @@ class OrderBook {
             std::cout << "About to create Order object" << std::endl;
 
             // Create order
-            Order<RingSize, NumBuckets>* order = new (orderBlock) Order<RingSize, NumBuckets>(orderBlock, &getThreadPools<MaxOrders, RingSize, NumBuckets>().orderPool, orderID, userID, side, symbolID, symbol, quantity, priceTicks, OrderType::ADD);
+            Order<RingSize, NumBuckets>* order = new (orderBlock) Order<RingSize, NumBuckets>(orderBlock, &pools.orderPool, orderID, userID, side, symbolID, symbol, quantity, priceTicks, OrderType::ADD);
 
             std::cout << "Order created successfully, about to publish" << std::endl;
 

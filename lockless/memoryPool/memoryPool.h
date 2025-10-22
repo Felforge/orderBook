@@ -118,6 +118,9 @@ class MemoryPool : public GenericMemoryPool {
         // Deallocate a memory block
         // Overrides the placeholder in GenericMmemoryPool
         void deallocate(void* ptr) override {
+            std::thread::id threadId = std::this_thread::get_id();
+            std::cout << "[DEALLOC THREAD " << threadId << "] deallocating block " << ptr << " isOwner=" << isOwnerThread() << std::endl;
+            
             // Convert void pointer back into Block
             Block* block = static_cast<Block*>(ptr);
 
@@ -127,10 +130,12 @@ class MemoryPool : public GenericMemoryPool {
 
             if (isOwnerThread()) {
                 // Is owner thread, push to free List
+                std::cout << "[DEALLOC THREAD " << threadId << "] returning to local freeList" << std::endl;
                 freeList.push(block);
 
             } else {
                 // If the queue is full yield until space is availbe
+                std::cout << "[DEALLOC THREAD " << threadId << "] pushing to remoteFree queue" << std::endl;
                 while (remoteFree.isFull()) {
                     std::this_thread::yield();
                 }
@@ -144,6 +149,7 @@ class MemoryPool : public GenericMemoryPool {
         // Should be called periodically by the owner thread
         void drainRemoteFree() {
             Block* block;
+            int drainedCount = 0;
 
             // Drain remoteFree and add it to freeList
             // remoteFree.pop returns a bool indicatng if it succeeded
@@ -151,6 +157,12 @@ class MemoryPool : public GenericMemoryPool {
             while (!remoteFree.isEmpty()) {
                 remoteFree.pop(block);
                 freeList.push(block);
+                drainedCount++;
+            }
+            
+            if (drainedCount > 0) {
+                std::thread::id threadId = std::this_thread::get_id();
+                std::cout << "[DRAIN THREAD " << threadId << "] drained " << drainedCount << " blocks from remoteFree" << std::endl;
             }
         }
 

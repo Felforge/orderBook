@@ -48,6 +48,9 @@ class MemoryPool : public GenericMemoryPool {
         // Thread id of the owner (set at construction)
         std::thread::id owner = std::this_thread::get_id();
 
+        // Array to track all allocated blocks for proper cleanup
+        Block* allBlocks[NumBlocks];
+
     public:
         // Constructor
         // Preallocates NumBlocks objects and adds them to the free list
@@ -61,6 +64,9 @@ class MemoryPool : public GenericMemoryPool {
                 try {
                     // Allocate memory block
                     Block* block = new Block();
+                    
+                    // Store in allBlocks array for cleanup
+                    allBlocks[i] = block;
                     
                     // Add memory block to freeList
                     freeList.push(block);
@@ -77,22 +83,12 @@ class MemoryPool : public GenericMemoryPool {
         }
 
         // Destructor
-        // Deletes all objects remaining in the local free list and remote queue
+        // Deletes all blocks that were allocated by this pool
         ~MemoryPool() {
-            // Drain and delete everything from the local free list
-            Block* block;
-            while (!freeList.isEmpty()) {
-                block = freeList.pop();
-                delete block;
+            // Delete all blocks allocated by this pool
+            for (size_t i = 0; i < NumBlocks; ++i) {
+                delete allBlocks[i];
             }
-
-            // Drain and delete anything left in the remote free queue
-            // remoteFree.pop returns a bool indicatng if it succeeded
-            // However, it will only fail if empty which is not possible here
-            while (!remoteFree.isEmpty()) {
-                remoteFree.pop(block);
-                delete block;
-            }        
         }
 
         // Allocate an object from the pool

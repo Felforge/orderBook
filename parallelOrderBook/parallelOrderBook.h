@@ -991,14 +991,12 @@ class OrderBook {
             std::thread::id threadId = std::this_thread::get_id();
             std::cout << "[THREAD " << threadId << "] cleanupAllocatedObjects called" << std::endl;
             
-            // Clean up all symbols and their price tables
+            // Clean up all symbols using the correct symbol pool
             for (auto& [symbolID, symbol] : symbols) {
                 std::cout << "[THREAD " << threadId << "] cleaning up symbol " << symbolID << std::endl;
                 
-                // The symbol destructor should clean up its price tables
-                // but we need to ensure the symbol memory itself is deallocated
-                auto& pools = getThreadPools<MaxOrders, RingSize, NumBuckets>();
-                pools.orderPool.deallocate(symbol->memoryBlock);
+                // Deallocate symbol using the OrderBook's symbol pool (not thread-local pools)
+                symbolPool.deallocate(symbol->memoryBlock);
             }
             
             // Clear the symbols map

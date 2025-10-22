@@ -983,6 +983,29 @@ class OrderBook {
             // Return true
             return true;
         }
+
+        // Drain remote free queues to reclaim memory from worker thread deallocations
+        void drainRemoteFreeQueues() {
+            std::thread::id threadId = std::this_thread::get_id();
+            std::cout << "[THREAD " << threadId << "] drainRemoteFreeQueues called" << std::endl;
+            
+            // Get thread-local pools and drain all remote free queues
+            auto& pools = getThreadPools<MaxOrders, RingSize, NumBuckets>();
+            
+            std::cout << "[THREAD " << threadId << "] draining orderPool remoteFree" << std::endl;
+            pools.orderPool.drainRemoteFree();
+            
+            std::cout << "[THREAD " << threadId << "] draining nodePool remoteFree" << std::endl;
+            pools.nodePool.drainRemoteFree();
+            
+            std::cout << "[THREAD " << threadId << "] draining priceLevelPool remoteFree" << std::endl;
+            pools.priceLevelPool.drainRemoteFree();
+            
+            std::cout << "[THREAD " << threadId << "] draining queuePool remoteFree" << std::endl;
+            pools.queuePool.drainRemoteFree();
+            
+            std::cout << "[THREAD " << threadId << "] drainRemoteFreeQueues completed" << std::endl;
+        }
 };
 
 // Define the static thread_local member

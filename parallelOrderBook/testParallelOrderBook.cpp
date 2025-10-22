@@ -32,6 +32,8 @@ class OrderBookTestSingleThread : public ::testing::Test {
         }
     
         void TearDown() override {
+            // Clean up allocated objects before shutdown
+            orderBook.cleanupAllocatedObjects();
             // Shutdown the order book system
             orderBook.shutdown();
         }
@@ -50,6 +52,8 @@ class OrderBookTestFourThread : public ::testing::Test {
         }
     
         void TearDown() override {
+            // Clean up allocated objects before shutdown
+            orderBook.cleanupAllocatedObjects();
             // Shutdown the order book system
             orderBook.shutdown();
         }

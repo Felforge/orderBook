@@ -332,15 +332,15 @@ thread_local Pools<MaxOrders, RingSize, NumBuckets> myPools;
 template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
 void initThreadPools() {
     std::cout << "initThreadPools called" << std::endl;
-    // Access the pools to trigger initialization
-    static bool initialized = false;
+    // Force construction of thread-local pools by calling methods
+    static thread_local bool initialized = false;
     if (!initialized) {
         std::cout << "Initializing thread-local pools..." << std::endl;
-        // Access each pool to ensure they're constructed
-        (void)&myPools<MaxOrders, RingSize, NumBuckets>.orderPool;
-        (void)&myPools<MaxOrders, RingSize, NumBuckets>.nodePool;
-        (void)&myPools<MaxOrders, RingSize, NumBuckets>.priceLevelPool;
-        (void)&myPools<MaxOrders, RingSize, NumBuckets>.queuePool;
+        // Call methods on each pool to trigger constructor calls
+        std::cout << "orderPool.isOwnerThread(): " << myPools<MaxOrders, RingSize, NumBuckets>.orderPool.isOwnerThread() << std::endl;
+        std::cout << "nodePool.isOwnerThread(): " << myPools<MaxOrders, RingSize, NumBuckets>.nodePool.isOwnerThread() << std::endl;
+        std::cout << "priceLevelPool.isOwnerThread(): " << myPools<MaxOrders, RingSize, NumBuckets>.priceLevelPool.isOwnerThread() << std::endl;
+        std::cout << "queuePool.isOwnerThread(): " << myPools<MaxOrders, RingSize, NumBuckets>.queuePool.isOwnerThread() << std::endl;
         initialized = true;
         std::cout << "Thread-local pools initialized successfully" << std::endl;
     }

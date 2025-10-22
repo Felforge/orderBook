@@ -52,15 +52,27 @@ class MemoryPool : public GenericMemoryPool {
         // Constructor
         // Preallocates NumBlocks objects and adds them to the free list
         MemoryPool() {
+            std::cout << "MemoryPool constructor: NumBlocks=" << NumBlocks << " BlockSize=" << sizeof(Block) << std::endl;
+            
             // Make sure construction parameters are valid
             static_assert(NumBlocks > 0, "Number of blocks must be an integer greater than zero!");
 
             for (size_t i = 0; i < NumBlocks; ++i) {
-                // Allocate memory block
-                Block* block= new Block();
-
-                // Add memory block to freeList
-                freeList.push(block);
+                try {
+                    // Allocate memory block
+                    Block* block = new Block();
+                    
+                    // Add memory block to freeList
+                    freeList.push(block);
+                } catch (const std::bad_alloc& e) {
+                    // Exception safety: clean up any blocks already allocated
+                    Block* cleanup;
+                    while (!freeList.isEmpty()) {
+                        cleanup = freeList.pop();
+                        delete cleanup;
+                    }
+                    throw; // Re-throw the exception
+                }
             }
         }
 
@@ -110,9 +122,8 @@ class MemoryPool : public GenericMemoryPool {
             Block* block = static_cast<Block*>(ptr);
 
             // Poison the block memory
-            // Poison means to fill the block with garbage
-            // std::memset(block, nullptr, sizeof(Block));
-            // block = nullptr;
+            // Poison means to fill the block with garbage  
+            std::memset(block, 0xDEADBEEF, sizeof(Block));
 
             if (isOwnerThread()) {
                 // Is owner thread, push to free List

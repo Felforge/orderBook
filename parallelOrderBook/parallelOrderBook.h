@@ -126,7 +126,9 @@ struct PriceLevel {
 
     // Concstructor
     PriceLevel(void* memoryBlock, uint64_t priceTicks, LocklessQueue<Order<RingSize, NumBuckets>*>* queue)
-        : memoryBlock(memoryBlock), priceTicks(priceTicks), queue(queue), numOrders(0) {}
+        : memoryBlock(memoryBlock), priceTicks(priceTicks), queue(queue), numOrders(0) {
+        std::cout << "PriceLevel constructor: priceTicks=" << priceTicks << std::endl;
+    }
 };
 
 // Per-symbol publish ring (lock-free ring buffer)
@@ -162,6 +164,11 @@ class PublishRing {
         }
 
     public:
+        // Constructor
+        PublishRing() {
+            std::cout << "PublishRing constructor: RingSize=" << RingSize << std::endl;
+        }
+
         // Producer function: acquire sequence and publish order
         void publish(Order<RingSize, NumBuckets>* order) {
             // Increment and retrieve sequence
@@ -227,6 +234,11 @@ class PriceTable {
         }
 
     public:
+        // Constructor
+        PriceTable() {
+            std::cout << "PriceTable constructor: NumBuckets=" << NumBuckets << std::endl;
+        }
+
         // Install price level using strong CAS
         // Returns true or false depending on the success of the operation
         bool installPriceLevel(PriceLevel<RingSize, NumBuckets>* level) {
@@ -254,7 +266,7 @@ class PriceTable {
                 }
 
                 // Update the index using linear probing
-                index = hash(index + 1);
+                index = (index + 1) & (NumBuckets - 1);
             }
 
             // All buckets were full, return false
@@ -279,7 +291,7 @@ class PriceTable {
                 }
 
                 // Update the index using linear probing
-                index = hash(index + 1);
+                index = (index + 1) & (NumBuckets - 1);
             }
 
             // Price level was not found
@@ -309,6 +321,7 @@ struct Pools {
     MemoryPool<sizeof(Node<Order<RingSize, NumBuckets>*>), MaxOrders> nodePool;
     MemoryPool<sizeof(PriceLevel<RingSize, NumBuckets>), NumBuckets> priceLevelPool;
     MemoryPool<sizeof(LocklessQueue<Order<RingSize, NumBuckets>*>), NumBuckets> queuePool;
+    
 };
 
 // Thread local declaration of Pools
@@ -337,7 +350,9 @@ struct Symbol {
 
     // Constructor
     Symbol(void* memoryBlock, uint16_t symbolID, std::string symbolName) :
-        memoryBlock(memoryBlock), symbolID(symbolID), symbolName(symbolName) {}
+        memoryBlock(memoryBlock), symbolID(symbolID), symbolName(symbolName) {
+        std::cout << "Symbol constructor: symbolID=" << symbolID << " symbolName=" << symbolName << std::endl;
+    }
 };
 
 // Struct for worker thread
@@ -661,7 +676,9 @@ class Worker {
 
         // Constructor
         Worker(void* block, uint16_t workerID, std::atomic<bool>* running)
-            : memoryBlock(block), workerID(workerID), running(running) {}
+            : memoryBlock(block), workerID(workerID), running(running) {
+            std::cout << "Worker constructor: workerID=" << workerID << std::endl;
+        }
 
         // Function to run the worker
         void run(PublishRing<RingSize, NumBuckets>* publishRing) {
@@ -705,6 +722,7 @@ class WorkerPool {
 
         // Pass generic pool so that capacity does not need to be specified
         WorkerPool(MemoryPool<sizeof(Worker<MaxOrders, RingSize, NumBuckets>), NumWorkers>* pool, PublishRing<RingSize, NumBuckets>* publishRingPtr) {
+            std::cout << "WorkerPool constructor: NumWorkers=" << NumWorkers << std::endl;
             alocPool = pool;
             publishRing = publishRingPtr;
         }
@@ -787,13 +805,31 @@ class OrderBook {
     public:
         // Constructor
         OrderBook() : workerPool(&workerMemPool, &publishRing) {
+            std::cout << "OrderBook constructor: NumWorkers=" << NumWorkers << " MaxSymbols=" << MaxSymbols << " MaxOrders=" << MaxOrders << std::endl;
+            
             // Make sure max symbols is valid
             static_assert(MaxSymbols <= UINT16_MAX, "MaxSymbols exceeds uint16_t range");
+            
+            // Reset thread-local sequence counter for clean state
+            threadLocalSeq.store(0);
+            
+            std::cout << "OrderBook constructor completed" << std::endl;
         }
 
         // Order Book Destructor
         ~OrderBook() {
             shutdown();
+            
+            // Clean up all registered symbols and their data
+            for (auto& [symbolID, symbol] : symbols) {
+                // Deallocate the symbol itself
+                symbolPool.deallocate(symbol->memoryBlock);
+            }
+            symbols.clear();
+            symbolNameToID.clear();
+            
+            // Reset symbol ID counter
+            nextSymbolID.store(0);
         }
 
         // Start the Order Book's system
@@ -805,6 +841,7 @@ class OrderBook {
         void shutdown() {
             workerPool.stopWorkers();
         }
+
 
         // Function to register symbol
         uint16_t registerSymbol(std::string& symbolName) {

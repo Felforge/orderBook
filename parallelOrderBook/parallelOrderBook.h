@@ -324,9 +324,19 @@ struct Pools {
     
 };
 
+// Thread-local pools pointer for worker threads
+template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
+thread_local Pools<MaxOrders, RingSize, NumBuckets>* workerThreadPools = nullptr;
+
 // Function to get thread-local pools instance
 template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
 Pools<MaxOrders, RingSize, NumBuckets>& getThreadPools() {
+    // For worker threads, use the explicitly managed pools
+    if (workerThreadPools<MaxOrders, RingSize, NumBuckets>) {
+        return *workerThreadPools<MaxOrders, RingSize, NumBuckets>;
+    }
+    
+    // For other threads (like test thread), use static thread_local
     static thread_local Pools<MaxOrders, RingSize, NumBuckets> pools;
     return pools;
 }
@@ -686,24 +696,36 @@ class Worker {
         // Function to run the worker
         void run(PublishRing<RingSize, NumBuckets>* publishRing) {
             std::thread::id threadId = std::this_thread::get_id();
-            // Initialize thread-local pools for this worker thread
-            std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] initializing thread-local pools" << std::endl;
-            auto& pools = getThreadPools<MaxOrders, RingSize, NumBuckets>();
-            std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] pools initialized, orderPool.isDrained()=" << pools.orderPool.isDrained() << std::endl;
             
-            while (running->load()) {
-                // Pull next available order
-                Order<RingSize, NumBuckets>* order = publishRing->pullNextOrder();
+            // Create and set worker-local pools with RAII cleanup
+            std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] creating worker-local pools" << std::endl;
+            Pools<MaxOrders, RingSize, NumBuckets> pools;
+            workerThreadPools<MaxOrders, RingSize, NumBuckets> = &pools;
+            std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] pools created, orderPool.isDrained()=" << pools.orderPool.isDrained() << std::endl;
+            
+            try {
+                while (running->load()) {
+                    // Pull next available order
+                    Order<RingSize, NumBuckets>* order = publishRing->pullNextOrder();
 
-                // If order is valid process it, else yield
-                if (order) {
-                    std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] processing order " << order->orderID << std::endl;
-                    processOrder(order);
-                    std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] finished processing order " << order->orderID << std::endl;
-                } else {
-                    std::this_thread::yield();
+                    // If order is valid process it, else yield
+                    if (order) {
+                        std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] processing order " << order->orderID << std::endl;
+                        processOrder(order);
+                        std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] finished processing order " << order->orderID << std::endl;
+                    } else {
+                        std::this_thread::yield();
+                    }
                 }
+            } catch (...) {
+                std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] exception caught, cleaning up" << std::endl;
             }
+            
+            // Clear the worker pools pointer before stack cleanup
+            std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] clearing worker pools pointer" << std::endl;
+            workerThreadPools<MaxOrders, RingSize, NumBuckets> = nullptr;
+            std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] worker exiting, pools will be automatically cleaned up" << std::endl;
+            // pools destructor will be called automatically when this function exits
         }
 };
 
@@ -984,28 +1006,6 @@ class OrderBook {
             return true;
         }
 
-        // Drain remote free queues to reclaim memory from worker thread deallocations
-        void drainRemoteFreeQueues() {
-            std::thread::id threadId = std::this_thread::get_id();
-            std::cout << "[THREAD " << threadId << "] drainRemoteFreeQueues called" << std::endl;
-            
-            // Get thread-local pools and drain all remote free queues
-            auto& pools = getThreadPools<MaxOrders, RingSize, NumBuckets>();
-            
-            std::cout << "[THREAD " << threadId << "] draining orderPool remoteFree" << std::endl;
-            pools.orderPool.drainRemoteFree();
-            
-            std::cout << "[THREAD " << threadId << "] draining nodePool remoteFree" << std::endl;
-            pools.nodePool.drainRemoteFree();
-            
-            std::cout << "[THREAD " << threadId << "] draining priceLevelPool remoteFree" << std::endl;
-            pools.priceLevelPool.drainRemoteFree();
-            
-            std::cout << "[THREAD " << threadId << "] draining queuePool remoteFree" << std::endl;
-            pools.queuePool.drainRemoteFree();
-            
-            std::cout << "[THREAD " << threadId << "] drainRemoteFreeQueues completed" << std::endl;
-        }
 };
 
 // Define the static thread_local member

@@ -20,8 +20,6 @@ void isOrderEqual(OrderExt* expected, OrderExt* actual) {
 // Helper function to wait for order processing
 void waitForProcessing(int numMil = 100) {
     this_thread::sleep_for(std::chrono::milliseconds(numMil));
-    // Drain remote free queues to reclaim memory from worker thread deallocations
-    orderBook.drainRemoteFreeQueues();
 }
 
 // Test fixture for Single Thread OrderBook tests

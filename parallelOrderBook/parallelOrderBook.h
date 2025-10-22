@@ -685,6 +685,11 @@ class Worker {
 
         // Function to run the worker
         void run(PublishRing<RingSize, NumBuckets>* publishRing) {
+            // Initialize thread-local pools for this worker thread
+            std::cout << "Worker " << workerID << " initializing thread-local pools" << std::endl;
+            (void)&getThreadPools<MaxOrders, RingSize, NumBuckets>();
+            std::cout << "Worker " << workerID << " pools initialized" << std::endl;
+            
             while (running->load()) {
                 // Pull next available order
                 Order<RingSize, NumBuckets>* order = publishRing->pullNextOrder();

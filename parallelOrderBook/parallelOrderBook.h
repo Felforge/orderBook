@@ -328,6 +328,24 @@ struct Pools {
 template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
 thread_local Pools<MaxOrders, RingSize, NumBuckets> myPools;
 
+// Function to initialize thread-local memory pools
+template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
+void initThreadPools() {
+    std::cout << "initThreadPools called" << std::endl;
+    // Access the pools to trigger initialization
+    static bool initialized = false;
+    if (!initialized) {
+        std::cout << "Initializing thread-local pools..." << std::endl;
+        // Access each pool to ensure they're constructed
+        (void)&myPools<MaxOrders, RingSize, NumBuckets>.orderPool;
+        (void)&myPools<MaxOrders, RingSize, NumBuckets>.nodePool;
+        (void)&myPools<MaxOrders, RingSize, NumBuckets>.priceLevelPool;
+        (void)&myPools<MaxOrders, RingSize, NumBuckets>.queuePool;
+        initialized = true;
+        std::cout << "Thread-local pools initialized successfully" << std::endl;
+    }
+}
+
 // Symbol Struct
 template<size_t RingSize, size_t NumBuckets>
 struct Symbol {
@@ -885,6 +903,9 @@ class OrderBook {
         // Optional will have no value if order could not be submitted
         std::optional<std::pair<uint64_t, Order<RingSize, NumBuckets>*>> submitOrder(uint32_t userID, uint16_t symbolID, Side side, uint32_t quantity, double price) {
             std::cout << "submitOrder called: userID=" << userID << " symbolID=" << symbolID << " side=" << (int)side << " quantity=" << quantity << " price=" << price << std::endl;
+            
+            // Initialize thread-local pools
+            initThreadPools<MaxOrders, RingSize, NumBuckets>();
             
             // Try to retrieve symbol
             auto symbolIt = symbols.find(symbolID);

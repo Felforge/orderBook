@@ -685,10 +685,11 @@ class Worker {
 
         // Function to run the worker
         void run(PublishRing<RingSize, NumBuckets>* publishRing) {
+            std::thread::id threadId = std::this_thread::get_id();
             // Initialize thread-local pools for this worker thread
-            std::cout << "Worker " << workerID << " initializing thread-local pools" << std::endl;
-            (void)&getThreadPools<MaxOrders, RingSize, NumBuckets>();
-            std::cout << "Worker " << workerID << " pools initialized" << std::endl;
+            std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] initializing thread-local pools" << std::endl;
+            auto& pools = getThreadPools<MaxOrders, RingSize, NumBuckets>();
+            std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] pools initialized, orderPool.isDrained()=" << pools.orderPool.isDrained() << std::endl;
             
             while (running->load()) {
                 // Pull next available order
@@ -696,7 +697,9 @@ class Worker {
 
                 // If order is valid process it, else yield
                 if (order) {
+                    std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] processing order " << order->orderID << std::endl;
                     processOrder(order);
+                    std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] finished processing order " << order->orderID << std::endl;
                 } else {
                     std::this_thread::yield();
                 }
@@ -892,10 +895,13 @@ class OrderBook {
         // Returns optional of pair of order ID and order pointer
         // Optional will have no value if order could not be submitted
         std::optional<std::pair<uint64_t, Order<RingSize, NumBuckets>*>> submitOrder(uint32_t userID, uint16_t symbolID, Side side, uint32_t quantity, double price) {
-            std::cout << "submitOrder called: userID=" << userID << " symbolID=" << symbolID << " side=" << (int)side << " quantity=" << quantity << " price=" << price << std::endl;
+            std::thread::id threadId = std::this_thread::get_id();
+            std::cout << "[THREAD " << threadId << "] submitOrder called: userID=" << userID << " symbolID=" << symbolID << " side=" << (int)side << " quantity=" << quantity << " price=" << price << std::endl;
             
             // Initialize thread-local pools for the calling thread
-            (void)&getThreadPools<MaxOrders, RingSize, NumBuckets>();
+            std::cout << "[THREAD " << threadId << "] Initializing thread-local pools" << std::endl;
+            auto& pools = getThreadPools<MaxOrders, RingSize, NumBuckets>();
+            std::cout << "[THREAD " << threadId << "] Pools initialized, orderPool.isDrained()=" << pools.orderPool.isDrained() << std::endl;
             
             // Try to retrieve symbol
             auto symbolIt = symbols.find(symbolID);
@@ -916,12 +922,14 @@ class OrderBook {
             uint64_t localSeq = threadLocalSeq.fetch_add(1);
             uint64_t orderID = Order<RingSize, NumBuckets>::createOrderID(symbolID, localSeq);
 
-            std::cout << "About to allocate from thread-local orderPool" << std::endl;
+            std::cout << "[THREAD " << threadId << "] About to allocate from thread-local orderPool" << std::endl;
             
             // Allocate memory for order
-            void* orderBlock = getThreadPools<MaxOrders, RingSize, NumBuckets>().orderPool.allocate();
+            auto& pools = getThreadPools<MaxOrders, RingSize, NumBuckets>();
+            std::cout << "[THREAD " << threadId << "] orderPool.isDrained()=" << pools.orderPool.isDrained() << " before allocation" << std::endl;
+            void* orderBlock = pools.orderPool.allocate();
 
-            std::cout << "orderPool.allocate() returned: " << orderBlock << std::endl;
+            std::cout << "[THREAD " << threadId << "] orderPool.allocate() returned: " << orderBlock << std::endl;
 
             // Make sure memory is valid, if not return
             if (!orderBlock) {

@@ -894,6 +894,9 @@ class OrderBook {
         std::optional<std::pair<uint64_t, Order<RingSize, NumBuckets>*>> submitOrder(uint32_t userID, uint16_t symbolID, Side side, uint32_t quantity, double price) {
             std::cout << "submitOrder called: userID=" << userID << " symbolID=" << symbolID << " side=" << (int)side << " quantity=" << quantity << " price=" << price << std::endl;
             
+            // Initialize thread-local pools for the calling thread
+            (void)&getThreadPools<MaxOrders, RingSize, NumBuckets>();
+            
             // Try to retrieve symbol
             auto symbolIt = symbols.find(symbolID);
 

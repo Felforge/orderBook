@@ -324,26 +324,11 @@ struct Pools {
     
 };
 
-// Thread local declaration of Pools
+// Function to get thread-local pools instance
 template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
-thread_local Pools<MaxOrders, RingSize, NumBuckets> myPools;
-
-// Function to initialize thread-local memory pools
-template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
-void initThreadPools() {
-    std::cout << "initThreadPools called" << std::endl;
-    // Force construction of thread-local pools by calling methods
-    static thread_local bool initialized = false;
-    if (!initialized) {
-        std::cout << "Initializing thread-local pools..." << std::endl;
-        // Call methods on each pool to trigger constructor calls
-        std::cout << "orderPool.isOwnerThread(): " << myPools<MaxOrders, RingSize, NumBuckets>.orderPool.isOwnerThread() << std::endl;
-        std::cout << "nodePool.isOwnerThread(): " << myPools<MaxOrders, RingSize, NumBuckets>.nodePool.isOwnerThread() << std::endl;
-        std::cout << "priceLevelPool.isOwnerThread(): " << myPools<MaxOrders, RingSize, NumBuckets>.priceLevelPool.isOwnerThread() << std::endl;
-        std::cout << "queuePool.isOwnerThread(): " << myPools<MaxOrders, RingSize, NumBuckets>.queuePool.isOwnerThread() << std::endl;
-        initialized = true;
-        std::cout << "Thread-local pools initialized successfully" << std::endl;
-    }
+Pools<MaxOrders, RingSize, NumBuckets>& getThreadPools() {
+    static thread_local Pools<MaxOrders, RingSize, NumBuckets> pools;
+    return pools;
 }
 
 // Symbol Struct
@@ -450,7 +435,7 @@ class Worker {
                     order->quantity.store(0);
 
                     // Add back remaining match directly to the left
-                    level->queue->pushLeft(match, &myPools<MaxOrders, RingSize, NumBuckets>.nodePool);
+                    level->queue->pushLeft(match, &getThreadPools<MaxOrders, RingSize, NumBuckets>().nodePool);
                 }
             }
         }
@@ -522,7 +507,7 @@ class Worker {
                 }
 
                 // Insert into price level queue
-                Node<Order<RingSize, NumBuckets>*>* node = level->queue->pushRight(order, &myPools<MaxOrders, RingSize, NumBuckets>.nodePool);
+                Node<Order<RingSize, NumBuckets>*>* node = level->queue->pushRight(order, &getThreadPools<MaxOrders, RingSize, NumBuckets>().nodePool);
 
                 // Store node pointer in order
                 order->node = node;
@@ -586,7 +571,7 @@ class Worker {
             // Else, create new price level
 
             // Allocater for price level
-            void* levelBlock = myPools<MaxOrders, RingSize, NumBuckets>.priceLevelPool.allocate();
+            void* levelBlock = getThreadPools<MaxOrders, RingSize, NumBuckets>().priceLevelPool.allocate();
 
             // Could not allocate, return
             if (!levelBlock) {
@@ -594,7 +579,7 @@ class Worker {
             }
 
             // Allocate for queue
-            void* queueBlock = myPools<MaxOrders, RingSize, NumBuckets>.queuePool.allocate();
+            void* queueBlock = getThreadPools<MaxOrders, RingSize, NumBuckets>().queuePool.allocate();
 
             // Could not allocate, return
             if (!queueBlock) {
@@ -607,8 +592,8 @@ class Worker {
 
             // Price level has been concurrently created elsewhere
             if (!table.installPriceLevel(level)) {
-                myPools<MaxOrders, RingSize, NumBuckets>.queuePool.deallocate(queueBlock);
-                myPools<MaxOrders, RingSize, NumBuckets>.priceLevelPool.deallocate(levelBlock);
+                getThreadPools<MaxOrders, RingSize, NumBuckets>().queuePool.deallocate(queueBlock);
+                getThreadPools<MaxOrders, RingSize, NumBuckets>().priceLevelPool.deallocate(levelBlock);
                 return table.lookup(priceTicks);
             }
 
@@ -904,9 +889,6 @@ class OrderBook {
         std::optional<std::pair<uint64_t, Order<RingSize, NumBuckets>*>> submitOrder(uint32_t userID, uint16_t symbolID, Side side, uint32_t quantity, double price) {
             std::cout << "submitOrder called: userID=" << userID << " symbolID=" << symbolID << " side=" << (int)side << " quantity=" << quantity << " price=" << price << std::endl;
             
-            // Initialize thread-local pools
-            initThreadPools<MaxOrders, RingSize, NumBuckets>();
-            
             // Try to retrieve symbol
             auto symbolIt = symbols.find(symbolID);
 
@@ -929,7 +911,7 @@ class OrderBook {
             std::cout << "About to allocate from thread-local orderPool" << std::endl;
             
             // Allocate memory for order
-            void* orderBlock = myPools<MaxOrders, RingSize, NumBuckets>.orderPool.allocate();
+            void* orderBlock = getThreadPools<MaxOrders, RingSize, NumBuckets>().orderPool.allocate();
 
             std::cout << "orderPool.allocate() returned: " << orderBlock << std::endl;
 
@@ -942,7 +924,7 @@ class OrderBook {
             std::cout << "About to create Order object" << std::endl;
 
             // Create order
-            Order<RingSize, NumBuckets>* order = new (orderBlock) Order<RingSize, NumBuckets>(orderBlock, &myPools<MaxOrders, RingSize, NumBuckets>.orderPool, orderID, userID, side, symbolID, symbol, quantity, priceTicks, OrderType::ADD);
+            Order<RingSize, NumBuckets>* order = new (orderBlock) Order<RingSize, NumBuckets>(orderBlock, &getThreadPools<MaxOrders, RingSize, NumBuckets>().orderPool, orderID, userID, side, symbolID, symbol, quantity, priceTicks, OrderType::ADD);
 
             std::cout << "Order created successfully, about to publish" << std::endl;
 

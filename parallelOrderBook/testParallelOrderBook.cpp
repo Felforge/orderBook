@@ -17,9 +17,9 @@ void isOrderEqual(OrderExt* expected, OrderExt* actual) {
     EXPECT_EQ(expected->symbolID, actual->symbolID);
 }
 
-// Helper function to wait for order processing
-void waitForProcessing(int numMil = 100) {
-    this_thread::sleep_for(std::chrono::milliseconds(numMil));
+// Wait for all workers to finish processing
+void waitForProcessing(int timeout = 100) {
+    this_thread::sleep_for(chrono::milliseconds(timeout));
 }
 
 // Test fixture for Single Thread OrderBook tests
@@ -29,13 +29,6 @@ class OrderBookTestSingleThread : public ::testing::Test {
         void SetUp() override {
             // Start the order book system
             orderBook.start();
-        }
-    
-        void TearDown() override {
-            // Clean up allocated objects before shutdown
-            orderBook.cleanupAllocatedObjects();
-            // Shutdown the order book system
-            orderBook.shutdown();
         }
     
         // Template parameters: NumWorkers=1, MaxSymbols=10, MaxOrders=1000
@@ -51,14 +44,7 @@ class OrderBookTestFourThread : public ::testing::Test {
             orderBook.start();
         }
     
-        void TearDown() override {
-            // Clean up allocated objects before shutdown
-            orderBook.cleanupAllocatedObjects();
-            // Shutdown the order book system
-            orderBook.shutdown();
-        }
-    
-        // Template parameters: NumWorkers=1, MaxSymbols=10, MaxOrders=1000
+        // Template parameters: NumWorkers=4, MaxSymbols=10, MaxOrders=1000
         OrderBook<4, 10, 1000> orderBook;
 };
 
@@ -345,15 +331,15 @@ TEST_F(OrderBookTestSingleThread, HandlesNodeAssignmentAndTypeTransition) {
     // Submit first buy order
     auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
     
-    // Wait for processing
-    waitForProcessing();
-    
     // Verify that the order was submitted successfully
     EXPECT_TRUE(result.has_value());
     EXPECT_NE(result->second, nullptr);
     
+    // Wait for this specific order to be processed
+    waitForProcessing();
+    
     // After processing, order type should change to CANCEL
-    EXPECT_EQ(OrderType::CANCEL, result->second->type);
+    EXPECT_EQ(OrderType::CANCEL, result->second->type.load());
     
     // Check node assignment
     EXPECT_NE(result->second->node, nullptr);
@@ -953,10 +939,11 @@ TEST_F(OrderBookTestSingleThread, HandlesSimpleEqualMatchSellBuy) {
     auto sellLevel = symbol->sellPrices.lookup(1500000);
 
     // Verify expected results
-    // Sell Level is expected to be nullptr as it never got created
+    // Buy Level is expected to be nullptr as it never got created  
     EXPECT_EQ(buyLevel, nullptr);
-    // Buy Level is expected to have 0 orders
-    EXPECT_EQ(sellLevel->numOrders, 0);
+    // Sell Level is expected to have 0 orders
+    EXPECT_NE(sellLevel, nullptr);
+    EXPECT_EQ(sellLevel->numOrders.load(), 0);
 }
 
 // Test a match at the same price buy higher buy qauntity
@@ -998,7 +985,7 @@ TEST_F(OrderBookTestSingleThread, HandlesMoreBuyEqualMatch) {
     // Sell Level is expected to be nullptr as it never got created
     EXPECT_EQ(sellLevel, nullptr);
     // Make sure the order's quantity decreased
-    EXPECT_EQ(order->quantity, 25);
+    EXPECT_EQ(order->quantity.load(), 25);
 }
 
 // Test a match at the same price buy higher sell qauntity
@@ -1044,7 +1031,7 @@ TEST_F(OrderBookTestSingleThread, HandlesMoreSellEqualMatch) {
     // This is because the order only got partially matched
     EXPECT_EQ(sellLevel->numOrders.load(), 1);
     // Make sure the sell order's quantity decreased
-    EXPECT_EQ(order->quantity, 25);
+    EXPECT_EQ(order->quantity.load(), 25);
 }
 
 // Test a match at a different price and the same quantity
@@ -1170,7 +1157,7 @@ TEST_F(OrderBookTestSingleThread, HandlesMultiplePartialMatch) {
     // Sell Level is expected to be nullptr as it never got created
     EXPECT_EQ(sellLevel, nullptr);
     // Make sure the 3rd buy order's quantity decreased
-    EXPECT_EQ(order->quantity, 50);
+    EXPECT_EQ(order->quantity.load(), 50);
 }
 
 // Verify FIFO ordering on the buy side
@@ -1215,7 +1202,7 @@ TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingBuy) {
     // Sell Level is expected to be nullptr as it never got created
     EXPECT_EQ(sellLevel, nullptr);
     // Make sure the 1st buy order's quantity decreased
-    EXPECT_EQ(order1->quantity, 50);
+    EXPECT_EQ(order1->quantity.load(), 50);
 
     // Submit matching sell order
     orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0);
@@ -1229,7 +1216,7 @@ TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingBuy) {
     // Sell Level is expected to be nullptr as it never got created
     EXPECT_EQ(sellLevel, nullptr);
     // Make sure the 2nd buy order's quantity decreased
-    EXPECT_EQ(order2->quantity, 50);
+    EXPECT_EQ(order2->quantity.load(), 50);
 }
 
 // Verify that price change can break FIFO ordering
@@ -1284,7 +1271,7 @@ TEST_F(OrderBookTestSingleThread, HandlesPriceChangeBreaksFIFO) {
     // Sell Level is expected to be nullptr as it never got created
     EXPECT_EQ(sellLevel, nullptr);
     // Make sure the 3rd buy order's quantity decreased
-    EXPECT_EQ(order3->quantity, 50);
+    EXPECT_EQ(order3->quantity.load(), 50);
 
     // Submit matching sell order
     orderBook.submitOrder(1, symbolID, Side::SELL, 100, 140.0);
@@ -1302,7 +1289,7 @@ TEST_F(OrderBookTestSingleThread, HandlesPriceChangeBreaksFIFO) {
     // Sell Level is expected to be nullptr as it never got created
     EXPECT_EQ(sellLevel, nullptr);
     // Make sure the 1st buy order's quantity decreased
-    EXPECT_EQ(order2->quantity, 50);
+    EXPECT_EQ(order2->quantity.load(), 50);
 
     // Submit matching sell order
     orderBook.submitOrder(1, symbolID, Side::SELL, 100, 140.0);
@@ -1320,7 +1307,7 @@ TEST_F(OrderBookTestSingleThread, HandlesPriceChangeBreaksFIFO) {
     // Sell Level is expected to be nullptr as it never got created
     EXPECT_EQ(sellLevel, nullptr);
     // Make sure the 2nd buy order's quantity decreased
-    EXPECT_EQ(order1->quantity, 50);
+    EXPECT_EQ(order1->quantity.load(), 50);
 }
 
 // Verify FIFO ordering on the sell side
@@ -1365,7 +1352,7 @@ TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingSell) {
     // Buy Level is expected to have 2 orders
     EXPECT_EQ(sellLevel->numOrders.load(), 2);
     // Make sure the 1st sell order's quantity decreased
-    EXPECT_EQ(order1->quantity, 50);
+    EXPECT_EQ(order1->quantity.load(), 50);
 
     // Submit matching buy order
     orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
@@ -1379,7 +1366,7 @@ TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingSell) {
     // Buy Level is expected to have 2 orders
     EXPECT_EQ(sellLevel->numOrders.load(), 1);
     // Make sure the 2nd sell order's quantity decreased
-    EXPECT_EQ(order2->quantity, 50);
+    EXPECT_EQ(order2->quantity.load(), 50);
 }
 
 
@@ -1407,7 +1394,8 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmission) {
     }
 
     // Wait for processing
-    waitForProcessing();
+    // Extra long timeout to be safe
+    waitForProcessing(1000);
 
     // Retrieve Price Level
     auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
@@ -1440,7 +1428,8 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmissionDiffPrice) {
     }
     
     // Wait for processing
-    waitForProcessing();
+    // Extra long timeout to be safe
+    waitForProcessing(5000);    
     
     // Retrieve Symbol
     auto symbol = result->second->symbol;

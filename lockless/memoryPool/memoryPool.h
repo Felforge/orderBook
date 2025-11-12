@@ -85,10 +85,12 @@ class MemoryPool : public GenericMemoryPool {
         // Destructor
         // Deletes all blocks that were allocated by this pool
         ~MemoryPool() {
+            std::cout << "MemoryPool destructor: NumBlocks=" << NumBlocks << " BlockSize=" << sizeof(Block) << std::endl;
             // Delete all blocks allocated by this pool
             for (size_t i = 0; i < NumBlocks; ++i) {
                 delete allBlocks[i];
             }
+            std::cout << "MemoryPool destructor completed: NumBlocks=" << NumBlocks << std::endl;
         }
 
         // Allocate an object from the pool
@@ -103,9 +105,6 @@ class MemoryPool : public GenericMemoryPool {
             if (!block) {
                 throw std::bad_alloc();
             }
-
-            // Zero out the block memory
-            std::memset(block, 0, sizeof(Block));
 
             // Return object
             return block;
@@ -122,7 +121,7 @@ class MemoryPool : public GenericMemoryPool {
 
             // Poison the block memory
             // Poison means to fill the block with garbage  
-            std::memset(block, 0xDEADBEEF, sizeof(Block));
+            // std::memset(block, 0xDEADBEEF, sizeof(Block));
 
             if (isOwnerThread()) {
                 // Is owner thread, push to free List

@@ -55,7 +55,6 @@ class MemoryPool : public GenericMemoryPool {
         // Constructor
         // Preallocates NumBlocks objects and adds them to the free list
         MemoryPool() {
-            std::cout << "MemoryPool constructor: NumBlocks=" << NumBlocks << " BlockSize=" << sizeof(Block) << std::endl;
             
             // Make sure construction parameters are valid
             static_assert(NumBlocks > 0, "Number of blocks must be an integer greater than zero!");
@@ -85,12 +84,10 @@ class MemoryPool : public GenericMemoryPool {
         // Destructor
         // Deletes all blocks that were allocated by this pool
         ~MemoryPool() {
-            std::cout << "MemoryPool destructor: NumBlocks=" << NumBlocks << " BlockSize=" << sizeof(Block) << std::endl;
             // Delete all blocks allocated by this pool
             for (size_t i = 0; i < NumBlocks; ++i) {
                 delete allBlocks[i];
             }
-            std::cout << "MemoryPool destructor completed: NumBlocks=" << NumBlocks << std::endl;
         }
 
         // Allocate an object from the pool
@@ -114,7 +111,6 @@ class MemoryPool : public GenericMemoryPool {
         // Overrides the placeholder in GenericMmemoryPool
         void deallocate(void* ptr) override {
             std::thread::id threadId = std::this_thread::get_id();
-            std::cout << "[DEALLOC THREAD " << threadId << "] deallocating block " << ptr << " isOwner=" << isOwnerThread() << std::endl;
             
             // Convert void pointer back into Block
             Block* block = static_cast<Block*>(ptr);
@@ -125,12 +121,10 @@ class MemoryPool : public GenericMemoryPool {
 
             if (isOwnerThread()) {
                 // Is owner thread, push to free List
-                std::cout << "[DEALLOC THREAD " << threadId << "] returning to local freeList" << std::endl;
                 freeList.push(block);
 
             } else {
                 // If the queue is full yield until space is availbe
-                std::cout << "[DEALLOC THREAD " << threadId << "] pushing to remoteFree queue" << std::endl;
                 while (remoteFree.isFull()) {
                     std::this_thread::yield();
                 }
@@ -157,7 +151,6 @@ class MemoryPool : public GenericMemoryPool {
             
             if (drainedCount > 0) {
                 std::thread::id threadId = std::this_thread::get_id();
-                std::cout << "[DRAIN THREAD " << threadId << "] drained " << drainedCount << " blocks from remoteFree" << std::endl;
             }
         }
 

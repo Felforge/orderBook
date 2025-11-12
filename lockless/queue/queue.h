@@ -90,13 +90,11 @@ struct Node {
     // Used if no parameters are provided
     Node(GenericMemoryPool* ownerPool, void* memoryBlock) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
         data(), isDummy(true), isRetired(false), memoryBlock(memoryBlock), ownerPool(ownerPool) {
-        std::cout << "Node constructor (dummy): memoryBlock=" << memoryBlock << std::endl;
     }
     
     // Used if parameters are provided
     Node(GenericMemoryPool* ownerPool, void* memoryBlock, const T& val) : prev(MarkedPtr<T>(nullptr, false)), next(MarkedPtr<T>(nullptr, false)), 
         data(val), isDummy(false), isRetired(false), memoryBlock(memoryBlock), ownerPool(ownerPool) {
-        std::cout << "Node constructor (data): memoryBlock=" << memoryBlock << std::endl;
     }
 };
 
@@ -393,7 +391,6 @@ class LocklessQueue {
         Node<T>* tail;
 
         LocklessQueue() {
-            std::cout << "LocklessQueue constructor started" << std::endl;
             
             // Allocate memory for head and tail
             // head and tail will belong to local memory pool
@@ -408,12 +405,10 @@ class LocklessQueue {
             head->next.store(MarkedPtr<T>(tail, false));
             tail->prev.store(MarkedPtr<T>(head, false));
             
-            std::cout << "LocklessQueue constructor completed" << std::endl;
         }
 
         // It is assumed that no threads will be using the queue when this runs
         ~LocklessQueue() {
-            std::cout << "LocklessQueue destructor called" << std::endl;
             // Cycle through all remaining items and terminate them
             Node<T>* curr = head->next.load().getPtr();
             Node<T>* next;

@@ -140,18 +140,14 @@ struct PriceLevel {
         void* queueBlock, GenericMemoryPool* ownerPool, GenericMemoryPool* queuePool)
         : memoryBlock(memoryBlock), priceTicks(priceTicks), queue(queue), numOrders(0),
         queueBlock(queueBlock), ownerPool(ownerPool), queuePool(queuePool) {
-        std::cout << "PriceLevel constructor: priceTicks=" << priceTicks << std::endl;
     }
 
     // Destructor
     ~PriceLevel() {
-        std::cout << "PriceLevel destructor: priceTicks=" << priceTicks << std::endl;
-        std::cout << "PriceLevel destructor: calling queue destructor for queue=" << queue << std::endl;
         // Call LocklessQueue destructor explicitly before deallocating memory
         queue->~LocklessQueue();
         // Deallocate lockless queue memory block
         queuePool->deallocate(queueBlock);
-        std::cout << "PriceLevel destructor: queue destructor completed" << std::endl;
     }
 };
 
@@ -191,33 +187,25 @@ class PublishRing {
         
         // Constructor
         PublishRing() {
-            std::cout << "PublishRing constructor: RingSize=" << RingSize << std::endl;
         }
 
         // Producer function: acquire sequence and publish order
         void publish(Order<RingSize, NumBuckets>* order) {
-            std::thread::id threadId = std::this_thread::get_id();
-            
             // Get the current sequence without incrementing yet
             uint64_t seq = publishSeq.load();
 
             // Get ring index based on sequence
             size_t index = seq & (RingSize - 1);
 
-            std::cout << "[PUBLISH THREAD " << threadId << "] order=" << order->orderID << " seq=" << seq << " index=" << index << " publishSeq=" << publishSeq.load() << std::endl;
-
             // Loop to update ring with strong CAS
             Order<RingSize, NumBuckets>* expected = nullptr;
             while (!ring[index].order.compare_exchange_strong(expected, order, std::memory_order_release)) {
-                std::cout << "[PUBLISH THREAD " << threadId << "] CAS failed, retrying..." << std::endl;
                 expected = nullptr; // Reset for next CAS attempt
                 spinBackoff();
             }
 
             // Only increment publishSeq AFTER the order is successfully stored
             publishSeq.fetch_add(1, std::memory_order_acq_rel);
-            
-            std::cout << "[PUBLISH THREAD " << threadId << "] order=" << order->orderID << " stored at index=" << index << " publishSeq=" << publishSeq.load() << std::endl;
         }
 
         // Worker function to grab the next available order
@@ -241,7 +229,6 @@ class PublishRing {
             // Atomically retrieve and clear the order from the ring slot
             Order<RingSize, NumBuckets>* order = ring[index].order.exchange(nullptr, std::memory_order_acq_rel);
 
-            std::cout << "[PULL] seq=" << seq << " index=" << index << " exchange returned: " << (order ? std::to_string(order->orderID) : "nullptr") << std::endl;
 
             // Return the order (could be nullptr if slot was already cleared)
             return order;
@@ -273,7 +260,6 @@ class PriceTable {
     public:
         // Constructor
         PriceTable() {
-            std::cout << "PriceTable constructor: NumBuckets=" << NumBuckets << std::endl;
         }
 
         // Destructor
@@ -360,7 +346,6 @@ class PriceTable {
         // Cleanup all price levels
         void cleanup() {
             std::thread::id threadId = std::this_thread::get_id();
-            std::cout << "[THREAD " << threadId << "] PriceTable cleanup started" << std::endl;
             
             for (size_t i = 0; i < NumBuckets; i++) {
                 PriceLevel<RingSize, NumBuckets>* level = buckets[i].level.load();
@@ -370,7 +355,6 @@ class PriceTable {
                     GenericMemoryPool* ownerPool = level->ownerPool;
                     void* memoryBlock = level->memoryBlock;
                     
-                    std::cout << "[THREAD " << threadId << "] cleaning up price level at bucket " << i << " priceTicks=" << priceTicks << std::endl;
                     
                     // Call destructor explicitly before deallocating memory
                     level->~PriceLevel();
@@ -380,7 +364,6 @@ class PriceTable {
                 }
             }
             
-            std::cout << "[THREAD " << threadId << "] PriceTable cleanup completed" << std::endl;
         }
 };
 
@@ -418,7 +401,6 @@ struct Symbol {
     // Constructor
     Symbol(void* memoryBlock, uint16_t symbolID, std::string symbolName) :
         memoryBlock(memoryBlock), symbolID(symbolID), symbolName(symbolName) {
-        std::cout << "Symbol constructor: symbolID=" << symbolID << " symbolName=" << symbolName << std::endl;
     }
 };
 
@@ -437,13 +419,11 @@ class Worker {
 
         // Function to process order
         void processOrder(Order<RingSize, NumBuckets>* order) {
-            std::cout << "[PROCESS] order " << order->orderID << " type=" << (order->type == OrderType::ADD ? "ADD" : "CANCEL") << std::endl;
             switch (order->type) {
                 case OrderType::ADD:
                     insertOrder(order);
                     break;
                 case OrderType::CANCEL:
-                    std::cout << "[CANCEL] Cancelling order " << order->orderID << " - DEALLOCATING!" << std::endl;
                     cancelOrder(order);
                     break;
             }
@@ -561,12 +541,10 @@ class Worker {
             // Retrieve symbol pointer
             Symbol<RingSize, NumBuckets>* symbol = order->symbol; 
 
-            std::cout << "[INSERT] order " << order->orderID << " quantity before match: " << order->quantity.load() << std::endl;
 
             // Try to match the order first
             matchOrder(order);
 
-            std::cout << "[INSERT] order " << order->orderID << " quantity after match: " << order->quantity.load() << std::endl;
 
             // If order still has quantity, insert into book
             if (order->quantity.load() > 0) {
@@ -575,7 +553,6 @@ class Worker {
 
                 // Price level could not be created, delete the order
                 if (!level) {
-                    std::cout << "[ERROR] Price level creation failed for order " << order->orderID << " - deallocating order!" << std::endl;
                     order->ownerPool->deallocate(order->memoryBlock);
                     return;
                 }
@@ -649,7 +626,6 @@ class Worker {
 
             // Could not allocate, return
             if (!levelBlock) {
-                std::cout << "[ERROR] PriceLevel pool exhausted - cannot create price level!" << std::endl;
                 return nullptr;
             }
 
@@ -658,7 +634,6 @@ class Worker {
 
             // Could not allocate, return
             if (!queueBlock) {
-                std::cout << "[ERROR] Queue pool exhausted - cannot create price level!" << std::endl;
                 pools.priceLevelPool.deallocate(levelBlock);
                 return nullptr;
             }
@@ -762,19 +737,16 @@ class Worker {
         // Constructor
         Worker(void* block, uint16_t workerID, std::atomic<bool>* running)
             : memoryBlock(block), workerID(workerID), running(running) {
-            std::cout << "Worker constructor: workerID=" << workerID << std::endl;
         }
 
         // Destructor
         ~Worker() {
-            std::cout << "Worker destructor: workerID=" << workerID << std::endl;
         }
 
         // Function to run the worker
         void run(PublishRing<RingSize, NumBuckets>* publishRing) {
             std::thread::id threadId = std::this_thread::get_id();
             // Worker now uses its own member pools instead of thread-local pools
-            std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] pools initialized, orderPool.isDrained()=" << pools.orderPool.isDrained() << std::endl;
             
             while (running->load()) {
                 // Pull next available order
@@ -782,14 +754,12 @@ class Worker {
 
                 // If order is valid process it, else yield
                 if (order) {
-                    std::cout << "[WORKER " << workerID << "] Got order " << order->orderID << " from pullNextOrder" << std::endl;
                     processOrder(order);
                 } else {
                     std::this_thread::yield();
                 }
             }
             
-            std::cout << "[WORKER " << workerID << " THREAD " << threadId << "] worker exiting" << std::endl;
         }
 };
 
@@ -818,7 +788,6 @@ class WorkerPool {
         WorkerPool() = default;
 
         WorkerPool(MemoryPool<sizeof(Worker<MaxOrders, RingSize, NumBuckets>), NumWorkers>* pool, PublishRing<RingSize, NumBuckets>* publishRingPtr) {
-            std::cout << "WorkerPool constructor: NumWorkers=" << NumWorkers << std::endl;
             alocPool = pool;
             publishRing = publishRingPtr;
         }
@@ -868,25 +837,20 @@ class WorkerPool {
 
         // Function to destroy worker objects and deallocate memory
         void destroyWorkers() {
-            std::cout << "destroyWorkers called, workers.size()=" << workers.size() << std::endl;
             // Destroy workers and deallocate memory
             for (auto* worker : workers) {
-                std::cout << "Calling destructor for worker" << std::endl;
                 // Call destructor explicitly (placement new requires this)
                 worker->~Worker<MaxOrders, RingSize, NumBuckets>();
                 // Deallocate worker memory block
                 alocPool->deallocate(worker->memoryBlock);
             }
             workers.clear();
-            std::cout << "destroyWorkers completed" << std::endl;
         }
 
         // Function to stop all worker threads
         void stopWorkers() {
-            std::cout << "stopWorkers called" << std::endl;
             stopWorkerThreads();
             destroyWorkers();
-            std::cout << "stopWorkers completed" << std::endl;
         }
 };
 
@@ -922,7 +886,6 @@ class OrderBook {
     public:
         // Constructor
         OrderBook() : workerPool(&workerMemPool, &publishRing) {
-            std::cout << "OrderBook constructor: NumWorkers=" << NumWorkers << " MaxSymbols=" << MaxSymbols << " MaxOrders=" << MaxOrders << std::endl;
             
             // Make sure max symbols is valid
             static_assert(MaxSymbols <= UINT16_MAX, "MaxSymbols exceeds uint16_t range");
@@ -930,12 +893,10 @@ class OrderBook {
             // Reset thread-local sequence counter for clean state
             threadLocalSeq.store(0);
             
-            std::cout << "OrderBook constructor completed" << std::endl;
         }
 
         // Order Book Destructor
         ~OrderBook() {
-            std::cout << "OrderBook destructor called" << std::endl;
             shutdown();
             
             // Reset symbol ID counter
@@ -949,11 +910,9 @@ class OrderBook {
 
         // Shut down the Order Book's system
         void shutdown() {
-            std::cout << "OrderBook shutdown called" << std::endl;
             
             // FIRST: Stop all worker threads to prevent any further memory pool access
             workerPool.stopWorkerThreads();
-            std::cout << "All worker threads stopped" << std::endl;
             
             // NOW: Safe to clean up symbols since no worker threads are accessing memory pools
             for (auto& [symbolID, symbol] : symbols) {
@@ -967,7 +926,6 @@ class OrderBook {
 
             workerPool.destroyWorkers();
             
-            std::cout << "OrderBook shutdown completed" << std::endl;
         }
 
         // Check if any workers are currently processing orders
@@ -1013,17 +971,14 @@ class OrderBook {
         // Optional will have no value if order could not be submitted
         std::optional<std::pair<uint64_t, Order<RingSize, NumBuckets>*>> submitOrder(uint32_t userID, uint16_t symbolID, Side side, uint32_t quantity, double price) {
             std::thread::id threadId = std::this_thread::get_id();
-            std::cout << "[THREAD " << threadId << "] submitOrder called: userID=" << userID << " symbolID=" << symbolID << " side=" << (int)side << " quantity=" << quantity << " price=" << price << std::endl;
             
             // Use OrderBook's dedicated order pool for order allocation
-            std::cout << "[THREAD " << threadId << "] Using OrderBook orderPool, isDrained()=" << orderPool.isDrained() << std::endl;
             
             // Try to retrieve symbol
             auto symbolIt = symbols.find(symbolID);
 
             // If symbol could not be found or price is invalid or quantity is invalid return
             if (symbolIt == symbols.end() || price <= 0.0 || static_cast<int>(quantity) <= 0) {
-                std::cout << "submitOrder validation failed" << std::endl;
                 return std::nullopt;
             }
 
@@ -1031,7 +986,6 @@ class OrderBook {
             Symbol<RingSize, NumBuckets>* symbol = symbolIt->second;
 
             // Debug: Check price parameter before conversion
-            std::cout << "[THREAD " << threadId << "] price parameter before conversion: " << price << std::endl;
 
             // Convert price to ticks
             uint64_t priceTicks = priceToTicks(price);
@@ -1040,31 +994,24 @@ class OrderBook {
             uint64_t localSeq = threadLocalSeq.fetch_add(1);
             uint64_t orderID = Order<RingSize, NumBuckets>::createOrderID(symbolID, localSeq);
 
-            std::cout << "[THREAD " << threadId << "] About to allocate from OrderBook orderPool" << std::endl;
             
             // Allocate memory for order
-            std::cout << "[THREAD " << threadId << "] orderPool.isDrained()=" << orderPool.isDrained() << " before allocation" << std::endl;
             void* orderBlock = orderPool.allocate();
 
-            std::cout << "[THREAD " << threadId << "] orderPool.allocate() returned: " << orderBlock << std::endl;
 
             // Make sure memory is valid, if not return
             if (!orderBlock) {
-                std::cout << "orderBlock allocation failed" << std::endl;
                 return std::nullopt;
             }
 
-            std::cout << "About to create Order object" << std::endl;
 
             // Create order
             Order<RingSize, NumBuckets>* order = new (orderBlock) Order<RingSize, NumBuckets>(orderBlock, &orderPool, orderID, userID, side, symbolID, symbol, quantity, priceTicks, OrderType::ADD);
 
-            std::cout << "[SUBMIT] Order " << order->orderID << " created successfully, about to publish" << std::endl;
 
             // Publish to universal ring
             publishRing.publish(order);
 
-            std::cout << "[SUBMIT] Order " << order->orderID << " published successfully" << std::endl;
 
             // Return to the user the Order ID and Pointer
             // The Order Type is ammended to Cancel once added so the user can cancel it

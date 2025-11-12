@@ -4,6 +4,11 @@
 #include "parallelOrderBook.h"
 using namespace std;
 
+// Test Status
+// Normal: PASSED
+// ASAN: PASSED
+// TSAN: PASSED
+
 // Define external Order object
 #define OrderExt Order<DEFAULT_RING_SIZE, PRICE_TABLE_BUCKETS>
 

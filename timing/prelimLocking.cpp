@@ -11,8 +11,8 @@ class OrderBookSixteenThread: public ::testing::Test {
             orderBook.start();
         }
     
-        // Template parameters: NumWorkers=16, MaxSymbols=10, MaxOrders=1000
-        OrderBook<16, 10, 1000> orderBook;
+        // Template parameters: NumWorkers=16, MaxSymbols=10, MaxOrders=1e6
+        OrderBook<16, 1, 1000000> orderBook;
 };
 
 // Time 100,000 order submissions on the same price level

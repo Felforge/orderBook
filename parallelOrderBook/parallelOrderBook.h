@@ -233,6 +233,12 @@ class PublishRing {
             // Return the order (could be nullptr if slot was already cleared)
             return order;
         }
+
+        // Check if ring is empty (workers caught up)
+        bool isEmpty() const {
+            return workSeq.load(std::memory_order_acquire) >=
+                   publishSeq.load(std::memory_order_acquire);
+        }
 };
 
 // Fixed-size lockless hash table
@@ -1053,8 +1059,7 @@ class OrderBook {
         // Small discrepancy: order may be pulled but not fully processed yet
         // Negligible with large batch sizes
         bool isIdle() const {
-            return publishRing.workSeq.load(std::memory_order_acquire) >=
-                   publishRing.publishSeq.load(std::memory_order_acquire);
+            return publishRing.isEmpty();
         }
 
 };

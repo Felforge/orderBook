@@ -319,6 +319,12 @@ class PublishRing {
 
             return order;
         }
+
+        // Check if ring is empty (workers caught up)
+        bool isEmpty() const {
+            std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(ringMutex));
+            return workSeq >= publishSeq;
+        }
 };
 
 // Mutex-protected hash table for price levels
@@ -865,8 +871,7 @@ class OrderBook {
         // Small discrepancy: order may be pulled but not fully processed yet
         // Negligible with large batch sizes
         bool isIdle() const {
-            return publishRing.workSeq.load(std::memory_order_acquire) >=
-                   publishRing.publishSeq.load(std::memory_order_acquire);
+            return publishRing.isEmpty();
         }
 };
 

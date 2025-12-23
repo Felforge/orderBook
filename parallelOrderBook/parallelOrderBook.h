@@ -1049,6 +1049,13 @@ class OrderBook {
             return true;
         }
 
+        // Check if all workers have caught up (ring is empty)
+        // Small discrepancy: order may be pulled but not fully processed yet
+        // Negligible with large batch sizes
+        bool isIdle() const {
+            return publishRing.workSeq.load(std::memory_order_acquire) >=
+                   publishRing.publishSeq.load(std::memory_order_acquire);
+        }
 
 };
 

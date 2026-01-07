@@ -58,8 +58,14 @@ TEST(OrderBookTimingCaseOne, HandlesOneThread) {
         // Print results to file
         file << "1," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
-        // Additional delay to ensure workers finish processing before OrderBook destructor is called
-        this_thread::sleep_for(chrono::milliseconds(100));
+        // Additional delay to ensure workers finish processing before shutdown
+        this_thread::sleep_for(chrono::milliseconds(10));
+
+        // Explicitly shutdown to cleanly terminate worker threads
+        orderBook.shutdown();
+
+        // Additional delay to ensure shutdown completes before destructor
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }

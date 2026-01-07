@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <chrono>
 #include <random>
-#include "../lockingOrderBook/lockingOrderBook.h"
+#include "../../lockingOrderBook/lockingOrderBook.h"
 using namespace std;
 
 // Define external Order object
@@ -15,7 +15,7 @@ class OrderBookSixteenThread: public ::testing::Test {
             orderBook.start();
         }
     
-        // Template parameters: NumWorkers=16, MaxSymbols=10, MaxOrders=1e6
+        // Template parameters: NumWorkers=16, MaxSymbols=1, MaxOrders=1e6
         OrderBook<16, 1, 1000000> orderBook;
 };
 

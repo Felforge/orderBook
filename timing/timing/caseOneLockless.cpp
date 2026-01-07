@@ -58,6 +58,9 @@ TEST(OrderBookTimingCaseOne, HandlesOneThread) {
         // Print results to file
         file << "1," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -118,6 +121,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwoThreads) {
 
         // Print results to file
         file << "2," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -180,6 +186,9 @@ TEST(OrderBookTimingCaseOne, HandlesThreeThreads) {
         // Print results to file
         file << "3," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -240,6 +249,9 @@ TEST(OrderBookTimingCaseOne, HandlesFourThreads) {
 
         // Print results to file
         file << "4," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -302,6 +314,9 @@ TEST(OrderBookTimingCaseOne, HandlesFiveThreads) {
         // Print results to file
         file << "5," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -362,6 +377,9 @@ TEST(OrderBookTimingCaseOne, HandlesSixThreads) {
 
         // Print results to file
         file << "6," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -424,6 +442,9 @@ TEST(OrderBookTimingCaseOne, HandlesSevenThreads) {
         // Print results to file
         file << "7," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -484,6 +505,9 @@ TEST(OrderBookTimingCaseOne, HandlesEightThreads) {
 
         // Print results to file
         file << "8," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -546,6 +570,9 @@ TEST(OrderBookTimingCaseOne, HandlesNineThreads) {
         // Print results to file
         file << "9," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -606,6 +633,9 @@ TEST(OrderBookTimingCaseOne, HandlesTenThreads) {
 
         // Print results to file
         file << "10," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -668,6 +698,9 @@ TEST(OrderBookTimingCaseOne, HandlesElevenThreads) {
         // Print results to file
         file << "11," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -728,6 +761,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwelveThreads) {
 
         // Print results to file
         file << "12," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -790,6 +826,9 @@ TEST(OrderBookTimingCaseOne, HandlesThirteenThreads) {
         // Print results to file
         file << "13," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -850,6 +889,9 @@ TEST(OrderBookTimingCaseOne, HandlesFourteenThreads) {
 
         // Print results to file
         file << "14," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -912,6 +954,9 @@ TEST(OrderBookTimingCaseOne, HandlesFifteenThreads) {
         // Print results to file
         file << "15," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -972,6 +1017,9 @@ TEST(OrderBookTimingCaseOne, HandlesSixteenThreads) {
 
         // Print results to file
         file << "16," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -1034,6 +1082,9 @@ TEST(OrderBookTimingCaseOne, HandlesSeventeenThreads) {
         // Print results to file
         file << "17," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -1094,6 +1145,9 @@ TEST(OrderBookTimingCaseOne, HandlesEighteenThreads) {
 
         // Print results to file
         file << "18," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -1156,6 +1210,9 @@ TEST(OrderBookTimingCaseOne, HandlesNineteenThreads) {
         // Print results to file
         file << "19," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -1216,6 +1273,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwentyThreads) {
 
         // Print results to file
         file << "20," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -1278,6 +1338,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwentyOneThreads) {
         // Print results to file
         file << "21," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -1338,6 +1401,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwentyTwoThreads) {
 
         // Print results to file
         file << "22," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -1400,6 +1466,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwentyThreeThreads) {
         // Print results to file
         file << "23," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -1460,6 +1529,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwentyFourThreads) {
 
         // Print results to file
         file << "24," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -1522,6 +1594,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwentyFiveThreads) {
         // Print results to file
         file << "25," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -1582,6 +1657,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwentySixThreads) {
 
         // Print results to file
         file << "26," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -1644,6 +1722,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwentySevenThreads) {
         // Print results to file
         file << "27," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -1704,6 +1785,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwentyEightThreads) {
 
         // Print results to file
         file << "28," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -1766,6 +1850,9 @@ TEST(OrderBookTimingCaseOne, HandlesTwentyNineThreads) {
         // Print results to file
         file << "29," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -1826,6 +1913,9 @@ TEST(OrderBookTimingCaseOne, HandlesThirtyThreads) {
 
         // Print results to file
         file << "30," << totalTime << "," << (N * 1e6 / totalTime) << endl;
+
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
 
         // Order book instance will be killed on loop end
     }
@@ -1888,6 +1978,9 @@ TEST(OrderBookTimingCaseOne, HandlesThirtyOneThreads) {
         // Print results to file
         file << "31," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -1949,6 +2042,9 @@ TEST(OrderBookTimingCaseOne, HandlesThirtyTwoThreads) {
         // Print results to file
         file << "32," << totalTime << "," << (N * 1e6 / totalTime) << endl;
 
+        // Additional delay to ensure workers finish processing before OrderBook destructor is called
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         // Order book instance will be killed on loop end
     }
 
@@ -1965,7 +2061,7 @@ int main(int argc, char **argv) {
     // Check if file is open
     if (!file.is_open()) {
         cerr << "Failed to open CSV file" << endl;
-        return;
+        return 1;
     }
 
     // Write header

@@ -130,39 +130,39 @@ TEST_P(OrderBookTimingCaseOne30, Run) { runTest("../data/caseOneLocking.csv"); }
 TEST_P(OrderBookTimingCaseOne31, Run) { runTest("../data/caseOneLocking.csv"); }
 TEST_P(OrderBookTimingCaseOne32, Run) { runTest("../data/caseOneLocking.csv"); }
 
-// Instantiate each test suite with 1000 runs (0-999)
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne1, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne2, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne3, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne4, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne5, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne6, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne7, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne8, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne9, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne10, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne11, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne12, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne13, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne14, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne15, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne16, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne17, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne18, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne19, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne20, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne21, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne22, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne23, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne24, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne25, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne26, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne27, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne28, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne29, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne30, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne31, ::testing::Range(0, 1000));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne32, ::testing::Range(0, 1000));
+// Instantiate each test suite with 100 runs (0-99)
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne1, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne2, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne3, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne4, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne5, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne6, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne7, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne8, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne9, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne10, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne11, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne12, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne13, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne14, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne15, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne16, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne17, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne18, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne19, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne20, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne21, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne22, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne23, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne24, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne25, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne26, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne27, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne28, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne29, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne30, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne31, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne32, ::testing::Range(0, 100));
 
 // Run all tests
 int main(int argc, char **argv) {

@@ -31,21 +31,49 @@ struct HazardPointer {
 // Poentially wasted space but the number isn't very high
 HazardPointer globalHazardPointers[MAX_HAZARD_POINTERS];
 
-// Global counter for slot allocation (inline ensures single instance across all TUs)
+// Global counter for new slot allocation (inline ensures single instance across all TUs)
 inline std::atomic<size_t> globalHazardSlotCounter{0};
 
-// Each thread gets a unique slot in the global hazard pointer table
-// This lambda is run the first time a thread accesses hazardSlot
-thread_local size_t hazardSlot = []{
-    // set slot as current next and then increment next
+// Bitset tracking which slots are in use (lock-free)
+inline std::atomic<bool> slotInUse[MAX_HAZARD_POINTERS] = {};
+
+// Allocate a hazard pointer slot (try to reuse freed slots first)
+inline size_t allocateHazardSlot() {
+    // First pass: try to claim a previously used slot
+    for (size_t i = 0; i < MAX_HAZARD_POINTERS; ++i) {
+        bool expected = false;
+        if (slotInUse[i].compare_exchange_strong(expected, true, std::memory_order_acquire)) {
+            return i;
+        }
+    }
+
+    // No free slots, allocate a new one from the counter
     size_t slot = globalHazardSlotCounter.fetch_add(1, std::memory_order_relaxed);
-
-    // Make sure the supported thread count is not exceeded
     assert(slot < MAX_HAZARD_POINTERS && "Too many threads for hazard pointer table");
-
-    // Return slot number
+    slotInUse[slot].store(true, std::memory_order_release);
     return slot;
-}();
+}
+
+// Free a hazard pointer slot for reuse
+inline void freeHazardSlot(size_t slot) {
+    // Clear all hazard pointers for this slot
+    for (size_t i = 0; i < HAZARD_POINTERS_PER_THREAD; ++i) {
+        globalHazardPointers[slot].ptrs[i].store(nullptr, std::memory_order_relaxed);
+    }
+    // Mark slot as free
+    slotInUse[slot].store(false, std::memory_order_release);
+}
+
+// RAII guard to automatically free slot when thread exits
+struct HazardSlotGuard {
+    size_t slot;
+    HazardSlotGuard() : slot(allocateHazardSlot()) {}
+    ~HazardSlotGuard() { freeHazardSlot(slot); }
+};
+
+// Each thread gets a unique slot via RAII guard (auto-freed on thread exit)
+thread_local HazardSlotGuard hazardSlotGuard;
+thread_local size_t hazardSlot = hazardSlotGuard.slot;
 
 // Set the current thread's hazard pointer to a given pointer
 void setHazardPointer(void* ptr) {

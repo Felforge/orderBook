@@ -4,6 +4,8 @@
 #include "../../lockingOrderBook/lockingOrderBook.h"
 using namespace std;
 
+// Case One distributes 100,000 orders on the same price level
+
 // Base template for test fixtures with different worker counts
 template<size_t NumWorkers>
 class OrderBookTimingCaseOneBase : public ::testing::TestWithParam<int> {
@@ -168,7 +170,7 @@ INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne32, ::testing::Rang
 int main(int argc, char **argv) {
     // Open data file
     // This will override an existing file by the same name
-    ofstream file("../data/caseOneLockless.csv");
+    ofstream file("./data/caseOneLockless.csv");
 
     // Check if file is open
     if (!file.is_open()) {

@@ -8,6 +8,9 @@ using namespace std;
 // This is done in a fixed sequence going 1 to 100 and then looping again
 // The 100 price levels is fairly arbitrary but works to show what we need
 
+// Define external Order object
+#define OrderExt Order<DEFAULT_RING_SIZE, PRICE_TABLE_BUCKETS>
+
 // Base template for test fixtures with different worker counts
 template<size_t NumWorkers>
 class OrderBookTimingCaseTwoBase : public ::testing::TestWithParam<int> {

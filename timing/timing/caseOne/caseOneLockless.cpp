@@ -100,38 +100,38 @@ using OrderBookTimingCaseOne31 = OrderBookTimingCaseOneBase<31>;
 using OrderBookTimingCaseOne32 = OrderBookTimingCaseOneBase<32>;
 
 // Define tests for each worker count
-TEST_P(OrderBookTimingCaseOne1, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne2, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne3, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne4, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne5, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne6, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne7, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne8, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne9, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne10, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne11, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne12, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne13, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne14, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne15, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne16, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne17, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne18, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne19, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne20, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne21, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne22, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne23, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne24, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne25, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne26, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne27, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne28, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne29, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne30, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne31, Run) { runTest("../data/caseOneLockless.csv"); }
-TEST_P(OrderBookTimingCaseOne32, Run) { runTest("../data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne1, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne2, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne3, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne4, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne5, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne6, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne7, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne8, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne9, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne10, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne11, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne12, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne13, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne14, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne15, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne16, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne17, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne18, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne19, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne20, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne21, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne22, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne23, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne24, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne25, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne26, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne27, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne28, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne29, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne30, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne31, Run) { runTest("./data/caseOneLockless.csv"); }
+TEST_P(OrderBookTimingCaseOne32, Run) { runTest("./data/caseOneLockless.csv"); }
 
 // Instantiate each test suite with 100 runs (0-99)
 INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseOne1, ::testing::Range(0, 100));

@@ -9,7 +9,7 @@
 
 // Maximum number of threads that can be supported for hazard pointers
 // Would need to be higher for a GPU implementation but is fine for now
-constexpr size_t MAX_HAZARD_POINTERS = 1024;
+constexpr size_t MAX_HAZARD_POINTERS = 128;
 
 // Number of hazard pointers per thread
 constexpr size_t HAZARD_POINTERS_PER_THREAD = 8;
@@ -31,14 +31,14 @@ struct HazardPointer {
 // Poentially wasted space but the number isn't very high
 HazardPointer globalHazardPointers[MAX_HAZARD_POINTERS];
 
+// Global counter for slot allocation (inline ensures single instance across all TUs)
+inline std::atomic<size_t> globalHazardSlotCounter{0};
+
 // Each thread gets a unique slot in the global hazard pointer table
 // This lambda is run the first time a thread accesses hazardSlot
 thread_local size_t hazardSlot = []{
-    // next is only initialized on first execution due to static
-    static std::atomic<size_t> next{0};
-
     // set slot as current next and then increment next
-    size_t slot = next.fetch_add(1);
+    size_t slot = globalHazardSlotCounter.fetch_add(1, std::memory_order_relaxed);
 
     // Make sure the supported thread count is not exceeded
     assert(slot < MAX_HAZARD_POINTERS && "Too many threads for hazard pointer table");

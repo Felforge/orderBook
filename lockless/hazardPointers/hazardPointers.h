@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cassert>
 #include <vector>
+#include <cstdio>
 
 // Maximum number of threads that can be supported for hazard pointers
 // Would need to be higher for a GPU implementation but is fine for now
@@ -49,6 +50,17 @@ inline size_t allocateHazardSlot() {
 
     // No free slots, allocate a new one from the counter
     size_t slot = globalHazardSlotCounter.fetch_add(1, std::memory_order_relaxed);
+
+    // DEBUG: Print diagnostic info before asserting
+    if (slot >= MAX_HAZARD_POINTERS) {
+        size_t inUseCount = 0;
+        for (size_t i = 0; i < MAX_HAZARD_POINTERS; ++i) {
+            if (slotInUse[i].load()) inUseCount++;
+        }
+        fprintf(stderr, "HAZARD SLOT ERROR: counter=%zu, inUse=%zu, MAX=%zu\n",
+                slot, inUseCount, MAX_HAZARD_POINTERS);
+    }
+
     assert(slot < MAX_HAZARD_POINTERS && "Too many threads for hazard pointer table");
     slotInUse[slot].store(true, std::memory_order_release);
     return slot;

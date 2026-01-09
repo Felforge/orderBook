@@ -1,3 +1,4 @@
+num_threads,runtime_microseconds,throughput_ops_sec
 1,42350,2.36128e+06
 1,33193,3.01268e+06
 1,32085,3.11672e+06

@@ -124,38 +124,38 @@ using OrderBookTimingCaseTwo31 = OrderBookTimingCaseTwoBase<31>;
 using OrderBookTimingCaseTwo32 = OrderBookTimingCaseTwoBase<32>;
 
 // Define tests for each worker count
-TEST_P(OrderBookTimingCaseTwo1, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo2, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo3, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo4, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo5, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo6, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo7, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo8, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo9, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo10, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo11, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo12, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo13, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo14, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo15, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo16, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo17, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo18, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo19, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo20, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo21, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo22, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo23, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo24, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo25, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo26, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo27, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo28, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo29, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo30, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo31, Run) { runTest("../data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo32, Run) { runTest("../data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo1, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo2, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo3, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo4, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo5, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo6, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo7, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo8, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo9, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo10, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo11, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo12, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo13, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo14, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo15, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo16, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo17, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo18, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo19, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo20, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo21, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo22, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo23, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo24, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo25, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo26, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo27, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo28, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo29, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo30, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo31, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseTwo32, Run) { runTest("./data/caseTwoLocking.csv"); }
 
 // Instantiate each test suite with 100 runs (0-99)
 INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo1, ::testing::Range(0, 100));
@@ -195,7 +195,7 @@ INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo32, ::testing::Rang
 int main(int argc, char **argv) {
     // Open data file
     // This will override an existing file by the same name
-    ofstream file("../data/caseTwoLockless.csv");
+    ofstream file("./data/caseThreeLockless.csv");
 
     // Check if file is open
     if (!file.is_open()) {

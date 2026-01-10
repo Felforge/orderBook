@@ -226,7 +226,7 @@ INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree32, ::testing::Ra
 int main(int argc, char **argv) {
     // Open data file
     // This will override an existing file by the same name
-    ofstream file("./data/caseThreeLocking.csv");
+    ofstream file("../data/caseThreeLocking.csv");
 
     // Check if file is open
     if (!file.is_open()) {

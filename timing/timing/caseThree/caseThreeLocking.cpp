@@ -4,16 +4,16 @@
 #include "../../../lockingOrderBook/lockingOrderBook.h"
 using namespace std;
 
-// Case Two distributes 100,000 orders across 100 different price levels
-// This is done in a fixed sequence going 1 to 100 and then looping again
-// The 100 price levels is fairly arbitrary but works to show what we need
+// Case Three does 100,000 operations on the same price level
+// This operation has a 70% chance to be a submission, and a 30% chance to be a cancel
+// The decisions are pregenerated so that the results can be replicated
 
 // Define external Order object
 #define OrderExt Order<DEFAULT_RING_SIZE, PRICE_TABLE_BUCKETS>
 
 // Base template for test fixtures with different worker counts
 template<size_t NumWorkers>
-class OrderBookTimingCaseTwoBase : public ::testing::TestWithParam<int> {
+class OrderBookTimingCaseThreeBase : public ::testing::TestWithParam<int> {
 protected:
     void SetUp() override {
         // Start order book
@@ -22,11 +22,39 @@ protected:
         // Register symbol
         string symbolName = "AAPL";
         symbolID = orderBook.registerSymbol(symbolName);
+
+        // Generate decisions
+        loadDecisions("decisions.txt");
     }
 
     // Template parameters: NumWorkers, MaxSymbols=1, MaxOrders=1e6
     OrderBook<NumWorkers, 1, 1000000> orderBook;
     uint16_t symbolID;
+
+    // Vector to hold decisions
+    vector<bool> decisions;
+
+    // Load pre-generated decisions from file
+    void loadDecisions(const string& filename) {
+        ifstream file(filename);
+        
+        // Make sure file opens
+        if (!file.is_open()) {
+            cerr << "Failed to open decisions file" << endl;
+            return;
+        }
+        
+        // Pull decisions from file and convert to bool
+        int decision;
+        while (file >> decision) {
+            decisions.push_back(decision == 1);
+        }
+
+        // Close file
+        file.close();
+
+        return;
+    }
 
     // Helper method to run the timing test
     void runTest(const string& csvFile) {
@@ -42,31 +70,34 @@ protected:
         // Number of orders;
         int N = 1e5;
 
-        // Create price levels
-        // N MUST be divisible by numLevels
-        int numLevels = 100;
+        // Create vector to track orders
+        // Reserve space to lower overhead
         vector<OrderExt*> orders;
-        for (int i = 0; i < numLevels; i++) {
-            auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 + float(i));
-            OrderExt* order = result->second;
-            orders.push_back(order);
-        }
+        orders.reserve(N);
 
-        // Clear price levels
-        for (OrderExt* order: orders) {
-            orderBook.cancelOrder(order);
+        // Submit and track 100 initial orders on each price level
+        for (int i = 0; i < 1000; i++) {
+            auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+            if (result) {
+                orders.push_back(result->second);
+            }
         }
-
-        // Calculate number of orders per price level
-        int perLevel = N / numLevels;
     
         // Get start time
         auto start = chrono::high_resolution_clock::now();
     
         // Submit all orders
-        for (int i = 0; i < perLevel; i++) {
-            for (int j = 0; j < numLevels; j++) {
-                orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 + float(j));
+        for (int i = 0; i < N; i++) {
+            if (decisions[i]) {
+                auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
+                if (result) {
+                    orders.push_back(result->second);
+                }
+            } else {
+                // Technically this should have an empty check but I added 1000 initial
+                // It would be astronomically low odds to fail here
+                orderBook.cancelOrder(orders.back());
+                orders.pop_back();
             }
         }
 
@@ -90,106 +121,106 @@ protected:
 };
 
 // Create specific test fixtures for each worker count (1-32)
-using OrderBookTimingCaseTwo1 = OrderBookTimingCaseTwoBase<1>;
-using OrderBookTimingCaseTwo2 = OrderBookTimingCaseTwoBase<2>;
-using OrderBookTimingCaseTwo3 = OrderBookTimingCaseTwoBase<3>;
-using OrderBookTimingCaseTwo4 = OrderBookTimingCaseTwoBase<4>;
-using OrderBookTimingCaseTwo5 = OrderBookTimingCaseTwoBase<5>;
-using OrderBookTimingCaseTwo6 = OrderBookTimingCaseTwoBase<6>;
-using OrderBookTimingCaseTwo7 = OrderBookTimingCaseTwoBase<7>;
-using OrderBookTimingCaseTwo8 = OrderBookTimingCaseTwoBase<8>;
-using OrderBookTimingCaseTwo9 = OrderBookTimingCaseTwoBase<9>;
-using OrderBookTimingCaseTwo10 = OrderBookTimingCaseTwoBase<10>;
-using OrderBookTimingCaseTwo11 = OrderBookTimingCaseTwoBase<11>;
-using OrderBookTimingCaseTwo12 = OrderBookTimingCaseTwoBase<12>;
-using OrderBookTimingCaseTwo13 = OrderBookTimingCaseTwoBase<13>;
-using OrderBookTimingCaseTwo14 = OrderBookTimingCaseTwoBase<14>;
-using OrderBookTimingCaseTwo15 = OrderBookTimingCaseTwoBase<15>;
-using OrderBookTimingCaseTwo16 = OrderBookTimingCaseTwoBase<16>;
-using OrderBookTimingCaseTwo17 = OrderBookTimingCaseTwoBase<17>;
-using OrderBookTimingCaseTwo18 = OrderBookTimingCaseTwoBase<18>;
-using OrderBookTimingCaseTwo19 = OrderBookTimingCaseTwoBase<19>;
-using OrderBookTimingCaseTwo20 = OrderBookTimingCaseTwoBase<20>;
-using OrderBookTimingCaseTwo21 = OrderBookTimingCaseTwoBase<21>;
-using OrderBookTimingCaseTwo22 = OrderBookTimingCaseTwoBase<22>;
-using OrderBookTimingCaseTwo23 = OrderBookTimingCaseTwoBase<23>;
-using OrderBookTimingCaseTwo24 = OrderBookTimingCaseTwoBase<24>;
-using OrderBookTimingCaseTwo25 = OrderBookTimingCaseTwoBase<25>;
-using OrderBookTimingCaseTwo26 = OrderBookTimingCaseTwoBase<26>;
-using OrderBookTimingCaseTwo27 = OrderBookTimingCaseTwoBase<27>;
-using OrderBookTimingCaseTwo28 = OrderBookTimingCaseTwoBase<28>;
-using OrderBookTimingCaseTwo29 = OrderBookTimingCaseTwoBase<29>;
-using OrderBookTimingCaseTwo30 = OrderBookTimingCaseTwoBase<30>;
-using OrderBookTimingCaseTwo31 = OrderBookTimingCaseTwoBase<31>;
-using OrderBookTimingCaseTwo32 = OrderBookTimingCaseTwoBase<32>;
+using OrderBookTimingCaseThree1 = OrderBookTimingCaseThreeBase<1>;
+using OrderBookTimingCaseThree2 = OrderBookTimingCaseThreeBase<2>;
+using OrderBookTimingCaseThree3 = OrderBookTimingCaseThreeBase<3>;
+using OrderBookTimingCaseThree4 = OrderBookTimingCaseThreeBase<4>;
+using OrderBookTimingCaseThree5 = OrderBookTimingCaseThreeBase<5>;
+using OrderBookTimingCaseThree6 = OrderBookTimingCaseThreeBase<6>;
+using OrderBookTimingCaseThree7 = OrderBookTimingCaseThreeBase<7>;
+using OrderBookTimingCaseThree8 = OrderBookTimingCaseThreeBase<8>;
+using OrderBookTimingCaseThree9 = OrderBookTimingCaseThreeBase<9>;
+using OrderBookTimingCaseThree10 = OrderBookTimingCaseThreeBase<10>;
+using OrderBookTimingCaseThree11 = OrderBookTimingCaseThreeBase<11>;
+using OrderBookTimingCaseThree12 = OrderBookTimingCaseThreeBase<12>;
+using OrderBookTimingCaseThree13 = OrderBookTimingCaseThreeBase<13>;
+using OrderBookTimingCaseThree14 = OrderBookTimingCaseThreeBase<14>;
+using OrderBookTimingCaseThree15 = OrderBookTimingCaseThreeBase<15>;
+using OrderBookTimingCaseThree16 = OrderBookTimingCaseThreeBase<16>;
+using OrderBookTimingCaseThree17 = OrderBookTimingCaseThreeBase<17>;
+using OrderBookTimingCaseThree18 = OrderBookTimingCaseThreeBase<18>;
+using OrderBookTimingCaseThree19 = OrderBookTimingCaseThreeBase<19>;
+using OrderBookTimingCaseThree20 = OrderBookTimingCaseThreeBase<20>;
+using OrderBookTimingCaseThree21 = OrderBookTimingCaseThreeBase<21>;
+using OrderBookTimingCaseThree22 = OrderBookTimingCaseThreeBase<22>;
+using OrderBookTimingCaseThree23 = OrderBookTimingCaseThreeBase<23>;
+using OrderBookTimingCaseThree24 = OrderBookTimingCaseThreeBase<24>;
+using OrderBookTimingCaseThree25 = OrderBookTimingCaseThreeBase<25>;
+using OrderBookTimingCaseThree26 = OrderBookTimingCaseThreeBase<26>;
+using OrderBookTimingCaseThree27 = OrderBookTimingCaseThreeBase<27>;
+using OrderBookTimingCaseThree28 = OrderBookTimingCaseThreeBase<28>;
+using OrderBookTimingCaseThree29 = OrderBookTimingCaseThreeBase<29>;
+using OrderBookTimingCaseThree30 = OrderBookTimingCaseThreeBase<30>;
+using OrderBookTimingCaseThree31 = OrderBookTimingCaseThreeBase<31>;
+using OrderBookTimingCaseThree32 = OrderBookTimingCaseThreeBase<32>;
 
 // Define tests for each worker count
-TEST_P(OrderBookTimingCaseTwo1, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo2, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo3, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo4, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo5, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo6, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo7, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo8, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo9, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo10, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo11, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo12, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo13, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo14, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo15, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo16, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo17, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo18, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo19, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo20, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo21, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo22, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo23, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo24, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo25, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo26, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo27, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo28, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo29, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo30, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo31, Run) { runTest("./data/caseTwoLocking.csv"); }
-TEST_P(OrderBookTimingCaseTwo32, Run) { runTest("./data/caseTwoLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree1, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree2, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree3, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree4, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree5, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree6, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree7, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree8, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree9, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree10, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree11, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree12, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree13, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree14, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree15, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree16, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree17, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree18, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree19, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree20, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree21, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree22, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree23, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree24, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree25, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree26, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree27, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree28, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree29, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree30, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree31, Run) { runTest("./data/caseThreeLocking.csv"); }
+TEST_P(OrderBookTimingCaseThree32, Run) { runTest("./data/caseThreeLocking.csv"); }
 
 // Instantiate each test suite with 100 runs (0-99)
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo1, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo2, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo3, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo4, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo5, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo6, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo7, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo8, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo9, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo10, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo11, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo12, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo13, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo14, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo15, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo16, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo17, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo18, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo19, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo20, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo21, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo22, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo23, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo24, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo25, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo26, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo27, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo28, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo29, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo30, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo31, ::testing::Range(0, 100));
-INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseTwo32, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree1, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree2, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree3, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree4, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree5, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree6, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree7, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree8, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree9, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree10, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree11, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree12, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree13, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree14, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree15, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree16, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree17, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree18, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree19, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree20, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree21, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree22, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree23, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree24, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree25, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree26, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree27, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree28, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree29, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree30, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree31, ::testing::Range(0, 100));
+INSTANTIATE_TEST_SUITE_P(RepeatedRuns, OrderBookTimingCaseThree32, ::testing::Range(0, 100));
 
 // Run all tests
 int main(int argc, char **argv) {

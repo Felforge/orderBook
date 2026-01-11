@@ -23,7 +23,7 @@ protected:
         string symbolName = "AAPL";
         symbolID = orderBook.registerSymbol(symbolName);
 
-        // Generate decisions
+        // Load decisions
         loadDecisions("decisions.txt");
     }
 

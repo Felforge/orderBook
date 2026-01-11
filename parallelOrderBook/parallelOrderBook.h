@@ -165,10 +165,15 @@ class PublishRing {
         };
 
         // Used to track the next slot where producers will write
-        std::atomic<uint64_t> publishSeq{0};
+        // Aligned to cache line to prevent false sharing
+        alignas(64) std::atomic<uint64_t> publishSeq{0};
+
+        // Padding to prevent false sharing between publishSeq and workSeq
+        char padding[64 - sizeof(std::atomic<uint64_t>)];
 
         // Tracks the next slot the worker should pull from
-        std::atomic<uint64_t> workSeq{0};
+        // Aligned to cache line to prevent false sharing
+        alignas(64) std::atomic<uint64_t> workSeq{0};
 
         // The actual ring buffer array
         // Indexed by seq & (RingSize - 1) for wraparound
@@ -191,8 +196,8 @@ class PublishRing {
 
         // Producer function: acquire sequence and publish order
         void publish(Order<RingSize, NumBuckets>* order) {
-            // Get the current sequence without incrementing yet
-            uint64_t seq = publishSeq.load();
+            // Atomically claim a sequence number first to avoid contention
+            uint64_t seq = publishSeq.fetch_add(1, std::memory_order_relaxed);
 
             // Get ring index based on sequence
             size_t index = seq & (RingSize - 1);
@@ -203,9 +208,6 @@ class PublishRing {
                 expected = nullptr; // Reset for next CAS attempt
                 spinBackoff();
             }
-
-            // Only increment publishSeq AFTER the order is successfully stored
-            publishSeq.fetch_add(1, std::memory_order_acq_rel);
         }
 
         // Worker function to grab the next available order

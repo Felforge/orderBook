@@ -196,8 +196,8 @@ class PublishRing {
 
         // Producer function: acquire sequence and publish order
         void publish(Order<RingSize, NumBuckets>* order) {
-            // Atomically claim a sequence number first to avoid contention
-            uint64_t seq = publishSeq.fetch_add(1, std::memory_order_relaxed);
+            // Get the current sequence without incrementing yet
+            uint64_t seq = publishSeq.load(std::memory_order_relaxed);
 
             // Get ring index based on sequence
             size_t index = seq & (RingSize - 1);
@@ -208,6 +208,9 @@ class PublishRing {
                 expected = nullptr; // Reset for next CAS attempt
                 spinBackoff();
             }
+
+            // Only increment publishSeq AFTER the order is successfully stored
+            publishSeq.fetch_add(1, std::memory_order_release);
         }
 
         // Worker function to grab the next available order

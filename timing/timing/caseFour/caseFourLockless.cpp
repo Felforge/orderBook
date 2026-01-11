@@ -5,6 +5,8 @@
 using namespace std;
 
 // Case Four does 100,000 operations across 100 different price levels
+// This is done in a fixed sequence going 1 to 100 and then looping again
+// The 100 price levels is fairly arbitrary but works to show what we need
 // This operation has a 70% chance to be a submission, and a 30% chance to be a cancel
 // The decisions are pregenerated so that the results can be replicated
 

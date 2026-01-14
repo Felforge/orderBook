@@ -69,19 +69,6 @@ protected:
 
         // Number of orders;
         int N = 1e5;
-
-        // Create vector to track orders
-        // Reserve space to lower overhead
-        vector<OrderExt*> orders;
-        orders.reserve(N);
-
-        // Submit and track 100 initial orders on each price level
-        for (int i = 0; i < 1000; i++) {
-            auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
-            if (result) {
-                orders.push_back(result->second);
-            }
-        }
     
         // Get start time
         auto start = chrono::high_resolution_clock::now();

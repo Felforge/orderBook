@@ -73,14 +73,21 @@ protected:
         // Number of orders;
         int N = 1e5;
 
+        // Create vector to hold orders
+        vector<OrderExt*> orders;
+
         // Create price levels
         // N MUST be divisible by numLevels
-        // This is also done to create 100 Buy orders per price level
         int numLevels = 100;
         for (int i = 0; i < numLevels; i++) {
-            for (int j = 0; j < 100; j++) {
-                orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 + float(i));
-            }
+            auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 + float(i));
+            OrderExt* order = result->second;
+            orders.push_back(order);
+        }
+
+        // Clear price levels
+        for (OrderExt* order: orders) {
+            orderBook.cancelOrder(order);
         }
 
         // Calculate number of orders per price level

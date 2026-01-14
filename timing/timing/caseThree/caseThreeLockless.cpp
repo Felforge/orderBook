@@ -75,8 +75,8 @@ protected:
         vector<OrderExt*> orders;
         orders.reserve(N);
 
-        // Submit and track 100 initial orders on each price level
-        for (int i = 0; i < 1000; i++) {
+        // Submit and track 10,000 initial orders on our price level
+        for (int i = 0; i < 10000; i++) {
             auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0);
             if (result) {
                 orders.push_back(result->second);

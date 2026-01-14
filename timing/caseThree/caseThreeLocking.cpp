@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <fstream>
 #include <chrono>
-#include "../../../lockingOrderBook/lockingOrderBook.h"
+#include "../../lockingOrderBook/lockingOrderBook.h"
 using namespace std;
 
 // Case Three does 100,000 operations on the same price level

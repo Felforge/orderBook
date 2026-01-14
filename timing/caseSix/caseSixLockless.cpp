@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <fstream>
 #include <chrono>
-#include "../../../parallelOrderBook/parallelOrderBook.h"
+#include "../../parallelOrderBook/parallelOrderBook.h"
 using namespace std;
 
 // Case Six does 100,000 submissions on 100 different price levels

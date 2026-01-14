@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <fstream>
 #include <chrono>
-#include "../../../lockingOrderBook/lockingOrderBook.h"
+#include "../../lockingOrderBook/lockingOrderBook.h"
 using namespace std;
 
 // Case Five does 100,000 submissions on the same price level

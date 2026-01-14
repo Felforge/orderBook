@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <fstream>
 #include <chrono>
-#include "../../../parallelOrderBook/parallelOrderBook.h"
+#include "../../parallelOrderBook/parallelOrderBook.h"
 using namespace std;
 
 // Case Four does 100,000 operations across 100 different price levels

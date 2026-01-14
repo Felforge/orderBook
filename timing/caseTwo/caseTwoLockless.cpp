@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <fstream>
 #include <chrono>
-#include "../../../parallelOrderBook/parallelOrderBook.h"
+#include "../../parallelOrderBook/parallelOrderBook.h"
 using namespace std;
 
 // Case Two distributes 100,000 orders across 100 different price levels

@@ -327,31 +327,22 @@ class PublishRing {
         }
 };
 
-// Mutex-protected hash table for price levels with lock striping
+// Mutex-protected hash table for price levels
 // Uses linear probing for collision resolution
 template<size_t RingSize, size_t NumBuckets>
 class PriceTable {
     private:
         static_assert((NumBuckets & (NumBuckets - 1)) == 0, "NumBuckets must be power of 2");
 
-        // Use 32 stripes for fine-grained locking
-        static constexpr size_t NUM_STRIPES = 32;
-        static_assert((NUM_STRIPES & (NUM_STRIPES - 1)) == 0, "NUM_STRIPES must be power of 2");
-
         struct Bucket {
             PriceLevel<RingSize, NumBuckets>* level;
         };
 
         Bucket buckets[NumBuckets];
-        std::mutex stripeMutexes[NUM_STRIPES];
+        mutable std::mutex tableMutex;
 
         size_t hash(uint64_t priceTicks) {
             return priceTicks & (NumBuckets - 1);
-        }
-
-        // Determine which stripe mutex to use based on hash
-        size_t getStripe(uint64_t priceTicks) {
-            return hash(priceTicks) & (NUM_STRIPES - 1);
         }
 
     public:
@@ -366,8 +357,7 @@ class PriceTable {
         }
 
         bool installPriceLevel(PriceLevel<RingSize, NumBuckets>* level) {
-            size_t stripe = getStripe(level->priceTicks);
-            std::lock_guard<std::mutex> lock(stripeMutexes[stripe]);
+            std::lock_guard<std::mutex> lock(tableMutex);
 
             size_t index = hash(level->priceTicks);
 
@@ -388,8 +378,7 @@ class PriceTable {
         }
 
         PriceLevel<RingSize, NumBuckets>* lookup(uint64_t priceTicks) {
-            size_t stripe = getStripe(priceTicks);
-            std::lock_guard<std::mutex> lock(stripeMutexes[stripe]);
+            std::lock_guard<std::mutex> lock(tableMutex);
 
             size_t index = hash(priceTicks);
 
@@ -417,41 +406,7 @@ class PriceTable {
         }
 
         void cleanup() {
-            // Lock all stripes for cleanup
-            std::lock_guard<std::mutex> locks[NUM_STRIPES] = {
-                std::lock_guard<std::mutex>(stripeMutexes[0]),
-                std::lock_guard<std::mutex>(stripeMutexes[1]),
-                std::lock_guard<std::mutex>(stripeMutexes[2]),
-                std::lock_guard<std::mutex>(stripeMutexes[3]),
-                std::lock_guard<std::mutex>(stripeMutexes[4]),
-                std::lock_guard<std::mutex>(stripeMutexes[5]),
-                std::lock_guard<std::mutex>(stripeMutexes[6]),
-                std::lock_guard<std::mutex>(stripeMutexes[7]),
-                std::lock_guard<std::mutex>(stripeMutexes[8]),
-                std::lock_guard<std::mutex>(stripeMutexes[9]),
-                std::lock_guard<std::mutex>(stripeMutexes[10]),
-                std::lock_guard<std::mutex>(stripeMutexes[11]),
-                std::lock_guard<std::mutex>(stripeMutexes[12]),
-                std::lock_guard<std::mutex>(stripeMutexes[13]),
-                std::lock_guard<std::mutex>(stripeMutexes[14]),
-                std::lock_guard<std::mutex>(stripeMutexes[15]),
-                std::lock_guard<std::mutex>(stripeMutexes[16]),
-                std::lock_guard<std::mutex>(stripeMutexes[17]),
-                std::lock_guard<std::mutex>(stripeMutexes[18]),
-                std::lock_guard<std::mutex>(stripeMutexes[19]),
-                std::lock_guard<std::mutex>(stripeMutexes[20]),
-                std::lock_guard<std::mutex>(stripeMutexes[21]),
-                std::lock_guard<std::mutex>(stripeMutexes[22]),
-                std::lock_guard<std::mutex>(stripeMutexes[23]),
-                std::lock_guard<std::mutex>(stripeMutexes[24]),
-                std::lock_guard<std::mutex>(stripeMutexes[25]),
-                std::lock_guard<std::mutex>(stripeMutexes[26]),
-                std::lock_guard<std::mutex>(stripeMutexes[27]),
-                std::lock_guard<std::mutex>(stripeMutexes[28]),
-                std::lock_guard<std::mutex>(stripeMutexes[29]),
-                std::lock_guard<std::mutex>(stripeMutexes[30]),
-                std::lock_guard<std::mutex>(stripeMutexes[31])
-            };
+            std::lock_guard<std::mutex> lock(tableMutex);
 
             for (size_t i = 0; i < NumBuckets; i++) {
                 PriceLevel<RingSize, NumBuckets>* level = buckets[i].level;

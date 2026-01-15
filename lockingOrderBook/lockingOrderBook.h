@@ -16,7 +16,7 @@
 // Configuration Constants
 constexpr size_t DEFAULT_RING_SIZE = 1 << 20;  // ~1M slots
 constexpr size_t PRICE_TABLE_BUCKETS = 16384; // Roughly 16k Available Price Levels
-constexpr uint64_t TICK_PRECISION = 10000;     // 1e-4 precision (0.0001)
+constexpr uint64_t TICK_PRECISION = 100;       // 1e-2 precision (0.01 / 1 cent)
 
 // Order side enum
 enum class Side : uint8_t {
@@ -658,7 +658,7 @@ class Worker {
 
         void backtrackPriceLevel(Symbol<RingSize, NumBuckets>* symbol, Side side, uint64_t prev) {
             if (side == Side::BUY) {
-                for (uint64_t i = prev - 1; i >= prev - 1000 && i < prev; i--) {
+                for (uint64_t i = prev - 1; i >= prev - 25 && i < prev; i--) {
                     if (symbol->bestBidTicks.load() != prev || symbol->buyPrices.isActive(prev)) {
                         return;
                     }
@@ -671,7 +671,7 @@ class Worker {
 
                 symbol->bestBidTicks.compare_exchange_strong(prev, 0);
             } else {
-                for (uint64_t i = prev + 1; i <= prev + 1000; i++) {
+                for (uint64_t i = prev + 1; i <= prev + 25; i++) {
                     if (symbol->bestAskTicks.load() != prev || symbol->sellPrices.isActive(prev)) {
                         return;
                     }

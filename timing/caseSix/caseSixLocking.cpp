@@ -80,7 +80,7 @@ protected:
         // N MUST be divisible by numLevels
         int numLevels = 100;
         for (int i = 0; i < numLevels; i++) {
-            auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 + float(i));
+            auto result = orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 + float(i) * 0.05);
             OrderExt* order = result->second;
             orders.push_back(order);
         }
@@ -102,9 +102,9 @@ protected:
                 // This formula gets us linear indexing
                 // [0 - 999] * 100 + [0 - 99] -> [0 - 99,999]
                 if (decisions[i*numLevels + j]) {
-                    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 + float(j));
+                    orderBook.submitOrder(1, symbolID, Side::BUY, 100, 150.0 + float(j) * 0.05);
                 } else {
-                    orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0 + float(j));
+                    orderBook.submitOrder(1, symbolID, Side::SELL, 100, 150.0 + float(j) * 0.05);
                 }
             }
         }

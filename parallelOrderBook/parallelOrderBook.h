@@ -23,7 +23,7 @@
 // Configuaration Constants
 constexpr size_t DEFAULT_RING_SIZE = 1 << 20;  // ~1M slots
 constexpr size_t PRICE_TABLE_BUCKETS = 16384; // Roughly 16k Available Price Levels
-constexpr uint64_t TICK_PRECISION = 10000;     // 1e-4 precision (0.0001)
+constexpr uint64_t TICK_PRECISION = 100;       // 1e-2 precision (0.01 / 1 cent)
 
 // Could be needed later for alignment
 // constexpr size_t CACHE_LINE_SIZE = 64;
@@ -668,13 +668,13 @@ class Worker {
 
         // Backtrack price level till a new best active one is found
         // If the price level no longer equal prev we can assume it was already udpated by someone else and exit
-        // Will only backtrack to within 10 cents - on a high volume system this is more than enough
+        // Will only backtrack to within 25 cents - on a high volume system this is more than enough
         void backtrackPriceLevel(Symbol<RingSize, NumBuckets>* symbol, Side side, uint64_t prev) {
             // Direction will be different depending on the side so that must be seperated
             // It can deifnietly be combined but the code would be impossible to read
             if (side == Side::BUY) {
-                // Loop through 100 possibel levels
-                for (uint64_t i = prev - 1; i >= prev - 1000; i--) {
+                // Loop through 25 possible levels (25 cents)
+                for (uint64_t i = prev - 1; i >= prev - 25; i--) {
                     // If price is no longer equal to prev or prev is again active we can return
                     if (symbol->bestBidTicks.load() != prev || symbol->buyPrices.isActive(prev)) {
                         return;
@@ -691,8 +691,8 @@ class Worker {
                 // Nothing is found, attempt to CAS reset the price level
                 symbol->bestBidTicks.compare_exchange_strong(prev, 0);
             } else { // side == Side::SELL
-                // Loop through 100 possibel levels
-                for (uint64_t i = prev + 1; i <= prev + 1000; i++) {
+                // Loop through 25 possible levels (25 cents)
+                for (uint64_t i = prev + 1; i <= prev + 25; i++) {
                     // If price is no longer equal to prev or prev is again active we can return
                     if (symbol->bestAskTicks.load() != prev || symbol->sellPrices.isActive(prev)) {
                         return;

@@ -373,7 +373,7 @@ TEST_F(OrderBookTestSingleThread, HandlesSingleOrderRemoval) {
     OrderExt* order = result->second;
 
     // Retrieve price level
-    auto priceLevel = order->symbol->buyPrices.lookup(1500000);
+    auto priceLevel = order->symbol->buyPrices.lookup(priceToTicks(150.0));
     
     // Verify that price level has an order
     EXPECT_EQ(priceLevel->numOrders.load(), 1);
@@ -431,7 +431,7 @@ TEST_F(OrderBookTestSingleThread, HandlesMultipleOrderRemovalSameLevel) {
     OrderExt* order3 = result3->second;
 
     // Retrieve price level
-    auto priceLevel = order1->symbol->buyPrices.lookup(1500000);
+    auto priceLevel = order1->symbol->buyPrices.lookup(priceToTicks(150.0));
     
     // Verify that price level has all orders
     EXPECT_EQ(priceLevel->numOrders.load(), 3);
@@ -501,9 +501,9 @@ TEST_F(OrderBookTestSingleThread, HandlesMultipleOrderRemovalDiffLevel) {
     OrderExt* order3 = result3->second;
 
     // Retrieve price levels
-    auto priceLevel1 = order1->symbol->buyPrices.lookup(1400000);
-    auto priceLevel2 = order1->symbol->buyPrices.lookup(1500000);
-    auto priceLevel3 = order1->symbol->buyPrices.lookup(1600000);
+    auto priceLevel1 = order1->symbol->buyPrices.lookup(priceToTicks(140.0));
+    auto priceLevel2 = order1->symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto priceLevel3 = order1->symbol->buyPrices.lookup(priceToTicks(160.0));
     
     // Verify expected info
     EXPECT_EQ(priceLevel1->numOrders.load(), 1);
@@ -576,7 +576,7 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestBidNoFallback) {
     auto symbol = order->symbol;
     
     // Verify expected info
-    EXPECT_EQ(symbol->bestBidTicks.load(), 1500000);
+    EXPECT_EQ(symbol->bestBidTicks.load(), priceToTicks(150.0));
 
     // Cancel order
     orderBook.cancelOrder(order);
@@ -623,7 +623,7 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestBidWithFallback) {
     auto symbol = order1->symbol;
     
     // Verify expected info
-    EXPECT_EQ(symbol->bestBidTicks.load(), 1500000);
+    EXPECT_EQ(symbol->bestBidTicks.load(), priceToTicks(150.0));
 
     // Cancel first order
     orderBook.cancelOrder(order1);
@@ -639,7 +639,7 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestBidWithFallback) {
     waitForProcessing();
 
     // Verify expected info
-    EXPECT_EQ(symbol->bestBidTicks.load(), 1499500);
+    EXPECT_EQ(symbol->bestBidTicks.load(), priceToTicks(149.95));
 }
 
 // Test reassigning best ask with no fall back price level
@@ -665,7 +665,7 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestAskNoFallback) {
     auto symbol = order->symbol;
     
     // Verify expected info
-    EXPECT_EQ(symbol->bestAskTicks.load(), 1500000);
+    EXPECT_EQ(symbol->bestAskTicks.load(), priceToTicks(150.0));
 
     // Cancel order
     orderBook.cancelOrder(order);
@@ -712,7 +712,7 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestAskWithFallback) {
     auto symbol = order1->symbol;
     
     // Verify expected info
-    EXPECT_EQ(symbol->bestAskTicks.load(), 1500000);
+    EXPECT_EQ(symbol->bestAskTicks.load(), priceToTicks(150.0));
 
     // Cancel first order
     orderBook.cancelOrder(order1);
@@ -732,7 +732,7 @@ TEST_F(OrderBookTestSingleThread, HandlesReassignBestAskWithFallback) {
     EXPECT_NE(sellOrder->second, nullptr);
 
     // Verify expected info
-    EXPECT_EQ(symbol->bestAskTicks.load(), 1500500);
+    EXPECT_EQ(symbol->bestAskTicks.load(), priceToTicks(150.05));
 }
 
 // Test removing orders across symbols
@@ -763,8 +763,8 @@ TEST_F(OrderBookTestSingleThread, HandlesDuplicateOrderRemoval) {
     OrderExt* order2 = result2->second;
 
     // Retrieve price levels
-    auto priceLevel1 = order1->symbol->buyPrices.lookup(1500000);
-    auto priceLevel2 = order2->symbol->buyPrices.lookup(1500000);
+    auto priceLevel1 = order1->symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto priceLevel2 = order2->symbol->buyPrices.lookup(priceToTicks(150.0));
 
     // Verify expected state
     EXPECT_EQ(priceLevel1->numOrders.load(), 1);
@@ -832,8 +832,8 @@ TEST_F(OrderBookTestSingleThread, HandlesBestBidCrossSymbol) {
     auto symbol2 = order2->symbol;
     
     // Verify expected info
-    EXPECT_EQ(symbol1->bestBidTicks.load(), 1000000);
-    EXPECT_EQ(symbol2->bestBidTicks.load(), 1500000);
+    EXPECT_EQ(symbol1->bestBidTicks.load(), priceToTicks(100.0));
+    EXPECT_EQ(symbol2->bestBidTicks.load(), priceToTicks(150.0));
 
     // Cancel first order
     orderBook.cancelOrder(order1);
@@ -853,8 +853,8 @@ TEST_F(OrderBookTestSingleThread, HandlesBestBidCrossSymbol) {
     EXPECT_NE(result3->second, nullptr);
 
     // Verify expected info
-    EXPECT_EQ(symbol1->bestBidTicks.load(), 999500);
-    EXPECT_EQ(symbol2->bestBidTicks.load(), 1500000);
+    EXPECT_EQ(symbol1->bestBidTicks.load(), priceToTicks(99.95));
+    EXPECT_EQ(symbol2->bestBidTicks.load(), priceToTicks(150.0));
 
     // Cancel second order
     orderBook.cancelOrder(order2);
@@ -874,8 +874,8 @@ TEST_F(OrderBookTestSingleThread, HandlesBestBidCrossSymbol) {
     EXPECT_NE(result4->second, nullptr);
 
     // Verify expected info
-    EXPECT_EQ(symbol1->bestBidTicks.load(), 999500);
-    EXPECT_EQ(symbol2->bestBidTicks.load(), 1499500);
+    EXPECT_EQ(symbol1->bestBidTicks.load(), priceToTicks(99.95));
+    EXPECT_EQ(symbol2->bestBidTicks.load(), priceToTicks(149.95));
 }
 
 // Test a match at the same price and quantity with buy being submitted first and then sell
@@ -904,8 +904,8 @@ TEST_F(OrderBookTestSingleThread, HandlesSimpleEqualMatchBuySell) {
     waitForProcessing();
     
     // Retrieve price levels
-    auto buyLevel = symbol->buyPrices.lookup(1500000);
-    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    auto buyLevel = symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto sellLevel = symbol->sellPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     // Buy Level is expected to have 0 orders
@@ -940,8 +940,8 @@ TEST_F(OrderBookTestSingleThread, HandlesSimpleEqualMatchSellBuy) {
     waitForProcessing();
     
     // Retrieve price levels
-    auto buyLevel = symbol->buyPrices.lookup(1500000);
-    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    auto buyLevel = symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto sellLevel = symbol->sellPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     // Buy Level is expected to be nullptr as it never got created  
@@ -980,8 +980,8 @@ TEST_F(OrderBookTestSingleThread, HandlesMoreBuyEqualMatch) {
     waitForProcessing();
     
     // Retrieve price levels
-    auto buyLevel = symbol->buyPrices.lookup(1500000);
-    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    auto buyLevel = symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto sellLevel = symbol->sellPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     // Buy Level is expected to have 1 order
@@ -1026,8 +1026,8 @@ TEST_F(OrderBookTestSingleThread, HandlesMoreSellEqualMatch) {
     auto symbol = order->symbol;
     
     // Retrieve price levels
-    auto buyLevel = symbol->buyPrices.lookup(1500000);
-    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    auto buyLevel = symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto sellLevel = symbol->sellPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     // Buy Level is expected to have 0 orders
@@ -1065,8 +1065,8 @@ TEST_F(OrderBookTestSingleThread, HandlesSimplePriceCrossMatch) {
     waitForProcessing();
     
     // Retrieve price levels
-    auto buyLevel = symbol->buyPrices.lookup(1600000);
-    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    auto buyLevel = symbol->buyPrices.lookup(priceToTicks(160.0));
+    auto sellLevel = symbol->sellPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     // Buy Level is expected to have 0 orders
@@ -1108,8 +1108,8 @@ TEST_F(OrderBookTestSingleThread, HandlesMultipleEqualMatch) {
     waitForProcessing();
     
     // Retrieve price levels
-    auto buyLevel = symbol->buyPrices.lookup(1500000);
-    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    auto buyLevel = symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto sellLevel = symbol->sellPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     // Buy Level is expected to have 0 orders
@@ -1153,8 +1153,8 @@ TEST_F(OrderBookTestSingleThread, HandlesMultiplePartialMatch) {
     waitForProcessing();
     
     // Retrieve price levels
-    auto buyLevel = symbol->buyPrices.lookup(1500000);
-    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    auto buyLevel = symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto sellLevel = symbol->sellPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     // Buy Level is expected to have 1 order
@@ -1192,8 +1192,8 @@ TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingBuy) {
     auto symbol = order1->symbol;
 
     // Retrieve price levels
-    auto buyLevel = symbol->buyPrices.lookup(1500000);
-    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    auto buyLevel = symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto sellLevel = symbol->sellPrices.lookup(priceToTicks(150.0));
     
     // Submit matching sell order
     orderBook.submitOrder(1, symbolID, Side::SELL, 50, 150.0);
@@ -1255,10 +1255,10 @@ TEST_F(OrderBookTestSingleThread, HandlesPriceChangeBreaksFIFO) {
     auto symbol = order1->symbol;
 
     // Retrieve price levels
-    auto buyLevel1 = symbol->buyPrices.lookup(1499000);
-    auto buyLevel2 = symbol->buyPrices.lookup(1499500);
-    auto buyLevel3 = symbol->buyPrices.lookup(1500000);
-    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    auto buyLevel1 = symbol->buyPrices.lookup(priceToTicks(149.9));
+    auto buyLevel2 = symbol->buyPrices.lookup(priceToTicks(149.95));
+    auto buyLevel3 = symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto sellLevel = symbol->sellPrices.lookup(priceToTicks(150.0));
     
     // Submit matching sell order
     orderBook.submitOrder(1, symbolID, Side::SELL, 50, 140.0);
@@ -1342,8 +1342,8 @@ TEST_F(OrderBookTestSingleThread, HandlesFIFOOrderingSell) {
     auto symbol = order1->symbol;
 
     // Retrieve price levels
-    auto buyLevel = symbol->buyPrices.lookup(1500000);
-    auto sellLevel = symbol->sellPrices.lookup(1500000);
+    auto buyLevel = symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto sellLevel = symbol->sellPrices.lookup(priceToTicks(150.0));
     
     // Submit matching buy order
     auto result3 = orderBook.submitOrder(1, symbolID, Side::BUY, 50, 150.0);
@@ -1403,7 +1403,7 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmission) {
     waitForProcessing(1000);
 
     // Retrieve Price Level
-    auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
+    auto buyLevel = result->second->symbol->buyPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     EXPECT_EQ(buyLevel->numOrders.load(), 100);
@@ -1441,7 +1441,7 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderSubmissionDiffPrice) {
 
     // Check all price levels
     for (int i = 0; i < 100; i++) {
-        auto buyLevel = symbol->buyPrices.lookup(1500000 + 10000 * i);
+        auto buyLevel = symbol->buyPrices.lookup(priceToTicks(150.0 + 1.0 * i));
         EXPECT_EQ(buyLevel->numOrders.load(), 1);
     }
 }
@@ -1481,7 +1481,7 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderCancellation) {
     waitForProcessing();
     
     // Retrieve Price Level
-    auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
+    auto buyLevel = result->second->symbol->buyPrices.lookup(priceToTicks(150.0));
 
     // Remove all 100 orders
     for (OrderExt* order : orders) {
@@ -1525,7 +1525,7 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderMatching) {
     waitForProcessing();
     
     // Retrieve Price Level
-    auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
+    auto buyLevel = result->second->symbol->buyPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     EXPECT_EQ(buyLevel->numOrders.load(), 100);
@@ -1569,7 +1569,7 @@ TEST_F(OrderBookTestFourThread, HandlesConcurrentOrderMatchingDiffPrice) {
     waitForProcessing();
     
     // Retrieve Price Level
-    auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
+    auto buyLevel = result->second->symbol->buyPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     EXPECT_EQ(buyLevel->numOrders.load(), 100);
@@ -1624,7 +1624,7 @@ TEST_F(OrderBookTestFourThread, HandlesMixedConcurrentOperations) {
     auto symbol = result->second->symbol;
 
     // Verify state
-    auto buyLevel150 = symbol->buyPrices.lookup(1500000);
+    auto buyLevel150 = symbol->buyPrices.lookup(priceToTicks(150.0));
     EXPECT_EQ(buyLevel150->numOrders.load(), 50);
 
     // Submit orders at 148.0 (safe to cancel - won't be matched)
@@ -1643,7 +1643,7 @@ TEST_F(OrderBookTestFourThread, HandlesMixedConcurrentOperations) {
     waitForProcessing();
 
     // Verify state
-    auto buyLevel148 = symbol->buyPrices.lookup(1480000);
+    auto buyLevel148 = symbol->buyPrices.lookup(priceToTicks(148.0));
     EXPECT_EQ(buyLevel148->numOrders.load(), 25);
     EXPECT_EQ(buyLevel150->numOrders.load(), 50);
 
@@ -1674,7 +1674,7 @@ TEST_F(OrderBookTestFourThread, HandlesMixedConcurrentOperations) {
     waitForProcessing();
 
     // Verify final state
-    auto buyLevel149 = symbol->buyPrices.lookup(1490000);
+    auto buyLevel149 = symbol->buyPrices.lookup(priceToTicks(149.0));
     EXPECT_EQ(buyLevel148->numOrders.load(), 0);
     EXPECT_EQ(buyLevel149->numOrders.load(), 25);
     EXPECT_EQ(buyLevel150->numOrders.load(), 0);
@@ -1716,7 +1716,7 @@ TEST_F(OrderBookTestFourThread, HandlesMemoryPoolStress) {
     waitForProcessing();
 
     // Retrieve Price Level
-    auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
+    auto buyLevel = result->second->symbol->buyPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     EXPECT_EQ(buyLevel->numOrders.load(), 1000);
@@ -1813,9 +1813,9 @@ TEST_F(OrderBookTestFourThread, HandlesMultipleSymbolsConcurrent) {
     waitForProcessing();
     
     // Retrieve Price Levels
-    auto buyLevel1 = result1->second->symbol->buyPrices.lookup(1500000);
-    auto buyLevel2 = result2->second->symbol->buyPrices.lookup(1500000);
-    auto buyLevel3 = result3->second->symbol->buyPrices.lookup(1500000);
+    auto buyLevel1 = result1->second->symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto buyLevel2 = result2->second->symbol->buyPrices.lookup(priceToTicks(150.0));
+    auto buyLevel3 = result3->second->symbol->buyPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     EXPECT_EQ(buyLevel1->numOrders.load(), 100);
@@ -1870,7 +1870,7 @@ TEST_F(OrderBookTestFourThread, HandlesPriceTimePriority) {
     auto symbol = result->second->symbol;
     
     // Retrieve Price Level
-    auto buyLevel = result->second->symbol->buyPrices.lookup(1500000);
+    auto buyLevel = result->second->symbol->buyPrices.lookup(priceToTicks(150.0));
 
     // Verify expected results
     for (int i = 0; i < 100; i++)

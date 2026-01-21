@@ -675,8 +675,15 @@ class Worker {
             if (side == Side::BUY) {
                 // Loop through 25 possible levels (25 cents)
                 for (uint64_t i = prev - 1; i >= prev - 25; i--) {
-                    // If price is no longer equal to prev or prev is again active we can return
-                    if (symbol->bestBidTicks.load() != prev || symbol->buyPrices.isActive(prev)) {
+                    uint64_t current = symbol->bestBidTicks.load();
+                    if (current != prev) {
+                        // Someone else updated - check if new value is in range we already searched or is valid
+                        if (current == 0 || current > i || symbol->buyPrices.isActive(current)) {
+                            return;
+                        }
+                        // New value is below our search position, will be handled by our CAS or subsequent iterations
+                    }
+                    if (symbol->buyPrices.isActive(prev)) {
                         return;
                     }
 
@@ -693,8 +700,15 @@ class Worker {
             } else { // side == Side::SELL
                 // Loop through 25 possible levels (25 cents)
                 for (uint64_t i = prev + 1; i <= prev + 25; i++) {
-                    // If price is no longer equal to prev or prev is again active we can return
-                    if (symbol->bestAskTicks.load() != prev || symbol->sellPrices.isActive(prev)) {
+                    uint64_t current = symbol->bestAskTicks.load();
+                    if (current != prev) {
+                        // Someone else updated - check if new value is in range we already searched or is valid
+                        if (current == UINT64_MAX || current < i || symbol->sellPrices.isActive(current)) {
+                            return;
+                        }
+                        // New value is above our search position, will be handled by our CAS or subsequent iterations
+                    }
+                    if (symbol->sellPrices.isActive(prev)) {
                         return;
                     }
 

@@ -614,7 +614,15 @@ class Worker {
         void backtrackPriceLevel(Symbol<RingSize, NumBuckets>* symbol, Side side, uint64_t prev) {
             if (side == Side::BUY) {
                 for (uint64_t i = prev - 1; i >= prev - 25 && i < prev; i--) {
-                    if (symbol->bestBidTicks.load() != prev || symbol->buyPrices.isActive(prev)) {
+                    uint64_t current = symbol->bestBidTicks.load();
+                    if (current != prev) {
+                        // Someone else updated - check if new value is in range we already searched or is valid
+                        if (current == 0 || current > i || symbol->buyPrices.isActive(current)) {
+                            return;
+                        }
+                        // New value is below our search position, will be handled by our CAS or subsequent iterations
+                    }
+                    if (symbol->buyPrices.isActive(prev)) {
                         return;
                     }
 
@@ -627,7 +635,15 @@ class Worker {
                 symbol->bestBidTicks.compare_exchange_strong(prev, 0);
             } else {
                 for (uint64_t i = prev + 1; i <= prev + 25; i++) {
-                    if (symbol->bestAskTicks.load() != prev || symbol->sellPrices.isActive(prev)) {
+                    uint64_t current = symbol->bestAskTicks.load();
+                    if (current != prev) {
+                        // Someone else updated - check if new value is in range we already searched or is valid
+                        if (current == UINT64_MAX || current < i || symbol->sellPrices.isActive(current)) {
+                            return;
+                        }
+                        // New value is above our search position, will be handled by our CAS or subsequent iterations
+                    }
+                    if (symbol->sellPrices.isActive(prev)) {
                         return;
                     }
 

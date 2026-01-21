@@ -508,7 +508,7 @@ class Worker {
             PriceTable<RingSize, NumBuckets>& oppTable = (opp == Side::BUY) ?
                 symbol->buyPrices : symbol->sellPrices;
 
-            while (order->quantity.load() > 0) {
+            while (running->load() && order->quantity.load() > 0) {
                 uint64_t bestMatch = (opp == Side::BUY) ?
                     symbol->bestBidTicks.load() : symbol->bestAskTicks.load();
 
@@ -611,33 +611,68 @@ class Worker {
             return level;
         }
 
-        void backtrackPriceLevel(Symbol<RingSize, NumBuckets>* symbol, Side side, uint64_t prev) {
-            // Use original prev value throughout - CAS will naturally fail if
-            // someone else already updated bestBidTicks/bestAskTicks, avoiding races.
-            // The previous approach of reloading prev and checking isActive(prev)
-            // created a TOCTOU race that caused infinite loops.
+        void backtrackPriceLevel(Symbol<RingSize, NumBuckets>* symbol, Side side, uint64_t /*unused*/) {
+            // Loop until we establish a valid state: either best price points to
+            // an active level, or it's reset to 0/UINT64_MAX (no orders).
+            // This ensures progress and prevents livelock from failed CAS races.
             if (side == Side::BUY) {
-                for (uint64_t i = prev - 1; i >= prev - 25 && i < prev; i--) {
-                    if (symbol->buyPrices.isActive(i)) {
-                        // CAS from original prev to new best; fails safely if already updated
-                        symbol->bestBidTicks.compare_exchange_strong(prev, i);
+                while (running->load()) {
+                    uint64_t prev = symbol->bestBidTicks.load();
+
+                    // If already valid (reset or active), we're done
+                    if (prev == 0 || symbol->buyPrices.isActive(prev)) {
                         return;
                     }
-                }
 
-                // No active level found within range, reset to 0
-                symbol->bestBidTicks.compare_exchange_strong(prev, 0);
+                    // Search for next active level
+                    bool found = false;
+                    for (uint64_t i = prev - 1; i >= prev - 25 && i < prev; i--) {
+                        if (symbol->buyPrices.isActive(i)) {
+                            if (symbol->bestBidTicks.compare_exchange_strong(prev, i)) {
+                                return;  // Successfully updated
+                            }
+                            found = true;
+                            break;  // CAS failed, re-read and retry
+                        }
+                    }
+
+                    if (!found) {
+                        // No active level found, try to reset to 0
+                        if (symbol->bestBidTicks.compare_exchange_strong(prev, 0)) {
+                            return;
+                        }
+                    }
+                    // CAS failed, loop again with fresh value
+                }
             } else {
-                for (uint64_t i = prev + 1; i <= prev + 25; i++) {
-                    if (symbol->sellPrices.isActive(i)) {
-                        // CAS from original prev to new best; fails safely if already updated
-                        symbol->bestAskTicks.compare_exchange_strong(prev, i);
+                while (running->load()) {
+                    uint64_t prev = symbol->bestAskTicks.load();
+
+                    // If already valid (reset or active), we're done
+                    if (prev == UINT64_MAX || symbol->sellPrices.isActive(prev)) {
                         return;
                     }
-                }
 
-                // No active level found within range, reset to UINT64_MAX
-                symbol->bestAskTicks.compare_exchange_strong(prev, UINT64_MAX);
+                    // Search for next active level
+                    bool found = false;
+                    for (uint64_t i = prev + 1; i <= prev + 25; i++) {
+                        if (symbol->sellPrices.isActive(i)) {
+                            if (symbol->bestAskTicks.compare_exchange_strong(prev, i)) {
+                                return;  // Successfully updated
+                            }
+                            found = true;
+                            break;  // CAS failed, re-read and retry
+                        }
+                    }
+
+                    if (!found) {
+                        // No active level found, try to reset to UINT64_MAX
+                        if (symbol->bestAskTicks.compare_exchange_strong(prev, UINT64_MAX)) {
+                            return;
+                        }
+                    }
+                    // CAS failed, loop again with fresh value
+                }
             }
         }
 

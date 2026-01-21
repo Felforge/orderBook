@@ -612,42 +612,32 @@ class Worker {
         }
 
         void backtrackPriceLevel(Symbol<RingSize, NumBuckets>* symbol, Side side, uint64_t prev) {
+            // Use original prev value throughout - CAS will naturally fail if
+            // someone else already updated bestBidTicks/bestAskTicks, avoiding races.
+            // The previous approach of reloading prev and checking isActive(prev)
+            // created a TOCTOU race that caused infinite loops.
             if (side == Side::BUY) {
                 for (uint64_t i = prev - 1; i >= prev - 25 && i < prev; i--) {
                     if (symbol->buyPrices.isActive(i)) {
-                        // Reload prev right before CAS to ensure it's current
-                        prev = symbol->bestBidTicks.load();
-                        // Only try CAS if prev is invalid, otherwise someone else fixed it
-                        if (prev != 0 && !symbol->buyPrices.isActive(prev)) {
-                            symbol->bestBidTicks.compare_exchange_strong(prev, i);
-                        }
+                        // CAS from original prev to new best; fails safely if already updated
+                        symbol->bestBidTicks.compare_exchange_strong(prev, i);
                         return;
                     }
                 }
 
-                // Reload prev before final reset CAS
-                prev = symbol->bestBidTicks.load();
-                if (prev != 0 && !symbol->buyPrices.isActive(prev)) {
-                    symbol->bestBidTicks.compare_exchange_strong(prev, 0);
-                }
+                // No active level found within range, reset to 0
+                symbol->bestBidTicks.compare_exchange_strong(prev, 0);
             } else {
                 for (uint64_t i = prev + 1; i <= prev + 25; i++) {
                     if (symbol->sellPrices.isActive(i)) {
-                        // Reload prev right before CAS to ensure it's current
-                        prev = symbol->bestAskTicks.load();
-                        // Only try CAS if prev is invalid, otherwise someone else fixed it
-                        if (prev != UINT64_MAX && !symbol->sellPrices.isActive(prev)) {
-                            symbol->bestAskTicks.compare_exchange_strong(prev, i);
-                        }
+                        // CAS from original prev to new best; fails safely if already updated
+                        symbol->bestAskTicks.compare_exchange_strong(prev, i);
                         return;
                     }
                 }
 
-                // Reload prev before final reset CAS
-                prev = symbol->bestAskTicks.load();
-                if (prev != UINT64_MAX && !symbol->sellPrices.isActive(prev)) {
-                    symbol->bestAskTicks.compare_exchange_strong(prev, UINT64_MAX);
-                }
+                // No active level found within range, reset to UINT64_MAX
+                symbol->bestAskTicks.compare_exchange_strong(prev, UINT64_MAX);
             }
         }
 

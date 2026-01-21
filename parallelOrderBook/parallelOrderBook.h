@@ -675,65 +675,45 @@ class Worker {
             if (side == Side::BUY) {
                 // Loop through 25 possible levels (25 cents)
                 for (uint64_t i = prev - 1; i >= prev - 25; i--) {
-                    uint64_t current = symbol->bestBidTicks.load();
-                    if (current != prev) {
-                        // Someone else updated - only return if new value is valid
-                        if (current == 0 || symbol->buyPrices.isActive(current)) {
-                            return;
-                        }
-                        // New value is also invalid - update prev so our CAS uses correct value
-                        prev = current;
-                    }
-                    if (symbol->buyPrices.isActive(prev)) {
-                        return;
-                    }
-
                     // Else, attempt CAS if price level is active
                     if (symbol->buyPrices.isActive(i)) {
-                        // We can return after attempting the CAS once as it will only fail if bestBidTicks is no longer prev
-                        symbol->bestBidTicks.compare_exchange_strong(prev, i);
+                        // Reload prev right before CAS to ensure it's current
+                        prev = symbol->bestBidTicks.load();
+                        // Only try CAS if prev is invalid, otherwise someone else fixed it
+                        if (prev != 0 && !symbol->buyPrices.isActive(prev)) {
+                            symbol->bestBidTicks.compare_exchange_strong(prev, i);
+                        }
                         return;
                     }
                 }
 
-                // Reload prev one final time before reset CAS
+                // Reload prev before final reset CAS
                 prev = symbol->bestBidTicks.load();
-                if (prev == 0 || symbol->buyPrices.isActive(prev)) {
-                    return;
+                if (prev != 0 && !symbol->buyPrices.isActive(prev)) {
+                    // Nothing is found, attempt to CAS reset the price level
+                    symbol->bestBidTicks.compare_exchange_strong(prev, 0);
                 }
-                // Nothing is found, attempt to CAS reset the price level
-                symbol->bestBidTicks.compare_exchange_strong(prev, 0);
             } else { // side == Side::SELL
                 // Loop through 25 possible levels (25 cents)
                 for (uint64_t i = prev + 1; i <= prev + 25; i++) {
-                    uint64_t current = symbol->bestAskTicks.load();
-                    if (current != prev) {
-                        // Someone else updated - only return if new value is valid
-                        if (current == UINT64_MAX || symbol->sellPrices.isActive(current)) {
-                            return;
-                        }
-                        // New value is also invalid - update prev so our CAS uses correct value
-                        prev = current;
-                    }
-                    if (symbol->sellPrices.isActive(prev)) {
-                        return;
-                    }
-
                     // Else, attempt CAS if price level is active
                     if (symbol->sellPrices.isActive(i)) {
-                        // We can return after attempting the CAS once as it will only fail if bestAskTicks is no longer prev
-                        symbol->bestAskTicks.compare_exchange_strong(prev, i);
+                        // Reload prev right before CAS to ensure it's current
+                        prev = symbol->bestAskTicks.load();
+                        // Only try CAS if prev is invalid, otherwise someone else fixed it
+                        if (prev != UINT64_MAX && !symbol->sellPrices.isActive(prev)) {
+                            symbol->bestAskTicks.compare_exchange_strong(prev, i);
+                        }
                         return;
                     }
                 }
 
-                // Reload prev one final time before reset CAS
+                // Reload prev before final reset CAS
                 prev = symbol->bestAskTicks.load();
-                if (prev == UINT64_MAX || symbol->sellPrices.isActive(prev)) {
-                    return;
+                if (prev != UINT64_MAX && !symbol->sellPrices.isActive(prev)) {
+                    // Nothing is found, attempt to CAS reset the price level
+                    symbol->bestAskTicks.compare_exchange_strong(prev, UINT64_MAX);
                 }
-                // Nothing is found, attempt to CAS reset the price level
-                symbol->bestAskTicks.compare_exchange_strong(prev, UINT64_MAX);
             }
         } 
 

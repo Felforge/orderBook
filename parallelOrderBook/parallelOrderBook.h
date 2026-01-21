@@ -677,11 +677,12 @@ class Worker {
                 for (uint64_t i = prev - 1; i >= prev - 25; i--) {
                     uint64_t current = symbol->bestBidTicks.load();
                     if (current != prev) {
-                        // Someone else updated - check if new value is in range we already searched or is valid
-                        if (current == 0 || current > i || symbol->buyPrices.isActive(current)) {
+                        // Someone else updated - only return if new value is valid
+                        if (current == 0 || symbol->buyPrices.isActive(current)) {
                             return;
                         }
-                        // New value is below our search position, will be handled by our CAS or subsequent iterations
+                        // New value is also invalid - update prev so our CAS uses correct value
+                        prev = current;
                     }
                     if (symbol->buyPrices.isActive(prev)) {
                         return;
@@ -695,6 +696,11 @@ class Worker {
                     }
                 }
 
+                // Reload prev one final time before reset CAS
+                prev = symbol->bestBidTicks.load();
+                if (prev == 0 || symbol->buyPrices.isActive(prev)) {
+                    return;
+                }
                 // Nothing is found, attempt to CAS reset the price level
                 symbol->bestBidTicks.compare_exchange_strong(prev, 0);
             } else { // side == Side::SELL
@@ -702,11 +708,12 @@ class Worker {
                 for (uint64_t i = prev + 1; i <= prev + 25; i++) {
                     uint64_t current = symbol->bestAskTicks.load();
                     if (current != prev) {
-                        // Someone else updated - check if new value is in range we already searched or is valid
-                        if (current == UINT64_MAX || current < i || symbol->sellPrices.isActive(current)) {
+                        // Someone else updated - only return if new value is valid
+                        if (current == UINT64_MAX || symbol->sellPrices.isActive(current)) {
                             return;
                         }
-                        // New value is above our search position, will be handled by our CAS or subsequent iterations
+                        // New value is also invalid - update prev so our CAS uses correct value
+                        prev = current;
                     }
                     if (symbol->sellPrices.isActive(prev)) {
                         return;
@@ -720,6 +727,11 @@ class Worker {
                     }
                 }
 
+                // Reload prev one final time before reset CAS
+                prev = symbol->bestAskTicks.load();
+                if (prev == UINT64_MAX || symbol->sellPrices.isActive(prev)) {
+                    return;
+                }
                 // Nothing is found, attempt to CAS reset the price level
                 symbol->bestAskTicks.compare_exchange_strong(prev, UINT64_MAX);
             }

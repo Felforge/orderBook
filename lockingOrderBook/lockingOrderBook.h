@@ -12,6 +12,7 @@
 #include <optional>
 #include <cmath>
 #include <atomic>
+#include <memory>
 
 // Configuration Constants
 constexpr size_t DEFAULT_RING_SIZE = 1 << 20;  // ~1M slots
@@ -223,7 +224,7 @@ class LockingQueue {
 
 // Order struct
 // Uses atomics for quantity and type to match test expectations
-template<size_t RingSize, size_t NumBuckets>
+template<size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
 struct Order {
     // Memory block where this order is allocated
     void* memoryBlock;
@@ -234,7 +235,7 @@ struct Order {
     Side side;
     std::atomic<OrderType> type;
     uint16_t symbolID;
-    Symbol<RingSize, NumBuckets>* symbol;
+    Symbol<RingSize, NumBuckets, NumStripes>* symbol;
     Node<Order*>* node;
     GenericMemoryPool* ownerPool;
 
@@ -245,7 +246,7 @@ struct Order {
     Order() = default;
 
     Order(void* memoryBlock, GenericMemoryPool* ownerPool, uint64_t orderID,
-          uint32_t userID, Side side, uint16_t symbolID, Symbol<RingSize, NumBuckets>* symbol,
+          uint32_t userID, Side side, uint16_t symbolID, Symbol<RingSize, NumBuckets, NumStripes>* symbol,
           uint32_t quantity, uint64_t price, OrderType type)
         : memoryBlock(memoryBlock), orderID(orderID), userID(userID), quantity(quantity),
           priceTicks(price), side(side), type(type), symbolID(symbolID), symbol(symbol),
@@ -253,7 +254,7 @@ struct Order {
 };
 
 // Price Level struct
-template<size_t RingSize, size_t NumBuckets>
+template<size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
 struct PriceLevel {
     void* memoryBlock;
     uint64_t priceTicks;
@@ -327,29 +328,50 @@ class PublishRing {
         }
 };
 
-// Mutex-protected hash table for price levels
-// Uses linear probing for collision resolution
-template<size_t RingSize, size_t NumBuckets>
+// Striped hash table for price levels  
+// Uses multiple mutexes to reduce contention while maintaining correctness
+template<size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
 class PriceTable {
     private:
+        // Ensure power-of-2 for efficient bit masking
         static_assert((NumBuckets & (NumBuckets - 1)) == 0, "NumBuckets must be power of 2");
+        static_assert((NumStripes & (NumStripes - 1)) == 0, "NumStripes must be power of 2");
+        static_assert(NumBuckets >= NumStripes * 4, "Need at least 4 buckets per stripe");
 
         struct Bucket {
-            PriceLevel<RingSize, NumBuckets>* level;
+            std::atomic<PriceLevel<RingSize, NumBuckets>*> level{nullptr};
         };
 
+        // Array of stripe mutexes - each protects a subset of buckets
+        mutable std::mutex stripeMutexes[NumStripes];
         Bucket buckets[NumBuckets];
-        mutable std::mutex tableMutex;
+        
+        // How many buckets each stripe owns
+        static constexpr size_t BUCKETS_PER_STRIPE = NumBuckets / NumStripes;
 
-        size_t hash(uint64_t priceTicks) {
-            return priceTicks & (NumBuckets - 1);
+        // Map price to stripe (which mutex to use)
+        static size_t getStripe(uint64_t priceTicks) {
+            return priceTicks & (NumStripes - 1);
+        }
+        
+        // Map price to bucket within its stripe
+        static size_t getBucketInStripe(uint64_t priceTicks) {
+            return (priceTicks / NumStripes) & (BUCKETS_PER_STRIPE - 1);
+        }
+        
+        // Get absolute bucket index
+        static size_t getAbsoluteBucket(uint64_t priceTicks) {
+            size_t stripe = getStripe(priceTicks);
+            size_t bucketInStripe = getBucketInStripe(priceTicks);
+            return stripe * BUCKETS_PER_STRIPE + bucketInStripe;
         }
 
     public:
         PriceTable() {
-            for (size_t i = 0; i < NumBuckets; ++i) {
-                buckets[i].level = nullptr;
-            }
+            // Buckets are automatically initialized to nullptr by atomic constructor
+            // Validate our compile-time calculations at runtime in debug builds
+            static_assert(BUCKETS_PER_STRIPE > 0, "Each stripe must own at least one bucket");
+            static_assert(BUCKETS_PER_STRIPE * NumStripes == NumBuckets, "Buckets must be evenly divided");
         }
 
         ~PriceTable() {
@@ -357,42 +379,52 @@ class PriceTable {
         }
 
         bool installPriceLevel(PriceLevel<RingSize, NumBuckets>* level) {
-            std::lock_guard<std::mutex> lock(tableMutex);
+            // Lock only the stripe that contains this price
+            size_t stripe = getStripe(level->priceTicks);
+            std::lock_guard<std::mutex> lock(stripeMutexes[stripe]);
 
-            size_t index = hash(level->priceTicks);
-
-            for (size_t i = 0; i < NumBuckets; i++) {
-                if (buckets[index].level == nullptr) {
-                    buckets[index].level = level;
-                    return true;
+            size_t startBucket = getAbsoluteBucket(level->priceTicks);
+            size_t stripeStart = stripe * BUCKETS_PER_STRIPE;
+            
+            // Try to install within stripe boundaries only
+            for (size_t i = 0; i < BUCKETS_PER_STRIPE; i++) {
+                size_t bucketIdx = stripeStart + ((startBucket - stripeStart + i) & (BUCKETS_PER_STRIPE - 1));
+                
+                PriceLevel<RingSize, NumBuckets>* expected = nullptr;
+                if (buckets[bucketIdx].level.compare_exchange_strong(expected, level, std::memory_order_relaxed)) {
+                    return true;  // Successfully installed
                 }
-
-                if (buckets[index].level->priceTicks == level->priceTicks) {
-                    return false;
+                
+                // Check if already exists
+                PriceLevel<RingSize, NumBuckets>* current = buckets[bucketIdx].level.load(std::memory_order_relaxed);
+                if (current && current->priceTicks == level->priceTicks) {
+                    return false;  // Already exists
                 }
-
-                index = (index + 1) & (NumBuckets - 1);
             }
-
-            return false;
+            
+            return false;  // Stripe is full
         }
 
         PriceLevel<RingSize, NumBuckets>* lookup(uint64_t priceTicks) {
-            std::lock_guard<std::mutex> lock(tableMutex);
+            // Lock only the stripe that contains this price
+            size_t stripe = getStripe(priceTicks);
+            std::lock_guard<std::mutex> lock(stripeMutexes[stripe]);
 
-            size_t index = hash(priceTicks);
-
-            for (size_t i = 0; i < NumBuckets; i++) {
-                PriceLevel<RingSize, NumBuckets>* level = buckets[index].level;
-
+            size_t startBucket = getAbsoluteBucket(priceTicks);
+            size_t stripeStart = stripe * BUCKETS_PER_STRIPE;
+            
+            // Linear probe ONLY within this stripe's bucket range
+            for (size_t i = 0; i < BUCKETS_PER_STRIPE; i++) {
+                size_t bucketIdx = stripeStart + ((startBucket - stripeStart + i) & (BUCKETS_PER_STRIPE - 1));
+                
+                PriceLevel<RingSize, NumBuckets>* level = buckets[bucketIdx].level.load(std::memory_order_relaxed);
+                
                 if (!level || level->priceTicks == priceTicks) {
                     return level;
                 }
-
-                index = (index + 1) & (NumBuckets - 1);
             }
-
-            return nullptr;
+            
+            return nullptr;  // Not found in this stripe
         }
 
         bool isActive(uint64_t priceTicks) {
@@ -406,10 +438,14 @@ class PriceTable {
         }
 
         void cleanup() {
-            std::lock_guard<std::mutex> lock(tableMutex);
+            // Lock all stripes in order to avoid deadlock
+            std::vector<std::unique_lock<std::mutex>> locks;
+            for (size_t s = 0; s < NumStripes; s++) {
+                locks.emplace_back(stripeMutexes[s]);
+            }
 
             for (size_t i = 0; i < NumBuckets; i++) {
-                PriceLevel<RingSize, NumBuckets>* level = buckets[i].level;
+                PriceLevel<RingSize, NumBuckets>* level = buckets[i].level.load(std::memory_order_relaxed);
                 if (level) {
                     GenericMemoryPool* ownerPool = level->ownerPool;
                     void* memoryBlock = level->memoryBlock;
@@ -431,13 +467,13 @@ struct Pools {
 };
 
 // Symbol Struct
-template<size_t RingSize, size_t NumBuckets>
+template<size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
 struct Symbol {
     void* memoryBlock;
     uint16_t symbolID;
     std::string symbolName;
-    PriceTable<RingSize, NumBuckets> buyPrices;
-    PriceTable<RingSize, NumBuckets> sellPrices;
+    PriceTable<RingSize, NumBuckets, NumStripes> buyPrices;
+    PriceTable<RingSize, NumBuckets, NumStripes> sellPrices;
     std::atomic<uint64_t> bestBidTicks;
     std::atomic<uint64_t> bestAskTicks;
 
@@ -448,7 +484,7 @@ struct Symbol {
 
 // Worker thread class
 // Each worker has its own memory pools to reduce contention
-template<size_t MaxOrders, size_t RingSize, size_t NumBuckets>
+template<size_t MaxOrders, size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
 class Worker {
     private:
         uint16_t workerID;

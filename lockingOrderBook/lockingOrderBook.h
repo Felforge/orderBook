@@ -42,7 +42,7 @@ inline double ticksToPrice(uint64_t ticks) {
 }
 
 // Forward declarations
-template<size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
+template<size_t RingSize, size_t NumBuckets, size_t NumStripes>
 struct Symbol;
 
 template<typename T>
@@ -224,7 +224,7 @@ class LockingQueue {
 
 // Order struct
 // Uses atomics for quantity and type to match test expectations
-template<size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
+template<size_t RingSize, size_t NumBuckets, size_t NumStripes>
 struct Order {
     // Memory block where this order is allocated
     void* memoryBlock;
@@ -254,7 +254,7 @@ struct Order {
 };
 
 // Price Level struct
-template<size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
+template<size_t RingSize, size_t NumBuckets, size_t NumStripes>
 struct PriceLevel {
     void* memoryBlock;
     uint64_t priceTicks;
@@ -278,7 +278,7 @@ struct PriceLevel {
 
 // Mutex-protected publish ring (replaces lock-free ring buffer)
 // A ring is used to allow slots to be more easily reused and for backpressure detection
-template<size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
+template<size_t RingSize, size_t NumBuckets, size_t NumStripes>
 class PublishRing {
     private:
         static_assert((RingSize & (RingSize - 1)) == 0, "RingSize must be power of 2");
@@ -330,7 +330,7 @@ class PublishRing {
 
 // Striped hash table for price levels  
 // Uses multiple mutexes to reduce contention while maintaining correctness
-template<size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
+template<size_t RingSize, size_t NumBuckets, size_t NumStripes>
 class PriceTable {
     private:
         // Ensure power-of-2 for efficient bit masking
@@ -458,7 +458,7 @@ class PriceTable {
 };
 
 // Struct of required memory pools
-template<size_t MaxOrders, size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
+template<size_t MaxOrders, size_t RingSize, size_t NumBuckets, size_t NumStripes>
 struct Pools {
     MemoryPool<sizeof(Order<RingSize, NumBuckets, NumStripes>), MaxOrders> orderPool;
     MemoryPool<sizeof(Node<Order<RingSize, NumBuckets, NumStripes>*>), MaxOrders> nodePool;
@@ -467,7 +467,7 @@ struct Pools {
 };
 
 // Symbol Struct
-template<size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
+template<size_t RingSize, size_t NumBuckets, size_t NumStripes>
 struct Symbol {
     void* memoryBlock;
     uint16_t symbolID;
@@ -484,7 +484,7 @@ struct Symbol {
 
 // Worker thread class
 // Each worker has its own memory pools to reduce contention
-template<size_t MaxOrders, size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
+template<size_t MaxOrders, size_t RingSize, size_t NumBuckets, size_t NumStripes>
 class Worker {
     private:
         uint16_t workerID;
@@ -757,7 +757,7 @@ class Worker {
 
 // Worker Pool Management
 // Manages lifecycle of worker threads
-template<size_t NumWorkers, size_t MaxOrders, size_t RingSize, size_t NumBuckets, size_t NumStripes = 16>
+template<size_t NumWorkers, size_t MaxOrders, size_t RingSize, size_t NumBuckets, size_t NumStripes>
 class WorkerPool {
     private:
         MemoryPool<sizeof(Worker<MaxOrders, RingSize, NumBuckets, NumStripes>), NumWorkers>* allocPool;

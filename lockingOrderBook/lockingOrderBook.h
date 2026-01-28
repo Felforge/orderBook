@@ -13,11 +13,6 @@
 #include <cmath>
 #include <atomic>
 
-// Architecture-specific includes for spin hints
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
-    #include <immintrin.h>
-#endif
-
 // Configuration Constants
 constexpr size_t DEFAULT_RING_SIZE = 1 << 20;  // ~1M slots
 constexpr size_t PRICE_TABLE_BUCKETS = 16384; // Roughly 16k Available Price Levels
@@ -280,108 +275,55 @@ struct PriceLevel {
     }
 };
 
-// Striped mutex publish ring
-// Uses multiple stripe locks to allow parallel publish/pull operations
+// Mutex-protected publish ring (replaces lock-free ring buffer)
 // A ring is used to allow slots to be more easily reused and for backpressure detection
 template<size_t RingSize, size_t NumBuckets>
 class PublishRing {
     private:
         static_assert((RingSize & (RingSize - 1)) == 0, "RingSize must be power of 2");
 
-        // Number of stripe locks (must be power of 2)
-        // Tuned for 1MB ring: 64 stripes gives ~16K slots per stripe
-        static constexpr size_t NUM_STRIPES = 64;
-        static_assert((NUM_STRIPES & (NUM_STRIPES - 1)) == 0, "NUM_STRIPES must be power of 2");
-
         struct Slot {
             Order<RingSize, NumBuckets>* order;
-            std::atomic<bool> ready;
         };
 
-        // Atomic sequence counters for lock-free allocation
-        alignas(64) std::atomic<uint64_t> publishSeq;
-
-        // Padding to prevent false sharing
-        char padding[64 - sizeof(std::atomic<uint64_t>)];
-
-        alignas(64) std::atomic<uint64_t> workSeq;
-
+        uint64_t publishSeq;
+        uint64_t workSeq;
         Slot ring[RingSize];
-        std::mutex stripeLocks[NUM_STRIPES];
-
-        // Map slot index to stripe (group consecutive slots to same stripe)
-        size_t getStripe(size_t index) const {
-            return (index >> 10) & (NUM_STRIPES - 1);  // ~1024 slots per stripe
-        }
+        std::mutex ringMutex;
 
     public:
         PublishRing() : publishSeq(0), workSeq(0) {
             for (size_t i = 0; i < RingSize; ++i) {
                 ring[i].order = nullptr;
-                ring[i].ready.store(false, std::memory_order_relaxed);
             }
         }
 
         void publish(Order<RingSize, NumBuckets>* order) {
-            // Atomically allocate sequence number
-            uint64_t seq = publishSeq.fetch_add(1, std::memory_order_relaxed);
-            size_t index = seq & (RingSize - 1);
-            size_t stripe = getStripe(index);
-
-            // Write to slot under stripe lock
-            {
-                std::lock_guard<std::mutex> lock(stripeLocks[stripe]);
-                ring[index].order = order;
-                ring[index].ready.store(true, std::memory_order_release);
-            }
+            std::lock_guard<std::mutex> lock(ringMutex);
+            size_t index = publishSeq & (RingSize - 1);
+            ring[index].order = order;
+            publishSeq++;
         }
 
         Order<RingSize, NumBuckets>* pullNextOrder() {
-            // Check if work is available
-            uint64_t work = workSeq.load(std::memory_order_relaxed);
-            uint64_t pub = publishSeq.load(std::memory_order_acquire);
+            std::lock_guard<std::mutex> lock(ringMutex);
 
-            if (work >= pub) {
+            if (workSeq >= publishSeq) {
                 return nullptr;
             }
 
-            // Atomically claim a sequence number
-            uint64_t seq = workSeq.fetch_add(1, std::memory_order_relaxed);
-
-            // Recheck after claiming (another worker might have raced us)
-            if (seq >= pub) {
-                return nullptr;
-            }
-
-            size_t index = seq & (RingSize - 1);
-            size_t stripe = getStripe(index);
-
-            // Wait for slot to be ready (should be very brief if it happens at all)
-            // This handles the rare race where publishSeq advanced but slot not written yet
-            while (!ring[index].ready.load(std::memory_order_acquire)) {
-                #if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
-                    _mm_pause();
-                #else
-                    std::atomic_signal_fence(std::memory_order_seq_cst);
-                #endif
-            }
-
-            // Read and clear slot under stripe lock
-            Order<RingSize, NumBuckets>* order;
-            {
-                std::lock_guard<std::mutex> lock(stripeLocks[stripe]);
-                order = ring[index].order;
-                ring[index].order = nullptr;
-                ring[index].ready.store(false, std::memory_order_release);
-            }
+            size_t index = workSeq & (RingSize - 1);
+            Order<RingSize, NumBuckets>* order = ring[index].order;
+            ring[index].order = nullptr;
+            workSeq++;
 
             return order;
         }
 
         // Check if ring is empty (workers caught up)
         bool isEmpty() const {
-            return workSeq.load(std::memory_order_acquire) >=
-                   publishSeq.load(std::memory_order_acquire);
+            std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(ringMutex));
+            return workSeq >= publishSeq;
         }
 };
 

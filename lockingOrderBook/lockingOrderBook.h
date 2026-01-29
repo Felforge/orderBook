@@ -327,22 +327,47 @@ class PublishRing {
         }
 };
 
-// Mutex-protected hash table for price levels
-// Uses linear probing for collision resolution
+// Striped hash table for price levels
+// Uses 16 mutexes to reduce contention while maintaining correctness  
 template<size_t RingSize, size_t NumBuckets>
 class PriceTable {
     private:
         static_assert((NumBuckets & (NumBuckets - 1)) == 0, "NumBuckets must be power of 2");
+        
+        // Fixed striping configuration - 16 stripes for optimal performance/complexity balance
+        static constexpr size_t NUM_STRIPES = 16;
 
         struct Bucket {
             PriceLevel<RingSize, NumBuckets>* level;
         };
 
         Bucket buckets[NumBuckets];
-        mutable std::mutex tableMutex;
+        // Array of stripe mutexes - each protects a subset of price levels
+        mutable std::mutex stripeMutexes[NUM_STRIPES];
 
         size_t hash(uint64_t priceTicks) {
             return priceTicks & (NumBuckets - 1);
+        }
+        
+        // Calculate stripe size - each stripe contains consecutive buckets
+        static constexpr size_t BUCKETS_PER_STRIPE = NumBuckets / NUM_STRIPES;
+        static_assert(NumBuckets % NUM_STRIPES == 0, "NumBuckets must be divisible by NUM_STRIPES");
+        
+        // Map bucket index to stripe - consecutive buckets belong to same stripe
+        size_t getStripeFromBucket(size_t bucketIndex) const {
+            return bucketIndex / BUCKETS_PER_STRIPE;
+        }
+        
+        // Map price to stripe via its starting bucket
+        size_t getStripe(uint64_t priceTicks) const {
+            return getStripeFromBucket(hash(priceTicks));
+        }
+        
+        // Get the start and end of a stripe's bucket range
+        std::pair<size_t, size_t> getStripeBounds(size_t stripe) const {
+            size_t start = stripe * BUCKETS_PER_STRIPE;
+            size_t end = start + BUCKETS_PER_STRIPE;
+            return {start, end};
         }
 
     public:
@@ -357,11 +382,17 @@ class PriceTable {
         }
 
         bool installPriceLevel(PriceLevel<RingSize, NumBuckets>* level) {
-            std::lock_guard<std::mutex> lock(tableMutex);
-
-            size_t index = hash(level->priceTicks);
-
-            for (size_t i = 0; i < NumBuckets; i++) {
+            size_t startIndex = hash(level->priceTicks);
+            size_t stripe = getStripeFromBucket(startIndex);
+            
+            // Lock only the stripe containing the starting bucket
+            std::lock_guard<std::mutex> lock(stripeMutexes[stripe]);
+            
+            auto [stripeStart, stripeEnd] = getStripeBounds(stripe);
+            
+            // Probe within stripe boundaries only
+            size_t index = startIndex;
+            for (size_t i = 0; i < BUCKETS_PER_STRIPE; i++) {
                 if (buckets[index].level == nullptr) {
                     buckets[index].level = level;
                     return true;
@@ -371,28 +402,42 @@ class PriceTable {
                     return false;
                 }
 
-                index = (index + 1) & (NumBuckets - 1);
+                // Move to next bucket within stripe
+                index = (index + 1);
+                if (index >= stripeEnd) {
+                    index = stripeStart; // Wrap within stripe
+                }
             }
 
-            return false;
+            return false; // Stripe is full
         }
 
         PriceLevel<RingSize, NumBuckets>* lookup(uint64_t priceTicks) {
-            std::lock_guard<std::mutex> lock(tableMutex);
-
-            size_t index = hash(priceTicks);
-
-            for (size_t i = 0; i < NumBuckets; i++) {
+            size_t startIndex = hash(priceTicks);
+            size_t stripe = getStripeFromBucket(startIndex);
+            
+            // Lock only the stripe containing the starting bucket
+            std::lock_guard<std::mutex> lock(stripeMutexes[stripe]);
+            
+            auto [stripeStart, stripeEnd] = getStripeBounds(stripe);
+            
+            // Probe within stripe boundaries only
+            size_t index = startIndex;
+            for (size_t i = 0; i < BUCKETS_PER_STRIPE; i++) {
                 PriceLevel<RingSize, NumBuckets>* level = buckets[index].level;
 
                 if (!level || level->priceTicks == priceTicks) {
                     return level;
                 }
 
-                index = (index + 1) & (NumBuckets - 1);
+                // Move to next bucket within stripe
+                index = (index + 1);
+                if (index >= stripeEnd) {
+                    index = stripeStart; // Wrap within stripe
+                }
             }
 
-            return nullptr;
+            return nullptr; // Not found in this stripe
         }
 
         bool isActive(uint64_t priceTicks) {
@@ -406,7 +451,25 @@ class PriceTable {
         }
 
         void cleanup() {
-            std::lock_guard<std::mutex> lock(tableMutex);
+            // Lock all stripes in order to avoid deadlocks during cleanup
+            std::lock_guard<std::mutex> locks[NUM_STRIPES] = {
+                std::lock_guard<std::mutex>(stripeMutexes[0]),
+                std::lock_guard<std::mutex>(stripeMutexes[1]),
+                std::lock_guard<std::mutex>(stripeMutexes[2]),
+                std::lock_guard<std::mutex>(stripeMutexes[3]),
+                std::lock_guard<std::mutex>(stripeMutexes[4]),
+                std::lock_guard<std::mutex>(stripeMutexes[5]),
+                std::lock_guard<std::mutex>(stripeMutexes[6]),
+                std::lock_guard<std::mutex>(stripeMutexes[7]),
+                std::lock_guard<std::mutex>(stripeMutexes[8]),
+                std::lock_guard<std::mutex>(stripeMutexes[9]),
+                std::lock_guard<std::mutex>(stripeMutexes[10]),
+                std::lock_guard<std::mutex>(stripeMutexes[11]),
+                std::lock_guard<std::mutex>(stripeMutexes[12]),
+                std::lock_guard<std::mutex>(stripeMutexes[13]),
+                std::lock_guard<std::mutex>(stripeMutexes[14]),
+                std::lock_guard<std::mutex>(stripeMutexes[15])
+            };
 
             for (size_t i = 0; i < NumBuckets; i++) {
                 PriceLevel<RingSize, NumBuckets>* level = buckets[i].level;

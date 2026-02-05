@@ -76,7 +76,6 @@ protected:
         // Close file
         file.close();
 
-        cout << "Loaded " << marketOrders.size() << " market orders" << endl;
         return;
     }
 

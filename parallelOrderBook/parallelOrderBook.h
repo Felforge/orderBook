@@ -169,11 +169,18 @@ class PublishRing {
         alignas(64) std::atomic<uint64_t> publishSeq{0};
 
         // Padding to prevent false sharing between publishSeq and workSeq
-        char padding[64 - sizeof(std::atomic<uint64_t>)];
+        char padding1[64 - sizeof(std::atomic<uint64_t>)];
 
         // Tracks the next slot the worker should pull from
         // Aligned to cache line to prevent false sharing
         alignas(64) std::atomic<uint64_t> workSeq{0};
+
+        // Padding to prevent false sharing between workSeq and pendingOrders
+        char padding2[64 - sizeof(std::atomic<uint64_t>)];
+
+        // Tracks number of orders published but not yet fully processed
+        // Incremented in publish(), decremented after processOrder() completes
+        alignas(64) std::atomic<uint64_t> pendingOrders{0};
 
         // The actual ring buffer array
         // Indexed by seq & (RingSize - 1) for wraparound
@@ -194,55 +201,80 @@ class PublishRing {
         PublishRing() {
         }
 
-        // Producer function: acquire sequence and publish order
+        // Producer function: atomically claim sequence and publish order
+        // Safe for multiple producers - uses fetch_add for atomic sequence claim
         void publish(Order<RingSize, NumBuckets>* order) {
-            // Get the current sequence without incrementing yet
-            uint64_t seq = publishSeq.load(std::memory_order_relaxed);
+            // Increment pending count before making order visible to consumers
+            // Relaxed is safe here: the release on publishSeq carries this write
+            // to any consumer that loads publishSeq with acquire
+            pendingOrders.fetch_add(1, std::memory_order_relaxed);
 
-            // Get ring index based on sequence
-            size_t index = seq & (RingSize - 1);
+            // Atomically claim the next sequence number FIRST
+            // This prevents multiple producers from reading the same seq and
+            // colliding on the same ring slot (the original deadlock bug)
+            uint64_t seq = publishSeq.fetch_add(1, std::memory_order_release);
 
-            // Loop to update ring with strong CAS
-            Order<RingSize, NumBuckets>* expected = nullptr;
-            while (!ring[index].order.compare_exchange_strong(expected, order, std::memory_order_release)) {
-                expected = nullptr; // Reset for next CAS attempt
-                spinBackoff();
+            // Backpressure: wait if ring is full (consumers must catch up)
+            while (seq >= workSeq.load(std::memory_order_acquire) + RingSize) {
+                std::this_thread::yield();
             }
 
-            // Only increment publishSeq AFTER the order is successfully stored
-            publishSeq.fetch_add(1, std::memory_order_release);
+            // Get ring index based on claimed sequence
+            size_t index = seq & (RingSize - 1);
+
+            // Wait until the slot is clear, then write the order
+            Order<RingSize, NumBuckets>* expected = nullptr;
+            while (!ring[index].order.compare_exchange_weak(expected, order,
+                   std::memory_order_release, std::memory_order_relaxed)) {
+                expected = nullptr;
+                spinBackoff();
+            }
         }
 
         // Worker function to grab the next available order
         Order<RingSize, NumBuckets>* pullNextOrder() {
-            // Get the current sequence number
-            uint64_t seq = workSeq.load();
+            // Get the current sequence numbers
+            uint64_t seq = workSeq.load(std::memory_order_acquire);
             uint64_t pubSeq = publishSeq.load(std::memory_order_acquire);
 
             // If no work is available at this seq return
             if (seq >= pubSeq) {
                 return nullptr;
             }
-            
-            if (!workSeq.compare_exchange_strong(seq, seq + 1)) {
+
+            // Atomically claim this sequence number
+            if (!workSeq.compare_exchange_strong(seq, seq + 1,
+                std::memory_order_acq_rel, std::memory_order_acquire)) {
                 return nullptr;
             }
 
-            // Get ring index based on sequence
+            // Get ring index based on claimed sequence
             size_t index = seq & (RingSize - 1);
 
-            // Atomically retrieve and clear the order from the ring slot
-            Order<RingSize, NumBuckets>* order = ring[index].order.exchange(nullptr, std::memory_order_acq_rel);
+            // Spin-wait for the order to be written by the producer
+            // With fetch_add-first publish, the sequence is visible before
+            // the order is stored in the slot, so we must wait for it
+            Order<RingSize, NumBuckets>* order = ring[index].order.load(std::memory_order_acquire);
+            while (!order) {
+                spinBackoff();
+                order = ring[index].order.load(std::memory_order_acquire);
+            }
 
+            // Clear the slot for reuse
+            ring[index].order.store(nullptr, std::memory_order_release);
 
-            // Return the order (could be nullptr if slot was already cleared)
             return order;
         }
 
-        // Check if ring is empty (workers caught up)
+        // Signal that an order has been fully processed
+        void orderProcessed() {
+            pendingOrders.fetch_sub(1, std::memory_order_release);
+        }
+
+        // Check if all published orders have been fully processed
+        // Uses pending counter instead of two separate seq loads for atomicity
         bool isEmpty() const {
-            return workSeq.load(std::memory_order_acquire) >=
-                   publishSeq.load(std::memory_order_acquire);
+            return pendingOrders.load(std::memory_order_acquire) == 0;
         }
 };
 
@@ -780,9 +812,8 @@ class Worker {
 
         // Function to run the worker
         void run(PublishRing<RingSize, NumBuckets>* publishRing) {
-            std::thread::id threadId = std::this_thread::get_id();
             // Worker now uses its own member pools instead of thread-local pools
-            
+
             while (running->load()) {
                 // Pull next available order
                 Order<RingSize, NumBuckets>* order = publishRing->pullNextOrder();
@@ -790,11 +821,13 @@ class Worker {
                 // If order is valid process it, else yield
                 if (order) {
                     processOrder(order);
+                    // Signal that this order has been fully processed
+                    publishRing->orderProcessed();
                 } else {
                     std::this_thread::yield();
                 }
             }
-            
+
         }
 };
 
@@ -1084,9 +1117,7 @@ class OrderBook {
             return true;
         }
 
-        // Check if all workers have caught up (ring is empty)
-        // Small discrepancy: order may be pulled but not fully processed yet
-        // Negligible with large batch sizes
+        // Check if all workers have finished processing all orders
         bool isIdle() const {
             return publishRing.isEmpty();
         }

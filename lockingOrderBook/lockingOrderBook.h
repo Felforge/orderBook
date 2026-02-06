@@ -54,48 +54,58 @@ struct GenericMemoryPool {
     virtual ~GenericMemoryPool() = default;
 };
 
-// Simple locking memory pool (replaces lockless version)
+// Simple locking memory pool with intrusive free list
 // Uses std::mutex for thread-safe allocation/deallocation
+// Intrusive list avoids std::queue overhead
 template<size_t BlockSize, size_t NumBlocks>
 class MemoryPool : public GenericMemoryPool {
     private:
+        // Block must be at least pointer-sized for intrusive list
+        static constexpr size_t ActualBlockSize = BlockSize > sizeof(void*) ? BlockSize : sizeof(void*);
+
         struct Block {
-            char data[BlockSize];
-            Block* next;
+            union {
+                char data[ActualBlockSize];
+                Block* next;  // Used when block is in free list
+            };
         };
 
-        std::queue<void*> freeList;
+        Block* freeList;
         std::mutex poolMutex;
-        Block* allBlocks[NumBlocks];
+        char* memoryRegion;  // Single contiguous allocation
 
     public:
-        MemoryPool() {
+        MemoryPool() : freeList(nullptr) {
+            // Allocate all blocks in one contiguous region
+            memoryRegion = new char[sizeof(Block) * NumBlocks];
+
+            // Build intrusive free list (no additional allocations)
             for (size_t i = 0; i < NumBlocks; ++i) {
-                Block* block = new Block();
-                allBlocks[i] = block;
-                freeList.push(block);
+                Block* block = reinterpret_cast<Block*>(memoryRegion + i * sizeof(Block));
+                block->next = freeList;
+                freeList = block;
             }
         }
 
         ~MemoryPool() {
-            for (size_t i = 0; i < NumBlocks; ++i) {
-                delete allBlocks[i];
-            }
+            delete[] memoryRegion;
         }
 
         void* allocate() override {
             std::lock_guard<std::mutex> lock(poolMutex);
-            if (freeList.empty()) {
+            if (!freeList) {
                 throw std::bad_alloc();
             }
-            void* block = freeList.front();
-            freeList.pop();
+            Block* block = freeList;
+            freeList = block->next;
             return block;
         }
 
         void deallocate(void* ptr) override {
             std::lock_guard<std::mutex> lock(poolMutex);
-            freeList.push(ptr);
+            Block* block = static_cast<Block*>(ptr);
+            block->next = freeList;
+            freeList = block;
         }
 };
 
@@ -118,14 +128,16 @@ struct Node {
           memoryBlock(memoryBlock), ownerPool(ownerPool) {}
 };
 
-// Mutex-protected queue (replaces LocklessQueue)
-// Uses mutex to protect doubly-linked list operations
+// Two-lock queue for better concurrency
+// Separate locks for head (pop) and tail (push) allow concurrent operations
+// Based on Michael & Scott two-lock queue pattern
 template<typename T>
 class LockingQueue {
     private:
         Node<T>* head;
         Node<T>* tail;
-        std::mutex queueMutex;
+        std::mutex headMutex;  // Protects popLeft operations
+        std::mutex tailMutex;  // Protects pushRight operations
 
     public:
         LockingQueue() : head(nullptr), tail(nullptr) {}
@@ -159,12 +171,26 @@ class LockingQueue {
         }
 
         Node<T>* pushRight(const T& value, GenericMemoryPool* nodePool) {
-            std::lock_guard<std::mutex> lock(queueMutex);
-
             void* block = nodePool->allocate();
             if (!block) return nullptr;
 
             Node<T>* newNode = new (block) Node<T>(nodePool, block, value);
+
+            // Check if queue might be empty (optimistic check without lock)
+            if (tail->prev == head) {
+                // Queue empty or nearly empty - lock both (scoped_lock handles ordering)
+                std::scoped_lock lock(headMutex, tailMutex);
+
+                Node<T>* prev = tail->prev;
+                newNode->prev = prev;
+                newNode->next = tail;
+                prev->next = newNode;
+                tail->prev = newNode;
+                return newNode;
+            }
+
+            // Queue not empty - can proceed with just tail lock
+            std::lock_guard<std::mutex> lock(tailMutex);
 
             Node<T>* prev = tail->prev;
             newNode->prev = prev;
@@ -176,12 +202,26 @@ class LockingQueue {
         }
 
         void pushLeft(const T& value, GenericMemoryPool* nodePool) {
-            std::lock_guard<std::mutex> lock(queueMutex);
-
             void* block = nodePool->allocate();
             if (!block) return;
 
             Node<T>* newNode = new (block) Node<T>(nodePool, block, value);
+
+            // Check if queue might be empty
+            if (head->next == tail) {
+                // Queue empty - lock both (scoped_lock handles ordering)
+                std::scoped_lock lock(headMutex, tailMutex);
+
+                Node<T>* next = head->next;
+                newNode->prev = head;
+                newNode->next = next;
+                head->next = newNode;
+                next->prev = newNode;
+                return;
+            }
+
+            // Queue not empty - can proceed with just head lock
+            std::lock_guard<std::mutex> lock(headMutex);
 
             Node<T>* next = head->next;
             newNode->prev = head;
@@ -191,7 +231,30 @@ class LockingQueue {
         }
 
         std::optional<T> popLeft() {
-            std::lock_guard<std::mutex> lock(queueMutex);
+            // Check if queue might have <= 1 element (optimistic check)
+            Node<T>* firstNode = head->next;
+            if (firstNode == tail) {
+                return std::nullopt;  // Empty
+            }
+
+            if (firstNode->next == tail) {
+                // Only one element - lock both (scoped_lock handles ordering)
+                std::scoped_lock lock(headMutex, tailMutex);
+
+                Node<T>* node = head->next;
+                if (node == tail) return std::nullopt;
+
+                T data = node->data;
+                head->next = node->next;
+                node->next->prev = head;
+
+                node->~Node<T>();
+                node->ownerPool->deallocate(node->memoryBlock);
+                return data;
+            }
+
+            // Multiple elements - can proceed with just head lock
+            std::lock_guard<std::mutex> lock(headMutex);
 
             Node<T>* node = head->next;
             if (node == tail) {
@@ -211,7 +274,8 @@ class LockingQueue {
         void removeNode(Node<T>* node) {
             if (!node) return;
 
-            std::lock_guard<std::mutex> lock(queueMutex);
+            // Cancel needs both locks since it can remove from middle
+            std::scoped_lock lock(headMutex, tailMutex);
 
             node->prev->next = node->next;
             node->next->prev = node->prev;
@@ -275,28 +339,25 @@ struct PriceLevel {
     }
 };
 
-// Mutex-protected publish ring with atomic sequence coordination
-// Uses atomics for sequence claiming (same as lockless) but mutexes for slot protection
-// This allows fair apples-to-apples comparison: both versions use atomic sequences,
-// difference is mutex vs CAS for data protection
+// Publish ring with atomic sequence coordination
+// Uses atomic fetch_add for sequence claiming - each thread gets exclusive slot ownership
+// No per-slot mutexes needed since sequences guarantee exclusivity
 template<size_t RingSize, size_t NumBuckets>
 class PublishRing {
     private:
         static_assert((RingSize & (RingSize - 1)) == 0, "RingSize must be power of 2");
 
-        struct Slot {
+        struct alignas(64) Slot {
             std::atomic<Order<RingSize, NumBuckets>*> order{nullptr};
         };
 
-        // Sequence counters - atomic for coordination (same as lockless version)
+        // Sequence counters - cache-line aligned to prevent false sharing
         alignas(64) std::atomic<uint64_t> publishSeq{0};
         alignas(64) std::atomic<uint64_t> workSeq{0};
         alignas(64) std::atomic<uint64_t> pendingOrders{0};
 
-        // Ring buffer - slots use atomic pointers for visibility
-        // Mutex protects the read-modify-write sequence on each slot
+        // Ring buffer - slots are cache-line aligned
         Slot ring[RingSize];
-        std::mutex slotMutexes[RingSize];
 
     public:
         PublishRing() = default;
@@ -305,7 +366,7 @@ class PublishRing {
             // Increment pending before making visible
             pendingOrders.fetch_add(1, std::memory_order_relaxed);
 
-            // Atomically claim sequence (same as lockless version)
+            // Atomically claim sequence - guarantees exclusive slot ownership
             uint64_t seq = publishSeq.fetch_add(1, std::memory_order_release);
 
             // Backpressure: wait if ring is full
@@ -315,20 +376,17 @@ class PublishRing {
 
             size_t index = seq & (RingSize - 1);
 
-            // Wait for slot to be clear (outside lock - just polling)
+            // Wait for slot to be clear (previous consumer finished)
             while (ring[index].order.load(std::memory_order_acquire) != nullptr) {
                 std::this_thread::yield();
             }
 
-            // Mutex protects the write (differs from lockless which uses CAS)
-            {
-                std::lock_guard<std::mutex> lock(slotMutexes[index]);
-                ring[index].order.store(order, std::memory_order_release);
-            }
+            // Direct store - we own this slot exclusively via sequence
+            ring[index].order.store(order, std::memory_order_release);
         }
 
         Order<RingSize, NumBuckets>* pullNextOrder() {
-            // Check if work available (same logic as lockless)
+            // Check if work available
             uint64_t seq = workSeq.load(std::memory_order_acquire);
             uint64_t pubSeq = publishSeq.load(std::memory_order_acquire);
 
@@ -336,7 +394,7 @@ class PublishRing {
                 return nullptr;
             }
 
-            // Atomically claim this sequence (same as lockless)
+            // Atomically claim this sequence - guarantees exclusive slot ownership
             if (!workSeq.compare_exchange_strong(seq, seq + 1,
                 std::memory_order_acq_rel, std::memory_order_acquire)) {
                 return nullptr;
@@ -344,18 +402,15 @@ class PublishRing {
 
             size_t index = seq & (RingSize - 1);
 
-            // Spin-wait for order to appear (outside lock)
-            while (ring[index].order.load(std::memory_order_acquire) == nullptr) {
+            // Spin-wait for order to appear (producer may still be writing)
+            Order<RingSize, NumBuckets>* order = ring[index].order.load(std::memory_order_acquire);
+            while (order == nullptr) {
                 std::this_thread::yield();
+                order = ring[index].order.load(std::memory_order_acquire);
             }
 
-            // Mutex protects the read-and-clear (differs from lockless which uses exchange)
-            Order<RingSize, NumBuckets>* order;
-            {
-                std::lock_guard<std::mutex> lock(slotMutexes[index]);
-                order = ring[index].order.load(std::memory_order_acquire);
-                ring[index].order.store(nullptr, std::memory_order_release);
-            }
+            // Direct store to clear - we own this slot exclusively via sequence
+            ring[index].order.store(nullptr, std::memory_order_release);
 
             return order;
         }
@@ -370,15 +425,15 @@ class PublishRing {
 };
 
 // Striped hash table for price levels
-// Uses 16 mutexes with INTERLEAVED striping to spread clustered HFT prices
+// Uses 64 mutexes with INTERLEAVED striping to spread clustered HFT prices
 // Improved hash function distributes consecutive prices across different stripes
 template<size_t RingSize, size_t NumBuckets>
 class PriceTable {
     private:
         static_assert((NumBuckets & (NumBuckets - 1)) == 0, "NumBuckets must be power of 2");
 
-        // Fixed striping configuration - 16 stripes for optimal performance/complexity balance
-        static constexpr size_t NUM_STRIPES = 16;
+        // 64 stripes for better parallelism with many workers
+        static constexpr size_t NUM_STRIPES = 64;
 
         struct Bucket {
             PriceLevel<RingSize, NumBuckets>* level;

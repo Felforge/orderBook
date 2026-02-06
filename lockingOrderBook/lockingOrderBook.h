@@ -425,15 +425,15 @@ class PublishRing {
 };
 
 // Striped hash table for price levels
-// Uses 64 mutexes with INTERLEAVED striping to spread clustered HFT prices
+// Uses 32 mutexes with INTERLEAVED striping to spread clustered HFT prices
 // Improved hash function distributes consecutive prices across different stripes
 template<size_t RingSize, size_t NumBuckets>
 class PriceTable {
     private:
         static_assert((NumBuckets & (NumBuckets - 1)) == 0, "NumBuckets must be power of 2");
 
-        // 64 stripes for better parallelism with many workers
-        static constexpr size_t NUM_STRIPES = 64;
+        // 32 stripes - balances parallelism with TSAN's 64-lock tracking limit
+        static constexpr size_t NUM_STRIPES = 32;
 
         struct Bucket {
             PriceLevel<RingSize, NumBuckets>* level;
@@ -533,25 +533,22 @@ class PriceTable {
         }
 
         void cleanup() {
-            // Lock all stripes for cleanup
+            // Process one stripe at a time to avoid exceeding lock limits
             for (size_t s = 0; s < NUM_STRIPES; ++s) {
-                stripeMutexes[s].lock();
-            }
+                std::lock_guard<std::mutex> lock(stripeMutexes[s]);
 
-            for (size_t i = 0; i < NumBuckets; i++) {
-                PriceLevel<RingSize, NumBuckets>* level = buckets[i].level;
-                if (level) {
-                    GenericMemoryPool* ownerPool = level->ownerPool;
-                    void* memoryBlock = level->memoryBlock;
+                // Clean buckets belonging to this stripe
+                for (size_t i = s; i < NumBuckets; i += NUM_STRIPES) {
+                    PriceLevel<RingSize, NumBuckets>* level = buckets[i].level;
+                    if (level) {
+                        GenericMemoryPool* ownerPool = level->ownerPool;
+                        void* memoryBlock = level->memoryBlock;
 
-                    level->~PriceLevel();
-                    ownerPool->deallocate(memoryBlock);
-                    buckets[i].level = nullptr;
+                        level->~PriceLevel();
+                        ownerPool->deallocate(memoryBlock);
+                        buckets[i].level = nullptr;
+                    }
                 }
-            }
-
-            for (size_t s = 0; s < NUM_STRIPES; ++s) {
-                stripeMutexes[s].unlock();
             }
         }
 };

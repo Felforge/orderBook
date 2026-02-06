@@ -275,65 +275,108 @@ struct PriceLevel {
     }
 };
 
-// Mutex-protected publish ring (replaces lock-free ring buffer)
-// A ring is used to allow slots to be more easily reused and for backpressure detection
+// Mutex-protected publish ring with atomic sequence coordination
+// Uses atomics for sequence claiming (same as lockless) but mutexes for slot protection
+// This allows fair apples-to-apples comparison: both versions use atomic sequences,
+// difference is mutex vs CAS for data protection
 template<size_t RingSize, size_t NumBuckets>
 class PublishRing {
     private:
         static_assert((RingSize & (RingSize - 1)) == 0, "RingSize must be power of 2");
 
         struct Slot {
-            Order<RingSize, NumBuckets>* order;
+            std::atomic<Order<RingSize, NumBuckets>*> order{nullptr};
         };
 
-        uint64_t publishSeq;
-        uint64_t workSeq;
+        // Sequence counters - atomic for coordination (same as lockless version)
+        alignas(64) std::atomic<uint64_t> publishSeq{0};
+        alignas(64) std::atomic<uint64_t> workSeq{0};
+        alignas(64) std::atomic<uint64_t> pendingOrders{0};
+
+        // Ring buffer - slots use atomic pointers for visibility
+        // Mutex protects the read-modify-write sequence on each slot
         Slot ring[RingSize];
-        std::mutex ringMutex;
+        std::mutex slotMutexes[RingSize];
 
     public:
-        PublishRing() : publishSeq(0), workSeq(0) {
-            for (size_t i = 0; i < RingSize; ++i) {
-                ring[i].order = nullptr;
-            }
-        }
+        PublishRing() = default;
 
         void publish(Order<RingSize, NumBuckets>* order) {
-            std::lock_guard<std::mutex> lock(ringMutex);
-            size_t index = publishSeq & (RingSize - 1);
-            ring[index].order = order;
-            publishSeq++;
+            // Increment pending before making visible
+            pendingOrders.fetch_add(1, std::memory_order_relaxed);
+
+            // Atomically claim sequence (same as lockless version)
+            uint64_t seq = publishSeq.fetch_add(1, std::memory_order_release);
+
+            // Backpressure: wait if ring is full
+            while (seq >= workSeq.load(std::memory_order_acquire) + RingSize) {
+                std::this_thread::yield();
+            }
+
+            size_t index = seq & (RingSize - 1);
+
+            // Wait for slot to be clear (outside lock - just polling)
+            while (ring[index].order.load(std::memory_order_acquire) != nullptr) {
+                std::this_thread::yield();
+            }
+
+            // Mutex protects the write (differs from lockless which uses CAS)
+            {
+                std::lock_guard<std::mutex> lock(slotMutexes[index]);
+                ring[index].order.store(order, std::memory_order_release);
+            }
         }
 
         Order<RingSize, NumBuckets>* pullNextOrder() {
-            std::lock_guard<std::mutex> lock(ringMutex);
+            // Check if work available (same logic as lockless)
+            uint64_t seq = workSeq.load(std::memory_order_acquire);
+            uint64_t pubSeq = publishSeq.load(std::memory_order_acquire);
 
-            if (workSeq >= publishSeq) {
+            if (seq >= pubSeq) {
                 return nullptr;
             }
 
-            size_t index = workSeq & (RingSize - 1);
-            Order<RingSize, NumBuckets>* order = ring[index].order;
-            ring[index].order = nullptr;
-            workSeq++;
+            // Atomically claim this sequence (same as lockless)
+            if (!workSeq.compare_exchange_strong(seq, seq + 1,
+                std::memory_order_acq_rel, std::memory_order_acquire)) {
+                return nullptr;
+            }
+
+            size_t index = seq & (RingSize - 1);
+
+            // Spin-wait for order to appear (outside lock)
+            while (ring[index].order.load(std::memory_order_acquire) == nullptr) {
+                std::this_thread::yield();
+            }
+
+            // Mutex protects the read-and-clear (differs from lockless which uses exchange)
+            Order<RingSize, NumBuckets>* order;
+            {
+                std::lock_guard<std::mutex> lock(slotMutexes[index]);
+                order = ring[index].order.load(std::memory_order_acquire);
+                ring[index].order.store(nullptr, std::memory_order_release);
+            }
 
             return order;
         }
 
-        // Check if ring is empty (workers caught up)
+        void orderProcessed() {
+            pendingOrders.fetch_sub(1, std::memory_order_release);
+        }
+
         bool isEmpty() const {
-            std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(ringMutex));
-            return workSeq >= publishSeq;
+            return pendingOrders.load(std::memory_order_acquire) == 0;
         }
 };
 
 // Striped hash table for price levels
-// Uses 16 mutexes to reduce contention while maintaining correctness  
+// Uses 16 mutexes with INTERLEAVED striping to spread clustered HFT prices
+// Improved hash function distributes consecutive prices across different stripes
 template<size_t RingSize, size_t NumBuckets>
 class PriceTable {
     private:
         static_assert((NumBuckets & (NumBuckets - 1)) == 0, "NumBuckets must be power of 2");
-        
+
         // Fixed striping configuration - 16 stripes for optimal performance/complexity balance
         static constexpr size_t NUM_STRIPES = 16;
 
@@ -342,32 +385,25 @@ class PriceTable {
         };
 
         Bucket buckets[NumBuckets];
-        // Array of stripe mutexes - each protects a subset of price levels
+        // Array of stripe mutexes - each protects interleaved buckets
         mutable std::mutex stripeMutexes[NUM_STRIPES];
 
-        size_t hash(uint64_t priceTicks) {
-            return priceTicks & (NumBuckets - 1);
+        // Improved hash function - spreads clustered prices across buckets
+        // MurmurHash64-style mixing ensures consecutive priceTicks hash to different locations
+        size_t hash(uint64_t priceTicks) const {
+            uint64_t h = priceTicks;
+            h ^= h >> 33;
+            h *= 0xff51afd7ed558ccdULL;
+            h ^= h >> 33;
+            h *= 0xc4ceb9fe1a85ec53ULL;
+            h ^= h >> 33;
+            return h & (NumBuckets - 1);
         }
-        
-        // Calculate stripe size - each stripe contains consecutive buckets
-        static constexpr size_t BUCKETS_PER_STRIPE = NumBuckets / NUM_STRIPES;
-        static_assert(NumBuckets % NUM_STRIPES == 0, "NumBuckets must be divisible by NUM_STRIPES");
-        
-        // Map bucket index to stripe - consecutive buckets belong to same stripe
-        size_t getStripeFromBucket(size_t bucketIndex) const {
-            return bucketIndex / BUCKETS_PER_STRIPE;
-        }
-        
-        // Map price to stripe via its starting bucket
-        size_t getStripe(uint64_t priceTicks) const {
-            return getStripeFromBucket(hash(priceTicks));
-        }
-        
-        // Get the start and end of a stripe's bucket range
-        std::pair<size_t, size_t> getStripeBounds(size_t stripe) const {
-            size_t start = stripe * BUCKETS_PER_STRIPE;
-            size_t end = start + BUCKETS_PER_STRIPE;
-            return {start, end};
+
+        // INTERLEAVED striping: hash value determines stripe directly
+        // This spreads clustered prices across ALL stripes instead of concentrating in 1-2
+        size_t getStripe(size_t hashValue) const {
+            return hashValue % NUM_STRIPES;
         }
 
     public:
@@ -383,61 +419,52 @@ class PriceTable {
 
         bool installPriceLevel(PriceLevel<RingSize, NumBuckets>* level) {
             size_t startIndex = hash(level->priceTicks);
-            size_t stripe = getStripeFromBucket(startIndex);
-            
-            // Lock only the stripe containing the starting bucket
+            size_t stripe = getStripe(startIndex);
+
+            // Lock only this stripe
             std::lock_guard<std::mutex> lock(stripeMutexes[stripe]);
-            
-            auto [stripeStart, stripeEnd] = getStripeBounds(stripe);
-            
-            // Probe within stripe boundaries only
-            size_t index = startIndex;
-            for (size_t i = 0; i < BUCKETS_PER_STRIPE; i++) {
+
+            // Linear probing with stride = NUM_STRIPES keeps us within same stripe's buckets
+            // Bucket indices in stripe s: s, s+16, s+32, s+48, ...
+            for (size_t i = 0; i < NumBuckets / NUM_STRIPES; i++) {
+                size_t index = (startIndex + i * NUM_STRIPES) & (NumBuckets - 1);
+
                 if (buckets[index].level == nullptr) {
                     buckets[index].level = level;
                     return true;
                 }
 
                 if (buckets[index].level->priceTicks == level->priceTicks) {
-                    return false;
-                }
-
-                // Move to next bucket within stripe
-                index = (index + 1);
-                if (index >= stripeEnd) {
-                    index = stripeStart; // Wrap within stripe
+                    return false;  // Already exists
                 }
             }
 
-            return false; // Stripe is full
+            return false;  // Stripe is full
         }
 
         PriceLevel<RingSize, NumBuckets>* lookup(uint64_t priceTicks) {
             size_t startIndex = hash(priceTicks);
-            size_t stripe = getStripeFromBucket(startIndex);
-            
-            // Lock only the stripe containing the starting bucket
+            size_t stripe = getStripe(startIndex);
+
+            // Lock only this stripe
             std::lock_guard<std::mutex> lock(stripeMutexes[stripe]);
-            
-            auto [stripeStart, stripeEnd] = getStripeBounds(stripe);
-            
-            // Probe within stripe boundaries only
-            size_t index = startIndex;
-            for (size_t i = 0; i < BUCKETS_PER_STRIPE; i++) {
+
+            // Linear probing with stride = NUM_STRIPES
+            for (size_t i = 0; i < NumBuckets / NUM_STRIPES; i++) {
+                size_t index = (startIndex + i * NUM_STRIPES) & (NumBuckets - 1);
+
                 PriceLevel<RingSize, NumBuckets>* level = buckets[index].level;
 
-                if (!level || level->priceTicks == priceTicks) {
-                    return level;
+                if (!level) {
+                    return nullptr;  // Empty slot = not found
                 }
 
-                // Move to next bucket within stripe
-                index = (index + 1);
-                if (index >= stripeEnd) {
-                    index = stripeStart; // Wrap within stripe
+                if (level->priceTicks == priceTicks) {
+                    return level;
                 }
             }
 
-            return nullptr; // Not found in this stripe
+            return nullptr;  // Not found in this stripe
         }
 
         bool isActive(uint64_t priceTicks) {
@@ -451,25 +478,10 @@ class PriceTable {
         }
 
         void cleanup() {
-            // Lock all stripes in order to avoid deadlocks during cleanup
-            std::lock_guard<std::mutex> locks[NUM_STRIPES] = {
-                std::lock_guard<std::mutex>(stripeMutexes[0]),
-                std::lock_guard<std::mutex>(stripeMutexes[1]),
-                std::lock_guard<std::mutex>(stripeMutexes[2]),
-                std::lock_guard<std::mutex>(stripeMutexes[3]),
-                std::lock_guard<std::mutex>(stripeMutexes[4]),
-                std::lock_guard<std::mutex>(stripeMutexes[5]),
-                std::lock_guard<std::mutex>(stripeMutexes[6]),
-                std::lock_guard<std::mutex>(stripeMutexes[7]),
-                std::lock_guard<std::mutex>(stripeMutexes[8]),
-                std::lock_guard<std::mutex>(stripeMutexes[9]),
-                std::lock_guard<std::mutex>(stripeMutexes[10]),
-                std::lock_guard<std::mutex>(stripeMutexes[11]),
-                std::lock_guard<std::mutex>(stripeMutexes[12]),
-                std::lock_guard<std::mutex>(stripeMutexes[13]),
-                std::lock_guard<std::mutex>(stripeMutexes[14]),
-                std::lock_guard<std::mutex>(stripeMutexes[15])
-            };
+            // Lock all stripes for cleanup
+            for (size_t s = 0; s < NUM_STRIPES; ++s) {
+                stripeMutexes[s].lock();
+            }
 
             for (size_t i = 0; i < NumBuckets; i++) {
                 PriceLevel<RingSize, NumBuckets>* level = buckets[i].level;
@@ -479,7 +491,12 @@ class PriceTable {
 
                     level->~PriceLevel();
                     ownerPool->deallocate(memoryBlock);
+                    buckets[i].level = nullptr;
                 }
+            }
+
+            for (size_t s = 0; s < NUM_STRIPES; ++s) {
+                stripeMutexes[s].unlock();
             }
         }
 };
@@ -775,6 +792,7 @@ class Worker {
 
                 if (order) {
                     processOrder(order);
+                    publishRing->orderProcessed();
                 } else {
                     std::this_thread::yield();
                 }
@@ -965,9 +983,7 @@ class OrderBook {
             return true;
         }
 
-        // Check if all workers have caught up (ring is empty)
-        // Small discrepancy: order may be pulled but not fully processed yet
-        // Negligible with large batch sizes
+        // Check if all workers have finished processing all orders
         bool isIdle() const {
             return publishRing.isEmpty();
         }

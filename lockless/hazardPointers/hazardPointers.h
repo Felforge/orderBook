@@ -9,8 +9,8 @@
 #include <cstdio>
 
 // Maximum number of threads that can be supported for hazard pointers
-// Would need to be higher for a GPU implementation but is fine for now
-constexpr size_t MAX_HAZARD_POINTERS = 128;
+// 32 is the highest I am using for now
+constexpr size_t MAX_HAZARD_POINTERS = 32;
 
 // Number of hazard pointers per thread
 constexpr size_t HAZARD_POINTERS_PER_THREAD = 8;

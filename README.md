@@ -8,7 +8,7 @@ A high-performance, lock-free order book system built from scratch in C++20, des
 
 Full GTest suite passing under Normal, ASan, and TSan builds on a 32-thread remote server:
 
-<video src="resources/Tests-Passing.mp4" controls width="100%"></video>
+[![Demo video](https://img.youtube.com/vi/8p9TpP89Xew/maxresdefault.jpg)](https://youtu.be/8p9TpP89Xew)
 
 ---
 

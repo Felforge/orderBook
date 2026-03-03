@@ -98,7 +98,7 @@ void setHazardPointer(void* ptr) {
     for (size_t i = 0; i < HAZARD_POINTERS_PER_THREAD; i++) {
         // If the slot is empty, set it to the pointer
         if (globalHazardPointers[hazardSlot].ptrs[i].load() == nullptr) {
-            globalHazardPointers[hazardSlot].ptrs[i].store(ptr, std::memory_order_release);
+            globalHazardPointers[hazardSlot].ptrs[i].store(ptr, std::memory_order_seq_cst);
 
             // Exit after setting the pointer
             return;
@@ -131,7 +131,7 @@ bool isHazard(void* ptr) {
         // Check all four slots, if it is being protected return true
         for (size_t j = 0; j < HAZARD_POINTERS_PER_THREAD; j++) {
             // If the slot equals to ptr return true
-            if (globalHazardPointers[i].ptrs[j].load(std::memory_order_acquire) == ptr) {
+            if (globalHazardPointers[i].ptrs[j].load(std::memory_order_seq_cst) == ptr) {
                 return true;
             }
         }

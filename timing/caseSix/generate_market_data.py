@@ -25,7 +25,8 @@ def generate_stock_price(n, initial_price, mu, sigma, dt):
         shock = np.random.normal(0, 1) * np.sqrt(dt)
         drift = mu * local_prices[idx-1] * dt
         diffusion = sigma * local_prices[idx-1] * shock
-        local_prices[idx] = local_prices[idx-1] + drift + diffusion
+        delta = np.clip(drift + diffusion, -0.25, 0.25)
+        local_prices[idx] = local_prices[idx-1] + delta
         local_prices[idx] = max(local_prices[idx], 0.01)
     return local_prices
 

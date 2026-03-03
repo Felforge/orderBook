@@ -137,6 +137,11 @@ void retireQueueNode(Node<T>* node, LocklessQueue<T>& queue) {
 
     // Add the node to this thread's retire list
     retireList.push_back(static_cast<void*>(node));
+
+    // If the retire list has grown large enough, attempt to reclaim nodes
+    if (retireList.size() >= 64) {
+        updateRetireListQueue<T>(queue);
+    }
 }
 
 template<typename T>
@@ -155,7 +160,7 @@ class LocklessQueue {
             }
         }
 
-        // Copy sets a hazard pointer and returns a node pointer
+        // DeRefLink for raw pointers (dummy nodes, caller-owned nodes)
         // This should only be called on nodes that are already protected or are dummy nodes
         HazardGuard<Node<T>> DeRefLink(Node<T>* node) {
             // If node is null, return nullptr for safety
@@ -165,6 +170,31 @@ class LocklessQueue {
 
             // Return node
             return HazardGuard<Node<T>>(node, node->isDummy);
+        }
+
+        // Safe DeRefLink for atomic links — re-reads after setting HP to prevent ABA.
+        // Returns the MarkedPtr snapshot via output parameter.
+        HazardGuard<Node<T>> DeRefLink(std::atomic<MarkedPtr<T>>& link, MarkedPtr<T>& snapshot) {
+            while (true) {
+                snapshot = link.load(std::memory_order_acquire);
+                Node<T>* node = snapshot.getPtr();
+                if (!node) {
+                    return HazardGuard<Node<T>>(nullptr);
+                }
+                // Always set HP (don't trust isDummy on potentially reclaimed memory)
+                HazardGuard<Node<T>> guard(node);
+                // Re-verify the link still points to this node
+                if (link.load(std::memory_order_acquire).getPtr() == node) {
+                    return guard;
+                }
+                // Node changed — guard destructor removes HP, retry
+            }
+        }
+
+        // Convenience overload when MarkedPtr snapshot is not needed
+        HazardGuard<Node<T>> DeRefLink(std::atomic<MarkedPtr<T>>& link) {
+            MarkedPtr<T> unused;
+            return DeRefLink(link, unused);
         }
 
         // Self explanatory
@@ -280,9 +310,9 @@ class LocklessQueue {
                     return HazardGuard<Node<T>>(nullptr);
                 }
 
-                // Retrieve prev->next
-                MarkedPtr<T> Mprev2 = prev->next.load();
-                HazardGuard<Node<T>> Hprev2 = DeRefLink(Mprev2.getPtr());
+                // Retrieve prev->next with safe hazard pointer acquisition
+                MarkedPtr<T> Mprev2;
+                HazardGuard<Node<T>> Hprev2 = DeRefLink(prev->next, Mprev2);
                 Node<T>* prev2 = Hprev2.ptr;
 
                 // If prev2 is marked
@@ -318,8 +348,8 @@ class LocklessQueue {
                         return HazardGuard<Node<T>>(nullptr);
                     }
 
-                    // retrieve prev->prev
-                    HazardGuard<Node<T>> Hprev2 = DeRefLink(prev->prev.load().getPtr());
+                    // retrieve prev->prev with safe hazard pointer acquisition
+                    Hprev2 = DeRefLink(prev->prev);
                     prev2 = Hprev2.ptr;
 
                     // Release prev
@@ -481,8 +511,8 @@ class LocklessQueue {
             HazardGuard<Node<T>> Hprev = DeRefLink(head);
             Node<T>* prev = Hprev.ptr;
 
-            // retrieve next
-            HazardGuard<Node<T>> Hnext = DeRefLink(prev->next.load().getPtr());
+            // retrieve next with safe hazard pointer acquisition
+            HazardGuard<Node<T>> Hnext = DeRefLink(prev->next);
             Node<T>* next = Hnext.ptr;
 
             // While true
@@ -500,8 +530,8 @@ class LocklessQueue {
                 }
 
                 // Transfer protection from old to new next
-                Hnext = DeRefLink(prev->next.load().getPtr());
-                
+                Hnext = DeRefLink(prev->next);
+
                 // redefine next
                 next = Hnext.ptr;
 
@@ -526,12 +556,19 @@ class LocklessQueue {
             HazardGuard<Node<T>> Hnext = DeRefLink(tail);
             Node<T>* next = Hnext.ptr;
 
-            // retrieve prev
-            HazardGuard<Node<T>> Hprev = DeRefLink(next->prev.load().getPtr());
+            // retrieve prev with safe hazard pointer acquisition
+            HazardGuard<Node<T>> Hprev = DeRefLink(next->prev);
             Node<T>* prev = Hprev.ptr;
 
             // Loop infinitely
             while (true) {
+                // If prev is null (correctPrev couldn't find target), re-fetch from tail
+                if (!prev) {
+                    Hprev = DeRefLink(next->prev);
+                    prev = Hprev.ptr;
+                    continue;
+                }
+
                 // Connect node to prev
                 node->prev.store(MarkedPtr<T>(prev, false));
 
@@ -573,9 +610,9 @@ class LocklessQueue {
 
             // Loop infinitely
             while (true) {
-                // Retrieve node
-                MarkedPtr<T> Mnode = prev->next.load();
-                HazardGuard<Node<T>> Hnode = DeRefLink(Mnode.getPtr());
+                // Retrieve node with safe hazard pointer acquisition
+                MarkedPtr<T> Mnode;
+                HazardGuard<Node<T>> Hnode = DeRefLink(prev->next, Mnode);
                 node = Hnode.ptr;
 
                 // If queue is empty return nullopt
@@ -583,9 +620,9 @@ class LocklessQueue {
                     return std::nullopt;
                 }
 
-                // Declare next
-                MarkedPtr<T> Mnext = node->next.load();
-                HazardGuard<Node<T>> Hnext = DeRefLink(Mnext.getPtr());
+                // Declare next with safe hazard pointer acquisition
+                MarkedPtr<T> Mnext;
+                HazardGuard<Node<T>> Hnext = DeRefLink(node->next, Mnext);
                 Node<T>* next = Hnext.ptr;
 
                 // If next is marked
@@ -634,8 +671,8 @@ class LocklessQueue {
             HazardGuard<Node<T>> Hnext = DeRefLink(tail);
             Node<T>* next = Hnext.ptr;
 
-            // Declare node
-            HazardGuard<Node<T>> Hnode = DeRefLink(next->prev.load().getPtr());
+            // Declare node with safe hazard pointer acquisition
+            HazardGuard<Node<T>> Hnode = DeRefLink(next->prev);
             Node<T>* node = Hnode.ptr;
 
             // Create variable to hold return data
@@ -643,10 +680,18 @@ class LocklessQueue {
 
             // Loop infinitely
             while (true) {
+                // If node is null (correctPrev couldn't find target), re-fetch from tail
+                if (!node) {
+                    Hnode = DeRefLink(next->prev);
+                    node = Hnode.ptr;
+                    continue;
+                }
+
                 // If node->next does not equal unmarked next correct the connection
                 if (node->next.load() != MarkedPtr<T>(next, false)) {
                     Hnode = correctPrev(std::move(Hnode), next);
                     node = Hnode.ptr;  // Update node pointer
+                    continue;
                 }
 
                 // If queue is empty return nullopt
@@ -658,8 +703,8 @@ class LocklessQueue {
                 // Note: 'next' should always be the tail according to the paper
                 MarkedPtr<T> expected(next, false);
                 if (CASRef(&node->next, expected, MarkedPtr<T>(next, true))) {
-                    // Declare prev
-                    HazardGuard<Node<T>> Hprev = DeRefLink(node->prev.load().getPtr());
+                    // Declare prev with safe hazard pointer acquisition
+                    HazardGuard<Node<T>> Hprev = DeRefLink(node->prev);
                     Node<T>* prev = Hprev.ptr;
 
                     // Connect prev->next directly to next (bypassing deleted node)
@@ -706,9 +751,9 @@ class LocklessQueue {
             
             // Start infinite loop
             while (true) {
-                // Retrieve node->next
-                MarkedPtr<T> Mnext = node->next.load();
-                HazardGuard<Node<T>> Hnext = DeRefLink(Mnext.getPtr());
+                // Retrieve node->next with safe hazard pointer acquisition
+                MarkedPtr<T> Mnext;
+                HazardGuard<Node<T>> Hnext = DeRefLink(node->next, Mnext);
                 Node<T>* next = Hnext.ptr;
 
                 // If next is marked return nullopt
@@ -724,9 +769,9 @@ class LocklessQueue {
 
                     // Start infinite loop
                     while (true) {
-                        // Retrieve node->prev
-                        MarkedPtr<T> Mprev = node->prev.load();
-                        Hprev = DeRefLink(Mprev.getPtr());
+                        // Retrieve node->prev with safe hazard pointer acquisition
+                        MarkedPtr<T> Mprev;
+                        Hprev = DeRefLink(node->prev, Mprev);
                         prev = Hprev.ptr;
 
                         // If prev is already marked or is successfully marked break

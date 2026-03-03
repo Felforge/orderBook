@@ -545,7 +545,9 @@ class Worker {
             while (order->quantity.load() > 0 && level->numOrders.load() > 0) {
                 auto optMatch = level->queue->popLeft();
 
+                // Queue is momentarily empty (another thread may be pushing back a partial match)
                 if (!optMatch.has_value()) {
+                    std::this_thread::yield();
                     break;
                 }
 
@@ -579,16 +581,18 @@ class Worker {
                     return;
                 }
 
+                // Use this pointer directly to avoid TOCTOU race
                 PriceLevel<RingSize, NumBuckets>* level = oppTable.lookup(bestMatch);
 
-                if (!oppTable.isActive(bestMatch)) {
+                // Check the pointer we actually got, not a fresh lookup
+                if (!level || level->numOrders.load() == 0) {
                     backtrackPriceLevel(symbol, opp, bestMatch);
                     continue;
                 }
 
                 matchAtPriceLevel(order, level);
 
-                if (!oppTable.isActive(bestMatch)) {
+                if (level->numOrders.load() == 0) {
                     backtrackPriceLevel(symbol, opp, bestMatch);
                 }
             }

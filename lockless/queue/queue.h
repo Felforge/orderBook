@@ -181,8 +181,8 @@ class LocklessQueue {
                 if (!node) {
                     return HazardGuard<Node<T>>(nullptr);
                 }
-                // Always set HP (don't trust isDummy on potentially reclaimed memory)
-                HazardGuard<Node<T>> guard(node);
+                // Set HP, skipping for dummy nodes (they are never reclaimed)
+                HazardGuard<Node<T>> guard(node, node->isDummy);
                 // Re-verify the link still points to this node
                 if (link.load(std::memory_order_acquire).getPtr() == node) {
                     return guard;
@@ -326,13 +326,8 @@ class LocklessQueue {
                         // Swap references
                         CASRef(&lastLink->next, MarkedPtr<T>(prev, false), MarkedPtr<T>(prev2, false));
 
-                        // Release prev
-                        releaseNode(prev);
-
-                        // Release prev2
-                        releaseNode(prev2);
-
                         // Set prev to lastlink and transfer protection
+                        // Move assignment removes HP for old prev via RAII
                         prev = lastLink;
                         Hprev = std::move(Hlast);
 
@@ -352,13 +347,9 @@ class LocklessQueue {
                     Hprev2 = DeRefLink(prev->prev);
                     prev2 = Hprev2.ptr;
 
-                    // Release prev
-                    releaseNode(prev);
-
-                    // Set prev to prev2
+                    // Set prev to prev2 and transfer protection
+                    // Move assignment removes HP for old prev via RAII
                     prev = prev2;
-
-                    // Transfer protection
                     Hprev = std::move(Hprev2);
 
                     // Continue into next loop iteration

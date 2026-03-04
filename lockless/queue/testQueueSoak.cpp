@@ -59,26 +59,26 @@ TEST(LocklessQueueSoakTest, HandlesFiveMinuteSoakTest) {
                     int op = opDist(rng);
                     int value = valueDist(rng);
                     
-                    if (op < 35) {
-                        // Push left (35%)
+                    if (op < 25) {
+                        // Push left (25%)
                         Node<int>* node = queue.pushLeft(value, pools[threadId]);
                         if (node && threadNodes[threadId].size() < 5000) {
                             threadNodes[threadId].push_back(node);
                         }
-                    } else if (op < 70) {
-                        // Push right (35%)
+                    } else if (op < 50) {
+                        // Push right (25%)
                         Node<int>* node = queue.pushRight(value, pools[threadId]);
                         if (node && threadNodes[threadId].size() < 5000) {
                             threadNodes[threadId].push_back(node);
                         }
-                    } else if (op < 85) {
-                        // Pop left (15%)
+                    } else if (op < 72) {
+                        // Pop left (22%)
                         queue.popLeft();
-                    } else if (op < 95) {
-                        // Pop right (10%)
+                    } else if (op < 94) {
+                        // Pop right (22%)
                         queue.popRight();
                     } else {
-                        // Remove node (5%)
+                        // Remove node (6%)
                         if (!threadNodes[threadId].empty()) {
                             uniform_int_distribution<size_t> indexDist(0, threadNodes[threadId].size() - 1);
                             size_t index = indexDist(rng);

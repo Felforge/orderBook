@@ -115,7 +115,7 @@ void removeHazardPointer(void* ptr) {
     for (size_t i = 0; i < HAZARD_POINTERS_PER_THREAD; i++) {
         // If the slot equals to ptr set it to nullptr
         if (globalHazardPointers[hazardSlot].ptrs[i].load() == ptr) {
-            globalHazardPointers[hazardSlot].ptrs[i].store(nullptr, std::memory_order_release);
+            globalHazardPointers[hazardSlot].ptrs[i].store(nullptr, std::memory_order_seq_cst);
 
             // Exit after removing the pointer
             return;
